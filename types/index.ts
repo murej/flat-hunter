@@ -95,6 +95,7 @@ export interface PropertyEvalResult {
   price_score: number;
   size_score: number;
   fit_score: number;
+  property_unknown?: boolean;
   deal_breaker_flags: string[];
   property_summary: string;
   raw: Record<string, unknown>;
@@ -103,6 +104,7 @@ export interface PropertyEvalResult {
 export interface AreaEvalResult {
   area_score: number;
   area_summary: string;
+  area_unknown?: boolean;
   notable_flags: string[];
   raw: Record<string, unknown>;
 }
@@ -111,6 +113,7 @@ export interface CommuteEvalResult {
   commute_minutes: number;
   commute_route: string;
   commute_score: number;
+  commute_unknown?: boolean;
 }
 
 export interface FinanceEvalResult {

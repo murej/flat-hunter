@@ -1,49 +1,50 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, logConversation } from "@/lib/supabase";
 import { sendWithButtons } from "@/lib/telegram";
-import { SCORECARD_COMPOSER_SYSTEM } from "@/lib/prompts";
 import type { Evaluation, Listing } from "@/types";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+type UnknownScores = {
+  property?: boolean;
+  area?: boolean;
+  commute?: boolean;
+};
+
+const s = (score: number, unknown?: boolean) =>
+  unknown ? "N/A  " : `${score}/10`;
 
 export async function scorecardComposer(
   evaluation: Evaluation,
   listing: Listing,
   notableFlags: string[],
-  commuteMinutes: number
+  commuteMinutes: number,
+  unknownScores: UnknownScores = {}
 ): Promise<void> {
   const allFlags = [
     ...(evaluation.deal_breaker_flags || []),
     ...notableFlags,
   ];
 
-  const prompt = `Format this property evaluation as a Telegram message using EXACTLY this template:
+  const watchOuts =
+    allFlags.length > 0
+      ? allFlags.map((f) => `• ${f}`).join("\n  ")
+      : "• None identified";
 
-🏠 ${listing.title}
+  const commuteLabel = unknownScores.commute
+    ? "N/A  "
+    : `${evaluation.commute_score}/10 (${commuteMinutes} min)`;
+
+  const scorecardText = `🏠 ${listing.title}
 💰 £${listing.price?.toLocaleString()} · £${evaluation.monthly_mortgage}/mo
 
 ✅ Scores
-  Property fit:  ${evaluation.fit_score}/10
-  Area:          ${evaluation.area_score}/10
-  Commute:       ${evaluation.commute_score}/10 (${commuteMinutes} min)
-  Value:         ${evaluation.price_score}/10
+  Property fit:  ${s(evaluation.fit_score, unknownScores.property)}
+  Area:          ${s(evaluation.area_score, unknownScores.area)}
+  Commute:       ${commuteLabel}
+  Value:         ${s(evaluation.price_score, unknownScores.property)}
 
 ⚠️ Watch outs
-  ${allFlags.length > 0 ? allFlags.map((f) => `• ${f}`).join("\n  ") : "• None identified"}
+  ${watchOuts}
 
-🔗 ${listing.url}
-
-Use this exact format. Keep watch outs concise.`;
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
-    max_tokens: 512,
-    system: SCORECARD_COMPOSER_SYSTEM,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const scorecardText =
-    response.content[0].type === "text" ? response.content[0].text : prompt;
+[🔗 View listing](${listing.url})`;
 
   await supabaseAdmin
     .from("evaluations")

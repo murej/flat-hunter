@@ -12,14 +12,10 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const SCORE_THRESHOLD = 5;
 
 export async function propertyEvaluator(
-  listingId: string
+  listingId: string,
+  preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>
 ): Promise<PropertyEvalResult> {
   const listing = await getListing(listingId);
-  const preferences = await getPreferences();
-
-  if (!preferences) {
-    throw new Error("No preferences found — cannot evaluate listing");
-  }
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
@@ -55,7 +51,24 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
   const listing = await getListing(listingId);
   const preferences = await getPreferences();
 
-  const propertyResult = await propertyEvaluator(listingId);
+  if (!preferences) {
+    throw new Error("No preferences found — cannot evaluate listing");
+  }
+
+  const propertyResult = await propertyEvaluator(listingId, preferences).catch(
+    (e) => {
+      console.error("Property evaluator failed:", e);
+      return {
+        price_score: 0,
+        size_score: 0,
+        fit_score: 0,
+        property_unknown: true as const,
+        deal_breaker_flags: [],
+        property_summary: "",
+        raw: {},
+      };
+    }
+  );
 
   const [areaResult, commuteResult, financeResult] = await Promise.all([
     areaEvaluator(listing.postcode || listing.address).catch((e) => {
@@ -63,6 +76,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
       return {
         area_score: 0,
         area_summary: "Area evaluation unavailable",
+        area_unknown: true as const,
         notable_flags: [],
         raw: {},
       };
@@ -77,6 +91,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
         commute_minutes: 0,
         commute_route: "Commute data unavailable",
         commute_score: 0,
+        commute_unknown: true as const,
       };
     }),
     financeAgent(listing.price, preferences?.deposit ?? 0).catch((e) => {
@@ -91,13 +106,21 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
     }),
   ]);
 
+  const scoreComponents = [
+    ...(propertyResult.property_unknown
+      ? []
+      : [
+          propertyResult.price_score,
+          propertyResult.size_score,
+          propertyResult.fit_score,
+        ]),
+    ...(areaResult.area_unknown ? [] : [areaResult.area_score]),
+    ...(commuteResult.commute_unknown ? [] : [commuteResult.commute_score]),
+  ];
   const overall_score =
-    (propertyResult.price_score +
-      propertyResult.size_score +
-      propertyResult.fit_score +
-      areaResult.area_score +
-      commuteResult.commute_score) /
-    5;
+    scoreComponents.length > 0
+      ? scoreComponents.reduce((a, b) => a + b, 0) / scoreComponents.length
+      : 0;
 
   const { data: evaluation, error } = await supabaseAdmin
     .from("evaluations")
@@ -137,7 +160,12 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
       evaluation,
       listing,
       areaResult.notable_flags,
-      commuteResult.commute_minutes
+      commuteResult.commute_minutes,
+      {
+        property: propertyResult.property_unknown,
+        area: areaResult.area_unknown,
+        commute: commuteResult.commute_unknown,
+      }
     );
     return true;
   }

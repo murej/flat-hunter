@@ -7,11 +7,13 @@ export async function commuteEvaluator(
   toPostcode: string,
   maxCommuteMinutes: number
 ): Promise<CommuteEvalResult> {
-  if (!fromPostcode || !toPostcode) {
+  const postcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
+  if (!fromPostcode || !toPostcode || !postcodeRe.test(fromPostcode.trim())) {
     return {
       commute_minutes: 0,
-      commute_route: "Postcode data missing",
+      commute_route: "Commute time unknown",
       commute_score: 0,
+      commute_unknown: true,
     };
   }
 
@@ -20,7 +22,7 @@ export async function commuteEvaluator(
   const appId = process.env.TFL_APP_ID ?? "";
   const appKey = process.env.TFL_APP_KEY ?? "";
 
-  const params = new URLSearchParams({ mode: "public_transport,walking" });
+  const params = new URLSearchParams();
   if (appId) params.set("app_id", appId);
   if (appKey) params.set("app_key", appKey);
 
