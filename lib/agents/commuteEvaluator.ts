@@ -8,7 +8,8 @@ export async function commuteEvaluator(
   maxCommuteMinutes: number
 ): Promise<CommuteEvalResult> {
   const postcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
-  if (!fromPostcode || !toPostcode || !postcodeRe.test(fromPostcode.trim())) {
+  const regexPassed = postcodeRe.test((fromPostcode || '').trim());
+  if (!fromPostcode || !toPostcode || !regexPassed) {
     return {
       commute_minutes: 0,
       commute_route: "Commute time unknown",
