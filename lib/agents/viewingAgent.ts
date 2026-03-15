@@ -4,7 +4,11 @@ import { supabaseAdmin, getListing, logConversation, updateListingStatus } from 
 import { VIEWING_EMAIL_SYSTEM } from "@/lib/prompts";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const resend = new Resend(process.env.RESEND_API_KEY);
+
+function getResend() {
+  if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is not set");
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 export const viewingAgent = {
   async draftEmail(listingId: string): Promise<string> {
@@ -33,7 +37,7 @@ export const viewingAgent = {
       throw new Error("No agent email address for this listing");
     }
 
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "Flat Hunter <noreply@yourdomain.com>",
       to: listing.agent_email,
       subject: `Viewing Request: ${listing.title}`,
