@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "@/lib/supabase";
 import { EMAIL_PARSER_SYSTEM } from "@/lib/prompts";
+import { runEvaluationPipeline } from "./propertyEvaluator";
+import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -103,13 +105,23 @@ export async function ingestAgent(html: string): Promise<void> {
   const listings = await parseEmailHtml(html);
   const newIds = await deduplicateAndStore(listings);
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  if (newIds.length === 0) return;
 
-  for (const id of newIds) {
-    await fetch(`${baseUrl}/api/evaluate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listing_id: id }),
-    });
+  const evalResults = await Promise.all(
+    newIds.map((id) =>
+      runEvaluationPipeline(id).catch((e) => {
+        console.error(`Evaluation failed for ${id}:`, e);
+        return false;
+      })
+    )
+  );
+
+  const sentCount = evalResults.filter(Boolean).length;
+  const suppressedCount = evalResults.length - sentCount;
+
+  if (suppressedCount > 0) {
+    await sendMessage(
+      `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 5/10 or below.`
+    );
   }
 }

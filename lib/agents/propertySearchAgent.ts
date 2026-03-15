@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { PROPERTY_SEARCH_SYSTEM, EMAIL_PARSER_SYSTEM } from "@/lib/prompts";
 import { deduplicateAndStore } from "./ingest";
+import { runEvaluationPipeline } from "./propertyEvaluator";
 import type { Preferences } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -11,6 +12,8 @@ export interface SearchResult {
   searched: number;
   newCount: number;
   newListingIds: string[];
+  sentCount: number;
+  suppressedCount: number;
 }
 
 interface RawListing {
@@ -185,7 +188,7 @@ export async function propertySearchAgent(
   preferences: Preferences
 ): Promise<SearchResult> {
   if (!preferences.areas || preferences.areas.length === 0) {
-    return { searched: 0, newCount: 0, newListingIds: [] };
+    return { searched: 0, newCount: 0, newListingIds: [], sentCount: 0, suppressedCount: 0 };
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -231,20 +234,23 @@ export async function propertySearchAgent(
     allListings as Parameters<typeof deduplicateAndStore>[0]
   );
 
-  // Fire-and-forget evaluation for each new listing
-  await Promise.all(
+  const evalResults = await Promise.all(
     newListingIds.map((id) =>
-      fetch(`${baseUrl}/api/evaluate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listing_id: id }),
-      }).catch((e) => console.error(`Failed to trigger evaluate for ${id}:`, e))
+      runEvaluationPipeline(id).catch((e) => {
+        console.error(`Evaluation failed for ${id}:`, e);
+        return false;
+      })
     )
   );
+
+  const sentCount = evalResults.filter(Boolean).length;
+  const suppressedCount = evalResults.length - sentCount;
 
   return {
     searched: preferences.areas.length,
     newCount: newListingIds.length,
     newListingIds,
+    sentCount,
+    suppressedCount,
   };
 }

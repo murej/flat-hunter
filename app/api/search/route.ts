@@ -12,10 +12,14 @@ async function runSearch() {
 
   const result = await propertySearchAgent(preferences);
 
-  const summary =
-    result.newCount > 0
-      ? `🔍 Search complete: found *${result.newCount}* new ${result.newCount === 1 ? "property" : "properties"} across ${result.searched} ${result.searched === 1 ? "area" : "areas"}. Scorecards on their way!`
-      : `🔍 Search complete: no new properties found across ${result.searched} ${result.searched === 1 ? "area" : "areas"}.`;
+  let summary: string;
+  if (result.newCount === 0) {
+    summary = `🔍 Search complete: no new properties found across ${result.searched} ${result.searched === 1 ? "area" : "areas"}.`;
+  } else if (result.suppressedCount > 0) {
+    summary = `🔍 Search complete: found *${result.newCount}* new ${result.newCount === 1 ? "property" : "properties"} — showing *${result.sentCount}* scorecard${result.sentCount === 1 ? "" : "s"}, plus *${result.suppressedCount}* more that scored 5/10 or below.`;
+  } else {
+    summary = `🔍 Search complete: found *${result.newCount}* new ${result.newCount === 1 ? "property" : "properties"} across ${result.searched} ${result.searched === 1 ? "area" : "areas"}.`;
+  }
 
   await sendMessage(summary);
 

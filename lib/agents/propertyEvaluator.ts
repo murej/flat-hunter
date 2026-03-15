@@ -9,6 +9,8 @@ import type { PropertyEvalResult } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const SCORE_THRESHOLD = 5;
+
 export async function propertyEvaluator(
   listingId: string
 ): Promise<PropertyEvalResult> {
@@ -49,7 +51,7 @@ export async function propertyEvaluator(
   };
 }
 
-export async function runEvaluationPipeline(listingId: string): Promise<void> {
+export async function runEvaluationPipeline(listingId: string): Promise<boolean> {
   const listing = await getListing(listingId);
   const preferences = await getPreferences();
 
@@ -130,10 +132,15 @@ export async function runEvaluationPipeline(listingId: string): Promise<void> {
     .update({ status: "evaluated" })
     .eq("id", listingId);
 
-  await scorecardComposer(
-    evaluation,
-    listing,
-    areaResult.notable_flags,
-    commuteResult.commute_minutes
-  );
+  if (overall_score > SCORE_THRESHOLD) {
+    await scorecardComposer(
+      evaluation,
+      listing,
+      areaResult.notable_flags,
+      commuteResult.commute_minutes
+    );
+    return true;
+  }
+
+  return false;
 }
