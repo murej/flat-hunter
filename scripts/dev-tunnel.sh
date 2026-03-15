@@ -82,5 +82,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Override APP_URL so internal fetch calls (e.g. /api/search) hit the tunnel, not production
+export NEXT_PUBLIC_APP_URL="$TUNNEL_URL"
+
 # Start the dev server in the foreground
 npm run dev
