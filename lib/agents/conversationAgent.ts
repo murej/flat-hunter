@@ -24,7 +24,8 @@ export async function conversationAgent(
     return;
   }
 
-  if (text.toLowerCase().includes("update preferences")) {
+  const updateKeywords = ["update preferences", "change preferences", "edit preferences", "reset preferences"];
+  if (updateKeywords.some((kw) => text.toLowerCase().includes(kw))) {
     await preferenceAgent(text, messageId);
     return;
   }
@@ -59,8 +60,11 @@ export async function conversationAgent(
     case "compare":
       await handleCompare(text);
       break;
+    case "preferences":
+      await handleShowPreferences(preferences);
+      break;
     default:
-      await handleGeneral(text, listingId);
+      await handleGeneral(text, listingId, preferences);
   }
 }
 
@@ -278,11 +282,51 @@ async function handleCompare(text: string): Promise<void> {
   await sendMessage(comparison);
 }
 
+async function handleShowPreferences(
+  preferences: Record<string, unknown>
+): Promise<void> {
+  const p = preferences as {
+    areas?: string[];
+    max_price?: number;
+    deposit?: number;
+    min_bedrooms?: number;
+    commute_anchor?: string;
+    commute_anchor_postcode?: string;
+    max_commute_minutes?: number;
+    must_haves?: string[];
+    deal_breakers?: string[];
+    style_notes?: string;
+    freeform_notes?: string;
+  };
+
+  const msg = [
+    `📋 *Your current preferences:*`,
+    ``,
+    `📍 *Areas:* ${p.areas?.join(", ") || "Not set"}`,
+    `💰 *Max price:* £${p.max_price?.toLocaleString() || "Not set"}`,
+    `💵 *Deposit:* £${p.deposit?.toLocaleString() || "Not set"}`,
+    `🛏 *Min bedrooms:* ${p.min_bedrooms || "Not set"}`,
+    `🚇 *Commute to:* ${p.commute_anchor_postcode || p.commute_anchor || "Not set"} (max ${p.max_commute_minutes} min)`,
+    `✅ *Must-haves:* ${p.must_haves?.join(", ") || "None specified"}`,
+    `❌ *Deal-breakers:* ${p.deal_breakers?.join(", ") || "None specified"}`,
+    `🏠 *Style:* ${p.style_notes || "Not set"}`,
+    ``,
+    `_Say "update preferences" to change any of these._`,
+  ].join("\n");
+
+  await logConversation({ direction: "outbound", message: msg, intent: "preferences" });
+  await sendMessage(msg);
+}
+
 async function handleGeneral(
   text: string,
-  listingId: string | null
+  listingId: string | null,
+  preferences?: Record<string, unknown> | null
 ): Promise<void> {
   let context = "";
+  if (preferences) {
+    context += `\nUser preferences: ${JSON.stringify(preferences)}`;
+  }
   if (listingId) {
     const { data: listing } = await supabaseAdmin
       .from("listings")
