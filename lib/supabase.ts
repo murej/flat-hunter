@@ -59,3 +59,44 @@ export async function logConversation(params: {
 
   if (error) throw error;
 }
+
+/**
+ * Returns the listing_id from the most recent conversation row that has one,
+ * looking back through the last `lookback` rows. Used to resolve "it" / "that
+ * property" references when no UUID appears in the user's message.
+ */
+export async function getActiveListingId(
+  lookback = 10
+): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("conversations")
+    .select("listing_id")
+    .not("listing_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(lookback);
+
+  return data?.[0]?.listing_id ?? null;
+}
+
+/**
+ * Returns the last `limit` conversation rows formatted as Claude message pairs
+ * (inbound → "user", outbound → "assistant"), in chronological order.
+ */
+export async function getConversationHistory(
+  limit = 8
+): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
+  const { data } = await supabaseAdmin
+    .from("conversations")
+    .select("direction, message")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  return (data ?? [])
+    .reverse()
+    .map((row) => ({
+      role: (row.direction === "inbound" ? "user" : "assistant") as
+        | "user"
+        | "assistant",
+      content: row.message as string,
+    }));
+}

@@ -1,5 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { getPreferences, supabaseAdmin, logConversation, updateListingStatus } from "@/lib/supabase";
+import {
+  getPreferences,
+  supabaseAdmin,
+  logConversation,
+  updateListingStatus,
+  getActiveListingId,
+  getConversationHistory,
+} from "@/lib/supabase";
 import { sendMessage } from "@/lib/telegram";
 import { preferenceAgent } from "./preference";
 import { viewingAgent } from "./viewingAgent";
@@ -9,7 +16,6 @@ import {
   WHY_EXPLANATION_SYSTEM,
   COMPARISON_SYSTEM,
 } from "@/lib/prompts";
-import type { TelegramMessage } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -24,56 +30,69 @@ export async function conversationAgent(
     return;
   }
 
-  const updateKeywords = ["update preferences", "change preferences", "edit preferences", "reset preferences"];
-  if (updateKeywords.some((kw) => text.toLowerCase().includes(kw))) {
-    await preferenceAgent(text, messageId);
-    return;
-  }
+  // Fetch shared context once — used by classifier and handlers
+  const history = await getConversationHistory(8);
+  const listingIdFromText = extractListingId(text);
+  const activeListingId =
+    listingIdFromText ?? (await getActiveListingId(10));
 
-  const intent = await classifyIntent(text);
+  const intent = await classifyIntent(text, history);
 
   await logConversation({
     telegram_message_id: messageId,
     direction: "inbound",
     message: text,
+    listing_id: activeListingId,
     intent,
   });
 
-  const listingId = extractListingId(text);
-
   switch (intent) {
     case "view":
-      await handleView(listingId, messageId);
+      await handleView(activeListingId, messageId);
+      break;
+    case "confirm_send":
+      await handleConfirmSend(activeListingId);
       break;
     case "skip":
-      await handleSkip(listingId);
+      await handleSkip(activeListingId);
       break;
     case "save":
-      await handleSave(listingId);
+      await handleSave(activeListingId);
       break;
     case "why":
-      await handleWhy(listingId);
+      await handleWhy(activeListingId, history);
       break;
     case "show_saved":
       await handleShowSaved();
       break;
     case "compare":
-      await handleCompare(text);
+      await handleCompare(text, history);
       break;
-    case "preferences":
+    case "show_preferences":
       await handleShowPreferences(preferences);
       break;
+    case "update_preferences":
+      await preferenceAgent(text, messageId);
+      break;
     default:
-      await handleGeneral(text, listingId, preferences);
+      await handleGeneral(text, activeListingId, preferences, history);
   }
 }
 
-async function classifyIntent(text: string): Promise<string> {
+async function classifyIntent(
+  text: string,
+  history: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<string> {
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: "user", content: text },
+  ];
+
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
     max_tokens: 16,
     system: INTENT_CLASSIFIER_SYSTEM,
-    messages: [{ role: "user", content: text }],
+    messages,
   });
 
   const intent =
@@ -96,13 +115,13 @@ async function handleView(
   messageId: string
 ): Promise<void> {
   if (!listingId) {
-    await sendMessage("Which property would you like to view? Please provide the listing ID.");
+    await sendMessage("Which property would you like to view? Tap the *View* button on a scorecard or mention the property.");
     return;
   }
 
   const draft = await viewingAgent.draftEmail(listingId);
 
-  const msg = `Here's a draft viewing request email:\n\n---\n${draft}\n---\n\nReply "send" to send it, or suggest edits.`;
+  const msg = `Here's a draft viewing request email:\n\n---\n${draft}\n---\n\nReply *"send it"* to send, or tell me what to change.`;
 
   await logConversation({
     direction: "outbound",
@@ -112,6 +131,55 @@ async function handleView(
   });
 
   await sendMessage(msg);
+}
+
+async function handleConfirmSend(listingId: string | null): Promise<void> {
+  if (!listingId) {
+    // Fall back to finding the most recent view-intent conversation
+    const { data } = await supabaseAdmin
+      .from("conversations")
+      .select("listing_id")
+      .eq("intent", "view")
+      .not("listing_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    listingId = data?.listing_id ?? null;
+  }
+
+  if (!listingId) {
+    await sendMessage("I'm not sure which property's email to send. Please tap the View button on a scorecard first.");
+    return;
+  }
+
+  try {
+    await viewingAgent.sendEmail(listingId);
+
+    const msg = "✅ Viewing request sent! I'll let you know if we hear back.";
+    await logConversation({
+      direction: "outbound",
+      message: msg,
+      listing_id: listingId,
+      intent: "confirm_send",
+    });
+    await sendMessage(msg);
+  } catch (e) {
+    const err = e as Error;
+    if (err.message.includes("No agent email")) {
+      const msg =
+        "⚠️ I don't have the agent's email address for this property. You'll need to contact them directly via the listing URL.";
+      await logConversation({
+        direction: "outbound",
+        message: msg,
+        listing_id: listingId,
+        intent: "confirm_send",
+      });
+      await sendMessage(msg);
+    } else {
+      throw e;
+    }
+  }
 }
 
 async function handleSkip(listingId: string | null): Promise<void> {
@@ -150,11 +218,20 @@ async function handleSave(listingId: string | null): Promise<void> {
   await sendMessage(msg);
 }
 
-async function handleWhy(listingId: string | null): Promise<void> {
+async function handleWhy(
+  listingId: string | null,
+  history: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<void> {
   if (!listingId) {
     await sendMessage("Which property's scores would you like explained?");
     return;
   }
+
+  const { data: listing } = await supabaseAdmin
+    .from("listings")
+    .select("title, address, price")
+    .eq("id", listingId)
+    .single();
 
   const { data: evaluation } = await supabaseAdmin
     .from("evaluations")
@@ -169,16 +246,23 @@ async function handleWhy(listingId: string | null): Promise<void> {
     return;
   }
 
+  const context = listing
+    ? `Property: ${listing.title} at ${listing.address} (£${listing.price?.toLocaleString()})\n\nEvaluation:\n${JSON.stringify(evaluation, null, 2)}`
+    : `Evaluation:\n${JSON.stringify(evaluation, null, 2)}`;
+
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    {
+      role: "user",
+      content: `Explain the scores for this property.\n\n${context}`,
+    },
+  ];
+
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 512,
+    max_tokens: 768,
     system: WHY_EXPLANATION_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Explain the scores for this evaluation:\n${JSON.stringify(evaluation, null, 2)}`,
-      },
-    ],
+    messages,
   });
 
   const explanation =
@@ -224,7 +308,10 @@ async function handleShowSaved(): Promise<void> {
   await sendMessage(msg);
 }
 
-async function handleCompare(text: string): Promise<void> {
+async function handleCompare(
+  text: string,
+  history: Array<{ role: "user" | "assistant"; content: string }>
+): Promise<void> {
   const uuidRegex =
     /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
   const ids = text.match(uuidRegex);
@@ -236,7 +323,7 @@ async function handleCompare(text: string): Promise<void> {
     return;
   }
 
-  const [evalA, evalB] = await Promise.all([
+  const [evalA, evalB, listingA, listingB] = await Promise.all([
     supabaseAdmin
       .from("evaluations")
       .select("*")
@@ -251,6 +338,16 @@ async function handleCompare(text: string): Promise<void> {
       .order("created_at", { ascending: false })
       .limit(1)
       .single(),
+    supabaseAdmin
+      .from("listings")
+      .select("title, address, price")
+      .eq("id", ids[0])
+      .single(),
+    supabaseAdmin
+      .from("listings")
+      .select("title, address, price")
+      .eq("id", ids[1])
+      .single(),
   ]);
 
   if (!evalA.data || !evalB.data) {
@@ -258,16 +355,26 @@ async function handleCompare(text: string): Promise<void> {
     return;
   }
 
+  const labelA = listingA.data
+    ? `${listingA.data.title} (${listingA.data.address})`
+    : ids[0];
+  const labelB = listingB.data
+    ? `${listingB.data.title} (${listingB.data.address})`
+    : ids[1];
+
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    {
+      role: "user",
+      content: `Compare these two properties:\n\nProperty A — ${labelA}:\n${JSON.stringify(evalA.data, null, 2)}\n\nProperty B — ${labelB}:\n${JSON.stringify(evalB.data, null, 2)}`,
+    },
+  ];
+
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 768,
+    max_tokens: 1024,
     system: COMPARISON_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Compare these two properties:\n\nProperty A:\n${JSON.stringify(evalA.data, null, 2)}\n\nProperty B:\n${JSON.stringify(evalB.data, null, 2)}`,
-      },
-    ],
+    messages,
   });
 
   const comparison =
@@ -321,41 +428,47 @@ async function handleShowPreferences(
 async function handleGeneral(
   text: string,
   listingId: string | null,
-  preferences?: Record<string, unknown> | null
+  preferences: Record<string, unknown> | null,
+  history: Array<{ role: "user" | "assistant"; content: string }>
 ): Promise<void> {
-  let context = "";
+  let contextBlock = "";
+
   if (preferences) {
-    context += `\nUser preferences: ${JSON.stringify(preferences)}`;
+    contextBlock += `\n\n[User preferences]\n${JSON.stringify(preferences, null, 2)}`;
   }
+
   if (listingId) {
-    const { data: listing } = await supabaseAdmin
-      .from("listings")
-      .select("*")
-      .eq("id", listingId)
-      .single();
+    const [{ data: listing }, { data: evaluation }] = await Promise.all([
+      supabaseAdmin.from("listings").select("*").eq("id", listingId).single(),
+      supabaseAdmin
+        .from("evaluations")
+        .select("*")
+        .eq("listing_id", listingId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single(),
+    ]);
 
-    const { data: evaluation } = await supabaseAdmin
-      .from("evaluations")
-      .select("*")
-      .eq("listing_id", listingId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (listing) context += `\nListing: ${JSON.stringify(listing)}`;
-    if (evaluation) context += `\nEvaluation: ${JSON.stringify(evaluation)}`;
+    if (listing)
+      contextBlock += `\n\n[Current listing]\n${JSON.stringify(listing, null, 2)}`;
+    if (evaluation)
+      contextBlock += `\n\n[Listing evaluation]\n${JSON.stringify(evaluation, null, 2)}`;
   }
+
+  const userMessage = contextBlock
+    ? `${text}\n\n---${contextBlock}`
+    : text;
+
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: "user", content: userMessage },
+  ];
 
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 512,
+    max_tokens: 768,
     system: CONVERSATION_AGENT_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: context ? `${text}\n\nContext:${context}` : text,
-      },
-    ],
+    messages,
   });
 
   const reply =
@@ -371,5 +484,4 @@ async function handleGeneral(
   await sendMessage(reply);
 }
 
-// Named export for use in telegram route
 export { conversationAgent as default };
