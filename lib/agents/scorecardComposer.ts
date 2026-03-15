@@ -37,6 +37,7 @@ export async function scorecardComposer(
 
 ✅ Scores
   Property fit:  ${s(evaluation.fit_score, unknownScores.property)}
+  Size:          ${s(evaluation.size_score, unknownScores.property)}
   Area:          ${s(evaluation.area_score, unknownScores.area)}
   Commute:       ${commuteLabel}
   Value:         ${s(evaluation.price_score, unknownScores.property)}
