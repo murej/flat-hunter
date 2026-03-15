@@ -16,12 +16,15 @@ export async function preferenceAgent(
     intent: "preferences",
   });
 
-  const { data: history } = await supabaseAdmin
+  // Fetch latest 60 messages descending then reverse, so Claude sees recent context
+  const { data: historyDesc } = await supabaseAdmin
     .from("conversations")
     .select("direction, message")
     .eq("intent", "preferences")
-    .order("created_at", { ascending: true })
-    .limit(20);
+    .order("created_at", { ascending: false })
+    .limit(60);
+
+  const history = (historyDesc || []).reverse();
 
   const messages: Anthropic.MessageParam[] = (history || []).map((row) => ({
     role: row.direction === "inbound" ? "user" : "assistant",

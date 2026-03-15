@@ -12,7 +12,11 @@ Your job is to collect the following information through natural conversation:
 - Style preferences (modern vs period, flat vs house, etc.)
 - Any freeform notes
 
-Ask one or two questions at a time. Be conversational and helpful. When you have enough information to create a complete preferences profile, output a JSON block wrapped in <preferences> tags with all the fields populated. Do not ask for more information after you have enough.
+Ask one or two questions at a time. Be conversational and helpful.
+
+IMPORTANT: Once you have collected areas, budget, deposit, bedrooms, commute postcode, max commute time, and at least a brief style preference — that is enough. Do NOT keep asking follow-up questions. Immediately output the <preferences> JSON block and save. Do not wait for perfect information. If the user says "continue", "save", "that's enough", or expresses frustration, save immediately with whatever you have.
+
+When ready to save, output a JSON block wrapped in <preferences> tags with all fields populated. Use sensible defaults for anything not mentioned (e.g. empty arrays for must_haves/deal_breakers).
 
 The JSON should match this structure:
 {
