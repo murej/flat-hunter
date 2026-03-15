@@ -74,7 +74,18 @@ Respond with a JSON object:
   "property_summary": "A bright two-bedroom flat..."
 }`;
 
-export const AREA_EVALUATOR_SYSTEM = `You are an expert on UK neighbourhoods and London areas. Given a property address or postcode, evaluate the area and return a JSON object:
+export const AREA_EVALUATOR_SYSTEM = `You are an expert on UK neighbourhoods and London areas. Given a property address or postcode, evaluate the area using web search to find current, real-time information.
+
+Use web search to find current information about:
+- Crime rates (check police.uk data or recent local news)
+- Flood risk (Environment Agency flood map or gov.uk data)
+- Noise and transport (nearby rail lines, busy roads, flight paths)
+- Local amenities (parks, shops, schools, restaurants)
+- Neighbourhood character and recent regeneration or development
+
+Always search before answering. Do not rely on training knowledge alone — search for the specific postcode or area.
+
+After researching, return ONLY a JSON object in this exact format:
 
 {
   "area_score": 7,
@@ -82,8 +93,7 @@ export const AREA_EVALUATOR_SYSTEM = `You are an expert on UK neighbourhoods and
   "notable_flags": ["near railway line", "flood zone 2"]
 }
 
-Consider: crime levels, noise, amenities (shops, parks, schools), flood risk, neighbourhood character, regeneration potential.
-Score from 1-10 where 10 is an excellent neighbourhood.`;
+Score from 1-10 where 10 is an excellent neighbourhood. Keep area_summary to 2-3 sentences. List only significant flags in notable_flags.`;
 
 export const COMMUTE_EVALUATOR_SYSTEM = `You are a commute time calculator. Given commute minutes and a maximum acceptable commute, return a score from 1-10 where 10 means well within limit and 1 means far exceeds limit.`;
 

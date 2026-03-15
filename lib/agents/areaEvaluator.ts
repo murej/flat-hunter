@@ -9,8 +9,9 @@ export async function areaEvaluator(
 ): Promise<AreaEvalResult> {
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
-    max_tokens: 1024,
+    max_tokens: 4096,
     system: AREA_EVALUATOR_SYSTEM,
+    tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
     messages: [
       {
         role: "user",
@@ -19,8 +20,8 @@ export async function areaEvaluator(
     ],
   });
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "{}";
+  const textBlock = response.content.filter((b) => b.type === "text").pop();
+  const text = textBlock?.type === "text" ? textBlock.text : "{}";
   const jsonMatch = text.match(/\{[\s\S]*\}/);
 
   if (!jsonMatch) throw new Error("No JSON in area evaluator response");
