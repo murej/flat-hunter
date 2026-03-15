@@ -472,18 +472,16 @@ async function handleFindProperties(): Promise<void> {
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-  try {
-    await fetch(`${baseUrl}/api/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    // Result summary is sent to Telegram directly by the /api/search route
-  } catch (e) {
+  // Fire-and-forget — do not await the search. Awaiting would block the Telegram
+  // webhook for the full search duration (minutes), causing Telegram to time out
+  // at 60s and retry the update, which triggers a second search after the first finishes.
+  fetch(`${baseUrl}/api/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  }).catch((e) => {
     console.error("Find properties fetch failed:", e);
-    const errMsg = "Something went wrong while searching. Please try again.";
-    await logConversation({ direction: "outbound", message: errMsg, intent: "find_properties" });
-    await sendMessage(errMsg);
-  }
+  });
+  // Result summary is sent to Telegram directly by the /api/search route
 }
 
 async function handleGeneral(
