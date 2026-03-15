@@ -7,7 +7,7 @@ import {
   getActiveListingId,
   getConversationHistory,
 } from "@/lib/supabase";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { preferenceAgent } from "./preference";
 import { viewingAgent } from "./viewingAgent";
 import {
@@ -68,11 +68,17 @@ export async function conversationAgent(
     case "compare":
       await handleCompare(text, history);
       break;
+    case "show_property":
+      await handleShowProperty(activeListingId);
+      break;
     case "show_preferences":
       await handleShowPreferences(preferences);
       break;
     case "update_preferences":
       await preferenceAgent(text, messageId);
+      break;
+    case "find_properties":
+      await handleFindProperties();
       break;
     default:
       await handleGeneral(text, activeListingId, preferences, history);
@@ -180,6 +186,40 @@ async function handleConfirmSend(listingId: string | null): Promise<void> {
       throw e;
     }
   }
+}
+
+async function handleShowProperty(listingId: string | null): Promise<void> {
+  if (!listingId) {
+    await sendMessage("Which property would you like to see? Tap a scorecard button or mention the property.");
+    return;
+  }
+
+  const { data: evaluation } = await supabaseAdmin
+    .from("evaluations")
+    .select("scorecard_text")
+    .eq("listing_id", listingId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!evaluation?.scorecard_text) {
+    await sendMessage("I couldn't find a scorecard for that property — it may not have been evaluated yet.");
+    return;
+  }
+
+  await logConversation({
+    direction: "outbound",
+    message: evaluation.scorecard_text,
+    listing_id: listingId,
+    intent: "show_property",
+  });
+
+  await sendWithButtons(evaluation.scorecard_text, [
+    { text: "👁 View", callback_data: `view:${listingId}` },
+    { text: "💾 Save", callback_data: `save:${listingId}` },
+    { text: "⏭ Skip", callback_data: `skip:${listingId}` },
+    { text: "❓ Why?", callback_data: `why:${listingId}` },
+  ]);
 }
 
 async function handleSkip(listingId: string | null): Promise<void> {
@@ -423,6 +463,27 @@ async function handleShowPreferences(
 
   await logConversation({ direction: "outbound", message: msg, intent: "preferences" });
   await sendMessage(msg);
+}
+
+async function handleFindProperties(): Promise<void> {
+  const searching = "🔍 Searching Rightmove and Zoopla for matching properties... this may take a minute.";
+  await logConversation({ direction: "outbound", message: searching, intent: "find_properties" });
+  await sendMessage(searching);
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  try {
+    await fetch(`${baseUrl}/api/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    // Result summary is sent to Telegram directly by the /api/search route
+  } catch (e) {
+    console.error("Find properties fetch failed:", e);
+    const errMsg = "Something went wrong while searching. Please try again.";
+    await logConversation({ direction: "outbound", message: errMsg, intent: "find_properties" });
+    await sendMessage(errMsg);
+  }
 }
 
 async function handleGeneral(
