@@ -41,16 +41,19 @@ export async function scrapeRightmove(searchUrl: string): Promise<Listing[]> {
     return [];
   }
 
-  // Local: run Python script
+  // Local: run Python script (prefer .venv if present)
   const { spawn } = await import("child_process");
   const path = await import("path");
+  const fs = await import("fs");
   const scriptPath = path.join(
     process.cwd(),
     "scripts",
     "rightmove_scrape.py"
   );
+  const venvPython = path.join(process.cwd(), ".venv", "bin", "python3");
+  const pythonCmd = fs.existsSync(venvPython) ? venvPython : "python3";
   return new Promise((resolve, reject) => {
-    const proc = spawn("python3", [scriptPath, searchUrl], {
+    const proc = spawn(pythonCmd, [scriptPath, searchUrl], {
       cwd: process.cwd(),
     });
     let stdout = "";
