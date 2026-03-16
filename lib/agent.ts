@@ -23,6 +23,9 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const ANTHROPIC_OUT_OF_CREDITS_MSG =
   "No more credits, feed Claude. I don't know what to say 😢";
 
+const ANTHROPIC_RATE_LIMIT_MSG =
+  "Too much yum yum, try again in a minute.";
+
 function isAnthropicOutOfCredits(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const err = error as Record<string, unknown>;
@@ -34,6 +37,32 @@ function isAnthropicOutOfCredits(error: unknown): boolean {
   const isQuota = message.includes("insufficient") && message.includes("quota");
   const isCreditBalance = message.includes("credit balance is too low");
   return status === 400 && (isQuota || isCreditBalance);
+}
+
+function isAnthropicRateLimited(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as Record<string, unknown>;
+  const status = err.status as number | undefined;
+  const message = [err.message, err.error, JSON.stringify(err)]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const isRateLimitStatus = status === 429 || status === 529;
+
+  // API error payload: { type: 'error', error: { type, message }, ... }
+  const nestedError = (err.error as Record<string, unknown> | undefined) ?? {};
+  const nestedType = String(nestedError.type ?? "").toLowerCase();
+
+  const isRateLimitType =
+    nestedType === "rate_limit_error" || nestedType === "overloaded_error";
+
+  const isRateLimitMessage =
+    message.includes("rate limit") ||
+    message.includes("too many requests") ||
+    message.includes("overloaded");
+
+  return isRateLimitStatus || isRateLimitType || isRateLimitMessage;
 }
 
 const TOOLS: Anthropic.Tool[] = [
@@ -576,6 +605,8 @@ export async function conversationAgent(
   } catch (e) {
     if (isAnthropicOutOfCredits(e)) {
       await sendMessage(ANTHROPIC_OUT_OF_CREDITS_MSG);
+    } else if (isAnthropicRateLimited(e)) {
+      await sendMessage(ANTHROPIC_RATE_LIMIT_MSG);
     }
     throw e;
   }
