@@ -38,6 +38,7 @@ export async function composeScorecard(
   Area:          ${s(evaluation.area_score, unknownScores.area)}
   Commute:       ${commuteLabel}
   Value:         ${s(evaluation.price_score, unknownScores.property)}
+  --------------------------
   Overall:       ${s(evaluation.overall_score)}
 
 ⚠️ Watch outs
