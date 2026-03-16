@@ -42,6 +42,22 @@ function isRecentListing(listedDate: string): boolean {
   if (!listedDate) return true; // keep if date unknown
   const listed = new Date(listedDate);
   if (isNaN(listed.getTime())) return true; // keep if unparseable
+
+  const now = new Date();
+
+  // Month-only dates (e.g. "March 2026", "2026-03") resolve to the 1st. If the
+  // month and year match today and the string contains no day number, treat the
+  // listing as current rather than discarding it as 15+ days old.
+  const noDay = !/\b(0?[1-9]|[12]\d|3[01])\b/.test(listedDate);
+  if (
+    noDay &&
+    listed.getDate() === 1 &&
+    listed.getMonth() === now.getMonth() &&
+    listed.getFullYear() === now.getFullYear()
+  ) {
+    return true;
+  }
+
   const ageHours = (Date.now() - listed.getTime()) / (1000 * 60 * 60);
   return ageHours <= MAX_AGE_HOURS;
 }
