@@ -10,7 +10,7 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-export const viewingAgent = {
+export const requestViewing = {
   async draftEmail(listingId: string): Promise<string> {
     const listing = await getListing(listingId);
 
@@ -32,6 +32,11 @@ export const viewingAgent = {
   async sendEmail(listingId: string): Promise<void> {
     const listing = await getListing(listingId);
     const draft = await this.draftEmail(listingId);
+    await this.sendEmailBody(listingId, draft);
+  },
+
+  async sendEmailBody(listingId: string, body: string): Promise<void> {
+    const listing = await getListing(listingId);
 
     if (!listing.agent_email) {
       throw new Error("No agent email address for this listing");
@@ -41,14 +46,14 @@ export const viewingAgent = {
       from: "Flat Hunter <noreply@yourdomain.com>",
       to: listing.agent_email,
       subject: `Viewing Request: ${listing.title}`,
-      text: draft,
+      text: body,
     });
 
     await updateListingStatus(listingId, "viewing_requested");
 
     await logConversation({
       direction: "outbound",
-      message: `Viewing request email sent to ${listing.agent_email}:\n\n${draft}`,
+      message: `Viewing request email sent to ${listing.agent_email}:\n\n${body}`,
       listing_id: listingId,
       intent: "view",
     });

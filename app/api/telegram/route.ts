@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseInbound } from "@/lib/telegram";
-import { conversationAgent } from "@/lib/agents/conversationAgent";
+import { conversationAgent } from "@/lib/agent";
 
 export async function POST(req: NextRequest) {
   try {

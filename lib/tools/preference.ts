@@ -5,7 +5,7 @@ import { PREFERENCE_COLLECTOR_SYSTEM } from "@/lib/prompts";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export async function preferenceAgent(
+export async function collectPreferences(
   userMessage: string,
   messageId: string
 ): Promise<void> {

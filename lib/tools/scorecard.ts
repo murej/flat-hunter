@@ -11,7 +11,7 @@ type UnknownScores = {
 const s = (score: number, unknown?: boolean) =>
   unknown ? "N/A  " : `${score}/10`;
 
-export async function scorecardComposer(
+export async function composeScorecard(
   evaluation: Evaluation,
   listing: Listing,
   notableFlags: string[],

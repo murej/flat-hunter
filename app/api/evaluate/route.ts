@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runEvaluationPipeline } from "@/lib/agents/propertyEvaluator";
+import { runEvaluationPipeline } from "@/lib/tools/evaluator";
 
 export async function POST(req: NextRequest) {
   try {

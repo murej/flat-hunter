@@ -109,6 +109,8 @@ export interface AreaEvalResult {
   raw: Record<string, unknown>;
 }
 
+export interface CombinedEvalResult extends PropertyEvalResult, AreaEvalResult {}
+
 export interface CommuteEvalResult {
   commute_minutes: number;
   commute_route: string;

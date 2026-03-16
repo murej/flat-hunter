@@ -1,26 +1,25 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
-import { PROPERTY_EVALUATOR_SYSTEM } from "@/lib/prompts";
-import { areaEvaluator } from "./areaEvaluator";
-import { commuteEvaluator } from "./commuteEvaluator";
-import { financeAgent } from "./financeAgent";
-import { scorecardComposer } from "./scorecardComposer";
-import type { PropertyEvalResult } from "@/types";
+import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
+import { evaluateCommute } from "./commute";
+import { calculateFinance } from "./finance";
+import { composeScorecard } from "./scorecard";
+import type { CombinedEvalResult } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SCORE_THRESHOLD = 5;
 
-export async function propertyEvaluator(
+export async function combinedEvaluator(
   listingId: string,
   preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>
-): Promise<PropertyEvalResult> {
+): Promise<CombinedEvalResult> {
   const listing = await getListing(listingId);
 
   const response = await client.messages.create({
     model: "claude-3-5-sonnet-20241022",
-    max_tokens: 1024,
-    system: PROPERTY_EVALUATOR_SYSTEM,
+    max_tokens: 2048,
+    system: COMBINED_EVALUATOR_SYSTEM,
     messages: [
       {
         role: "user",
@@ -33,7 +32,7 @@ export async function propertyEvaluator(
     response.content[0].type === "text" ? response.content[0].text : "{}";
   const jsonMatch = text.match(/\{[\s\S]*\}/);
 
-  if (!jsonMatch) throw new Error("No JSON in property evaluator response");
+  if (!jsonMatch) throw new Error("No JSON in combined evaluator response");
 
   const parsed = JSON.parse(jsonMatch[0]);
 
@@ -43,6 +42,9 @@ export async function propertyEvaluator(
     fit_score: parsed.fit_score ?? 5,
     deal_breaker_flags: parsed.deal_breaker_flags ?? [],
     property_summary: parsed.property_summary ?? "",
+    area_score: parsed.area_score ?? 5,
+    area_summary: parsed.area_summary ?? "",
+    notable_flags: parsed.notable_flags ?? [],
     raw: parsed,
   };
 }
@@ -55,9 +57,9 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
     throw new Error("No preferences found — cannot evaluate listing");
   }
 
-  const propertyResult = await propertyEvaluator(listingId, preferences).catch(
-    (e) => {
-      console.error("Property evaluator failed:", e);
+  const [combinedResult, commuteResult, financeResult] = await Promise.all([
+    combinedEvaluator(listingId, preferences).catch((e) => {
+      console.error("Combined evaluator failed:", e);
       return {
         price_score: 0,
         size_score: 0,
@@ -65,23 +67,14 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
         property_unknown: true as const,
         deal_breaker_flags: [],
         property_summary: "",
-        raw: {},
-      };
-    }
-  );
-
-  const [areaResult, commuteResult, financeResult] = await Promise.all([
-    areaEvaluator(listing.postcode || listing.address).catch((e) => {
-      console.error("Area evaluator failed:", e);
-      return {
         area_score: 0,
-        area_summary: "Area evaluation unavailable",
+        area_summary: "Evaluation unavailable",
         area_unknown: true as const,
         notable_flags: [],
         raw: {},
       };
     }),
-    commuteEvaluator(
+    evaluateCommute(
       listing.postcode,
       preferences?.commute_anchor_postcode ?? "",
       preferences?.max_commute_minutes ?? 60,
@@ -95,7 +88,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
         commute_unknown: true as const,
       };
     }),
-    financeAgent(listing.price, preferences?.deposit ?? 0).catch((e) => {
+    calculateFinance(listing.price, preferences?.deposit ?? 0).catch((e) => {
       console.error("Finance agent failed:", e);
       return {
         monthly_mortgage: 0,
@@ -108,14 +101,14 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
   ]);
 
   const scoreComponents = [
-    ...(propertyResult.property_unknown
+    ...(combinedResult.property_unknown
       ? []
       : [
-          propertyResult.price_score,
-          propertyResult.size_score,
-          propertyResult.fit_score,
+          combinedResult.price_score,
+          combinedResult.size_score,
+          combinedResult.fit_score,
         ]),
-    ...(areaResult.area_unknown ? [] : [areaResult.area_score]),
+    ...(combinedResult.area_unknown ? [] : [combinedResult.area_score]),
     ...(commuteResult.commute_unknown ? [] : [commuteResult.commute_score]),
   ];
   const overall_score =
@@ -127,23 +120,23 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
     .from("evaluations")
     .insert({
       listing_id: listingId,
-      price_score: propertyResult.price_score,
-      size_score: propertyResult.size_score,
-      fit_score: propertyResult.fit_score,
-      area_score: areaResult.area_score,
+      price_score: combinedResult.price_score,
+      size_score: combinedResult.size_score,
+      fit_score: combinedResult.fit_score,
+      area_score: combinedResult.area_score,
       commute_score: commuteResult.commute_score,
       overall_score: Math.round(overall_score * 10) / 10,
-      deal_breaker_flags: propertyResult.deal_breaker_flags,
+      deal_breaker_flags: combinedResult.deal_breaker_flags,
       commute_minutes: commuteResult.commute_minutes,
       commute_route: commuteResult.commute_route,
       monthly_mortgage: financeResult.monthly_mortgage,
       monthly_interest_only: financeResult.monthly_interest_only,
       stamp_duty: financeResult.stamp_duty,
       estimated_monthly_total: financeResult.estimated_monthly_total,
-      property_summary: propertyResult.property_summary,
-      area_summary: areaResult.area_summary,
-      raw_property_eval: propertyResult.raw,
-      raw_area_eval: areaResult.raw,
+      property_summary: combinedResult.property_summary,
+      area_summary: combinedResult.area_summary,
+      raw_property_eval: combinedResult.raw,
+      raw_area_eval: combinedResult.raw,
       raw_finance_eval: financeResult.raw,
     })
     .select()
@@ -157,14 +150,14 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
     .eq("id", listingId);
 
   if (overall_score > SCORE_THRESHOLD) {
-    await scorecardComposer(
+    await composeScorecard(
       evaluation,
       listing,
-      areaResult.notable_flags,
+      combinedResult.notable_flags,
       commuteResult.commute_minutes,
       {
-        property: propertyResult.property_unknown,
-        area: areaResult.area_unknown,
+        property: combinedResult.property_unknown,
+        area: combinedResult.area_unknown,
         commute: commuteResult.commute_unknown,
       }
     );

@@ -57,7 +57,11 @@ Given the HTML of a property alert email, extract all individual listings. For e
 
 Return a JSON array of listings. If no listings are found, return an empty array [].`;
 
-export const PROPERTY_EVALUATOR_SYSTEM = `You are an expert UK property analyst. Evaluate the given property listing against the buyer's stated preferences.
+export const COMBINED_EVALUATOR_SYSTEM = `You are an expert UK property analyst and neighbourhood researcher. Given a property listing, the buyer's preferences, and the property's postcode/address, you will evaluate both the property itself and its area in a single pass.
+
+---
+
+**PART 1 — Property evaluation**
 
 Score each dimension from 1–10 using these anchors:
 
@@ -82,43 +86,43 @@ Score each dimension from 1–10 using these anchors:
 - 3–4: One or more must-haves absent, or style clearly mismatched
 - 1–2: Multiple deal-breakers triggered
 
-For **deal_breaker_flags**: list each preference from the buyer's deal_breakers list that this property violates. Quote the exact deal-breaker text (e.g. "ground floor" if the listing is a ground floor flat). Return an empty array if none apply.
+For **deal_breaker_flags**: list each preference from the buyer's deal_breakers list that this property violates. Quote the exact deal-breaker text. Return an empty array if none apply.
 
-Write a **property_summary** of 2–3 sentences that tells the buyer what makes this property interesting or concerning. Reference specific details from the listing — don't be generic.
+Write a **property_summary** of 2–3 sentences covering what makes this property interesting or concerning. Reference specific details — don't be generic.
 
-Reason step by step before scoring. Then respond with ONLY a valid JSON object:
-{
-  "price_score": 7,
-  "size_score": 8,
-  "fit_score": 6,
-  "deal_breaker_flags": ["ground floor flat"],
-  "property_summary": "A bright two-bedroom flat..."
-}`;
+---
 
-export const AREA_EVALUATOR_SYSTEM = `You are an expert on UK neighbourhoods. Evaluate the given area using live web searches — do not rely on training knowledge alone.
+**PART 2 — Area evaluation**
 
-Search in this order:
-1. Crime: search "postcode crime rate site:police.uk" or "[area name] crime statistics 2025"
-2. Flood risk: search "[postcode] flood risk site:gov.uk" or Environment Agency flood map
-3. Noise/transport: search for nearby railway lines, flight paths, or major roads affecting the area
-4. Amenities: search "[area name] amenities parks schools restaurants"
-5. Character/regeneration: search "[area name] regeneration development 2024 2025"
+Evaluate the neighbourhood using your knowledge of UK areas. Consider:
+1. Crime: relative crime rates for the postcode/area versus the borough or city average
+2. Flood risk: known flood zones or Environment Agency designations
+3. Noise/transport: nearby railway lines, flight paths, or major roads
+4. Amenities: parks, schools, shops, restaurants, transport links
+5. Character/regeneration: area trajectory, investment, desirability trends
 
-After searching, score the area from 1–10:
+Score the area from 1–10:
 - 9–10: Excellent neighbourhood — low crime, no flood risk, great amenities, pleasant character
 - 7–8: Good neighbourhood — minor concerns, solid amenities
 - 5–6: Average — some concerns (moderate crime, noise, limited amenities) but liveable
 - 3–4: Significant issues — high crime, flood zone, poor amenities, or heavy noise
 - 1–2: Serious problems on multiple fronts
 
-Return ONLY a valid JSON object in this exact format — no preamble, no explanation:
-{
-  "area_score": 7,
-  "area_summary": "Friendly residential street in Zone 2 with good transport links and a thriving high street. Crime rates are below the London average and there is no flood risk. The area has seen significant investment in recent years.",
-  "notable_flags": ["near railway line", "flood zone 2"]
-}
+Write an **area_summary** of 2–3 sentences. Only include **notable_flags** that are genuinely notable (omit if nothing significant).
 
-Keep area_summary to 2–3 sentences. Only include flags in notable_flags that are genuinely notable (omit if nothing significant).`;
+---
+
+Reason step by step, then respond with ONLY a single valid JSON object combining both evaluations:
+{
+  "price_score": 7,
+  "size_score": 8,
+  "fit_score": 6,
+  "deal_breaker_flags": ["ground floor flat"],
+  "property_summary": "A bright two-bedroom flat...",
+  "area_score": 7,
+  "area_summary": "Friendly residential street in Zone 2 with good transport links...",
+  "notable_flags": ["near railway line"]
+}`;
 
 export const COMMUTE_EVALUATOR_SYSTEM = `You are a commute time calculator. Given commute minutes and a maximum acceptable commute, return a score from 1–10 where 10 means well within limit and 1 means far exceeds limit.`;
 
@@ -150,26 +154,6 @@ Rules:
 - If commute_minutes is 0 or null, omit the commute line entirely
 - If there are no watch-outs, omit the ⚠️ section entirely
 - Do not add any commentary outside the template`;
-
-export const INTENT_CLASSIFIER_SYSTEM = `Classify the user's message intent as exactly one of these words:
-view, skip, save, why, show_property, show_preferences, update_preferences, show_saved, compare, confirm_send, other
-
-Definitions:
-- view: user wants to arrange or request a viewing (e.g. "book a viewing", "request viewing", "I want to see it")
-- skip: user wants to dismiss or ignore a property (e.g. "skip", "not interested", "dismiss", "pass on this one")
-- save: user wants to save or favourite a property (e.g. "save this", "favourite it", "keep this one")
-- why: user wants an explanation of scores or evaluation (e.g. "why did it score that", "explain the scores", "what's wrong with it")
-- show_property: user wants to see a property's scorecard again (e.g. "show me that property", "show the scorecard", "what was that one again", "remind me of the details")
-- show_preferences: user wants to view their current search preferences (e.g. "show my preferences", "what are my settings", "what's my budget set to")
-- update_preferences: user wants to change, add to, or reset their search preferences (e.g. "update my preferences", "change my budget", "add Islington to my search", "I want 3 bedrooms now", "reset my preferences")
-- show_saved: user wants to see their saved/shortlisted properties (e.g. "show saved", "what have I saved", "my shortlist")
-- compare: user wants to compare two or more properties
-- confirm_send: user is confirming they want to send an email that was just drafted (e.g. "send it", "yes send", "looks good send it", "go ahead", "confirm send")
-- other: anything else — general questions, comments, or unclear intent
-
-Use the conversation history to resolve ambiguous messages. For example, "send it" after a viewing draft = confirm_send. "skip" without context = skip.
-
-Respond with just the intent word, nothing else.`;
 
 export const CONVERSATION_AGENT_SYSTEM = `You are a sharp, helpful property search assistant managing a flat hunt in the UK. You communicate exclusively via Telegram.
 

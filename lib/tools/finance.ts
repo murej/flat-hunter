@@ -1,6 +1,6 @@
 import type { FinanceEvalResult } from "@/types";
 
-export function financeAgent(
+export function calculateFinance(
   price: number,
   deposit: number
 ): Promise<FinanceEvalResult> {

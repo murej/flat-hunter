@@ -46,7 +46,7 @@ async function resolveFromLocation(
   return null;
 }
 
-export async function commuteEvaluator(
+export async function evaluateCommute(
   fromPostcode: string,
   toPostcode: string,
   maxCommuteMinutes: number,

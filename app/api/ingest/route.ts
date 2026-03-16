@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ingestAgent } from "@/lib/agents/ingest";
+import { ingestAgent } from "@/lib/tools/ingest";
 
 export async function POST(req: NextRequest) {
   try {

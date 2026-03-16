@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "@/lib/supabase";
 import { EMAIL_PARSER_SYSTEM } from "@/lib/prompts";
-import { runEvaluationPipeline } from "./propertyEvaluator";
+import { runEvaluationPipeline } from "./evaluator";
 import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
