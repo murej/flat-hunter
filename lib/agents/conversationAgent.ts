@@ -94,7 +94,7 @@ async function classifyIntent(
   ];
 
   const response = await client.messages.create({
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5",
     max_tokens: 16,
     system: INTENT_CLASSIFIER_SYSTEM,
     messages,
@@ -298,7 +298,7 @@ async function handleWhy(
   ];
 
   const response = await client.messages.create({
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5",
     max_tokens: 768,
     system: WHY_EXPLANATION_SYSTEM,
     messages,
@@ -410,7 +410,7 @@ async function handleCompare(
   ];
 
   const response = await client.messages.create({
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5",
     max_tokens: 1024,
     system: COMPARISON_SYSTEM,
     messages,
@@ -504,7 +504,7 @@ async function handleGeneral(
   ];
 
   const response = await client.messages.create({
-    model: "claude-3-5-haiku-20241022",
+    model: "claude-haiku-4-5",
     max_tokens: 768,
     system: CONVERSATION_AGENT_SYSTEM,
     messages,
