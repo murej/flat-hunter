@@ -26,7 +26,7 @@ interface RawListing {
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   const response = await client.messages.create({
-    model: "claude-3-5-sonnet",
+    model: "claude-sonnet-4-6",
     max_tokens: 4096,
     system: EMAIL_PARSER_SYSTEM,
     messages: [

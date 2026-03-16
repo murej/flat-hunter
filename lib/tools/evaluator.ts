@@ -17,7 +17,7 @@ export async function combinedEvaluator(
   const listing = await getListing(listingId);
 
   const response = await client.messages.create({
-    model: "claude-3-5-sonnet",
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     system: COMBINED_EVALUATOR_SYSTEM,
     messages: [
