@@ -12,12 +12,12 @@ const SCORE_THRESHOLD = 5;
 
 export async function combinedEvaluator(
   listingId: string,
-  preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>
+  preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>,
 ): Promise<CombinedEvalResult> {
   const listing = await getListing(listingId);
 
   const response = await client.messages.create({
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-3-5-sonnet",
     max_tokens: 2048,
     system: COMBINED_EVALUATOR_SYSTEM,
     messages: [
@@ -49,7 +49,9 @@ export async function combinedEvaluator(
   };
 }
 
-export async function runEvaluationPipeline(listingId: string): Promise<boolean> {
+export async function runEvaluationPipeline(
+  listingId: string,
+): Promise<boolean> {
   const listing = await getListing(listingId);
   const preferences = await getPreferences();
 
@@ -78,7 +80,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
       listing.postcode,
       preferences?.commute_anchor_postcode ?? "",
       preferences?.max_commute_minutes ?? 60,
-      listing.address
+      listing.address,
     ).catch((e) => {
       console.error("Commute evaluator failed:", e);
       return {
@@ -159,7 +161,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
         property: combinedResult.property_unknown,
         area: combinedResult.area_unknown,
         commute: commuteResult.commute_unknown,
-      }
+      },
     );
     return true;
   }

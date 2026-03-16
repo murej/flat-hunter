@@ -26,7 +26,7 @@ interface RawListing {
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   const response = await client.messages.create({
-    model: "claude-3-5-sonnet-20241022",
+    model: "claude-3-5-sonnet",
     max_tokens: 4096,
     system: EMAIL_PARSER_SYSTEM,
     messages: [
@@ -52,7 +52,7 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
 }
 
 export async function deduplicateAndStore(
-  listings: RawListing[]
+  listings: RawListing[],
 ): Promise<string[]> {
   const newListingIds: string[] = [];
 
@@ -112,8 +112,8 @@ export async function ingestAgent(html: string): Promise<void> {
       runEvaluationPipeline(id).catch((e) => {
         console.error(`Evaluation failed for ${id}:`, e);
         return false;
-      })
-    )
+      }),
+    ),
   );
 
   const sentCount = evalResults.filter(Boolean).length;
@@ -121,7 +121,7 @@ export async function ingestAgent(html: string): Promise<void> {
 
   if (suppressedCount > 0) {
     await sendMessage(
-      `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 5/10 or below.`
+      `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 5/10 or below.`,
     );
   }
 }
