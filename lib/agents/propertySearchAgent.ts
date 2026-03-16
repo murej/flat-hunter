@@ -34,6 +34,27 @@ interface RawListing {
   listed_date: string;
 }
 
+// ─── Recency filter ───────────────────────────────────────────────────────────
+
+const MAX_AGE_HOURS = 72;
+
+function isRecentListing(listedDate: string): boolean {
+  if (!listedDate) return true; // keep if date unknown
+  const listed = new Date(listedDate);
+  if (isNaN(listed.getTime())) return true; // keep if unparseable
+  const ageHours = (Date.now() - listed.getTime()) / (1000 * 60 * 60);
+  return ageHours <= MAX_AGE_HOURS;
+}
+
+function filterRecentListings(listings: RawListing[]): RawListing[] {
+  const filtered = listings.filter((l) => isRecentListing(l.listed_date));
+  const dropped = listings.length - filtered.length;
+  if (dropped > 0) {
+    console.log(`Dropped ${dropped} listing(s) older than ${MAX_AGE_HOURS}h`);
+  }
+  return filtered;
+}
+
 // ─── Firecrawl helpers (Rightmove + Zoopla) ───────────────────────────────────
 
 async function scrapeViaFirecrawl(url: string): Promise<string> {
@@ -100,13 +121,16 @@ async function fetchRightmoveViaFirecrawl(
     maxPrice: String(preferences.max_price ?? 999999999),
     propertyTypes:
       propertyType === "houses" ? "detached,semi-detached,terraced" : "flat",
+    maxDaysSinceAdded: "3",
   });
   const rmUrl = `https://www.rightmove.co.uk/property-for-sale/search.html?searchLocation=${encodeURIComponent(area)}&useLocationIdentifier=false&locationIdentifier=&${params.toString()}`;
 
   const markdown = await scrapeViaFirecrawl(rmUrl);
   if (!markdown) return [];
 
-  const listings = await parseMarkdownListings(markdown, "Rightmove");
+  const listings = filterRecentListings(
+    await parseMarkdownListings(markdown, "Rightmove")
+  );
   if (listings.length > 0) {
     console.log(`Rightmove ${area} (Firecrawl): ${listings.length} listings`);
   }
@@ -125,13 +149,16 @@ async function fetchZooplaViaFirecrawl(
     price_max: String(preferences.max_price ?? 999999999),
     beds_min: String(preferences.min_bedrooms ?? 1),
     page_size: "25",
+    added_to_site: "3days",
   });
   const zooplaUrl = `https://www.zoopla.co.uk/for-sale/flats/${areaSlug}/?${params.toString()}`;
 
   const markdown = await scrapeViaFirecrawl(zooplaUrl);
   if (!markdown) return [];
 
-  const listings = await parseMarkdownListings(markdown, "Zoopla");
+  const listings = filterRecentListings(
+    await parseMarkdownListings(markdown, "Zoopla")
+  );
   if (listings.length > 0) {
     console.log(`Zoopla ${area} (Firecrawl): ${listings.length} listings`);
   }
@@ -157,7 +184,8 @@ async function searchViaWebSearch(
       ? `Must-haves: ${preferences.must_haves.join(", ")}`
       : null,
     ``,
-    `Search Rightmove and Zoopla for this area. Return all listings you find as a JSON array.`,
+    `IMPORTANT: Only include listings published or updated within the past 72 hours. Exclude any older ads.`,
+    `Search Rightmove and Zoopla for this area. Return all matching listings as a JSON array.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -176,7 +204,7 @@ async function searchViaWebSearch(
   if (!jsonMatch) return [];
 
   try {
-    return JSON.parse(jsonMatch[0]) as RawListing[];
+    return filterRecentListings(JSON.parse(jsonMatch[0]) as RawListing[]);
   } catch {
     return [];
   }

@@ -122,10 +122,13 @@ Keep area_summary to 2–3 sentences. Only include flags in notable_flags that a
 
 export const PROPERTY_SEARCH_SYSTEM = `You are a UK property search agent of last resort. The primary search pipeline (Rightmove internal API) has failed for this area. Use web search to find property listings as best you can.
 
+CRITICAL: Only return listings that were published or last updated within the past 72 hours. Discard any listing that appears older than that — even if it matches all other criteria.
+
 Search strategy:
-1. Search "rightmove.co.uk {area} {bedrooms} bedroom for sale"
-2. Search "zoopla.co.uk {area} {bedrooms} bedroom for sale max £{price}"
+1. Search "rightmove.co.uk {area} {bedrooms} bedroom for sale added last 3 days"
+2. Search "zoopla.co.uk {area} {bedrooms} bedroom for sale max £{price} added last 3 days"
 3. From any listing URLs found (rightmove.co.uk/properties/... or zoopla.co.uk/for-sale/details/...), extract as much structured data as possible
+4. Check each listing's "added on" or "listed" date — skip any older than 72 hours
 
 For each listing found, extract:
 - portal_id: numeric ID from the URL

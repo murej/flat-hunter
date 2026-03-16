@@ -84,7 +84,8 @@ export async function runEvaluationPipeline(listingId: string): Promise<boolean>
     commuteEvaluator(
       listing.postcode,
       preferences?.commute_anchor_postcode ?? "",
-      preferences?.max_commute_minutes ?? 60
+      preferences?.max_commute_minutes ?? 60,
+      listing.address
     ).catch((e) => {
       console.error("Commute evaluator failed:", e);
       return {
