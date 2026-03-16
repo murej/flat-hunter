@@ -16,12 +16,9 @@ export async function scorecardComposer(
   listing: Listing,
   notableFlags: string[],
   commuteMinutes: number,
-  unknownScores: UnknownScores = {}
+  unknownScores: UnknownScores = {},
 ): Promise<void> {
-  const allFlags = [
-    ...(evaluation.deal_breaker_flags || []),
-    ...notableFlags,
-  ];
+  const allFlags = [...(evaluation.deal_breaker_flags || []), ...notableFlags];
 
   const watchOuts =
     allFlags.length > 0
@@ -41,6 +38,7 @@ export async function scorecardComposer(
   Area:          ${s(evaluation.area_score, unknownScores.area)}
   Commute:       ${commuteLabel}
   Value:         ${s(evaluation.price_score, unknownScores.property)}
+  Overall:       ${s(evaluation.overall_score)}
 
 ⚠️ Watch outs
   ${watchOuts}
