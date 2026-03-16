@@ -184,7 +184,6 @@ async function searchViaWebSearch(
       ? `Must-haves: ${preferences.must_haves.join(", ")}`
       : null,
     ``,
-    `IMPORTANT: Only include listings published or updated within the past 72 hours. Exclude any older ads.`,
     `Search Rightmove and Zoopla for this area. Return all matching listings as a JSON array.`,
   ]
     .filter(Boolean)
@@ -219,7 +218,6 @@ export async function propertySearchAgent(
     return { searched: 0, newCount: 0, newListingIds: [], sentCount: 0, suppressedCount: 0 };
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const hasFirecrawl = Boolean(process.env.FIRECRAWL_API_KEY);
 
   const perAreaResults = await Promise.all(

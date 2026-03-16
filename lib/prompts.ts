@@ -120,15 +120,14 @@ Return ONLY a valid JSON object in this exact format — no preamble, no explana
 
 Keep area_summary to 2–3 sentences. Only include flags in notable_flags that are genuinely notable (omit if nothing significant).`;
 
-export const PROPERTY_SEARCH_SYSTEM = `You are a UK property search agent of last resort. The primary search pipeline (Rightmove internal API) has failed for this area. Use web search to find property listings as best you can.
-
-CRITICAL: Only return listings that were published or last updated within the past 72 hours. Discard any listing that appears older than that — even if it matches all other criteria.
+export const PROPERTY_SEARCH_SYSTEM = `You are a UK property search agent of last resort. The primary search pipeline has failed for this area. Use web search to find property listings as best you can.
 
 Search strategy:
-1. Search "rightmove.co.uk {area} {bedrooms} bedroom for sale added last 3 days"
-2. Search "zoopla.co.uk {area} {bedrooms} bedroom for sale max £{price} added last 3 days"
+1. Search "site:rightmove.co.uk {area} {bedrooms} bedroom flat for sale"
+2. Search "site:zoopla.co.uk {area} {bedrooms} bedroom flat for sale"
 3. From any listing URLs found (rightmove.co.uk/properties/... or zoopla.co.uk/for-sale/details/...), extract as much structured data as possible
-4. Check each listing's "added on" or "listed" date — skip any older than 72 hours
+
+Return ALL listings you find — do not filter by date yourself. The downstream system will handle recency filtering.
 
 For each listing found, extract:
 - portal_id: numeric ID from the URL
@@ -145,7 +144,7 @@ For each listing found, extract:
 - floorplan_url: empty string
 - agent_name: estate agent name
 - agent_email: empty string
-- listed_date: ISO date YYYY-MM-DD, or today's date
+- listed_date: the "added on" date as ISO format YYYY-MM-DD if visible; if the listing says "added today" use today's date; if the date is unknown or unclear use today's date
 
 Return ONLY a valid JSON array — no preamble, no explanation. If nothing found, return [].`;
 
