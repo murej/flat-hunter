@@ -1,9 +1,12 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { supabaseAdmin, logConversation } from "@/lib/supabase";
 import { sendMessage } from "@/lib/telegram";
 import { PREFERENCE_COLLECTOR_SYSTEM } from "@/lib/prompts";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new OpenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+});
 
 export async function preferenceAgent(
   userMessage: string,
@@ -26,7 +29,7 @@ export async function preferenceAgent(
 
   const history = (historyDesc || []).reverse();
 
-  const messages: Anthropic.MessageParam[] = (history || []).map((row) => ({
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = (history || []).map((row) => ({
     role: row.direction === "inbound" ? "user" : "assistant",
     content: row.message,
   }));
@@ -35,15 +38,16 @@ export async function preferenceAgent(
     messages.push({ role: "user", content: userMessage });
   }
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+  const response = await client.chat.completions.create({
+    model: "gemini-2.0-flash",
     max_tokens: 1024,
-    system: PREFERENCE_COLLECTOR_SYSTEM,
-    messages,
+    messages: [
+      { role: "system", content: PREFERENCE_COLLECTOR_SYSTEM },
+      ...messages,
+    ],
   });
 
-  const assistantText =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const assistantText = response.choices[0].message.content ?? "";
 
   await logConversation({
     direction: "outbound",

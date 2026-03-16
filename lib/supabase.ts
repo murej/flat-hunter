@@ -48,7 +48,7 @@ export async function logConversation(params: {
   message: string;
   listing_id?: string | null;
   intent?: string | null;
-}) {
+}): Promise<{ inserted: boolean }> {
   const { error } = await supabaseAdmin.from("conversations").insert({
     telegram_message_id: params.telegram_message_id ?? null,
     direction: params.direction,
@@ -57,7 +57,11 @@ export async function logConversation(params: {
     intent: params.intent ?? null,
   });
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === "23505") return { inserted: false };
+    throw error;
+  }
+  return { inserted: true };
 }
 
 /**

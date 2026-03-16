@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import {
   getPreferences,
   supabaseAdmin,
@@ -17,12 +17,25 @@ import {
   COMPARISON_SYSTEM,
 } from "@/lib/prompts";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new OpenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+});
 
 export async function conversationAgent(
   text: string,
   messageId: string
 ): Promise<void> {
+  // Log inbound first — the DB unique index on telegram_message_id acts as a
+  // dedup guard: if this message was already processed (e.g. Telegram retry),
+  // the insert returns inserted=false and we bail before any LLM calls.
+  const { inserted } = await logConversation({
+    telegram_message_id: messageId,
+    direction: "inbound",
+    message: text,
+  });
+  if (!inserted) return;
+
   const preferences = await getPreferences();
 
   if (!preferences) {
@@ -37,14 +50,6 @@ export async function conversationAgent(
     listingIdFromText ?? (await getActiveListingId(10));
 
   const intent = await classifyIntent(text, history);
-
-  await logConversation({
-    telegram_message_id: messageId,
-    direction: "inbound",
-    message: text,
-    listing_id: activeListingId,
-    intent,
-  });
 
   switch (intent) {
     case "view":
@@ -86,24 +91,17 @@ async function classifyIntent(
   text: string,
   history: Array<{ role: "user" | "assistant"; content: string }>
 ): Promise<string> {
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: "user", content: text },
-  ];
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+  const response = await client.chat.completions.create({
+    model: "gemini-2.0-flash",
     max_tokens: 16,
-    system: INTENT_CLASSIFIER_SYSTEM,
-    messages,
+    messages: [
+      { role: "system", content: INTENT_CLASSIFIER_SYSTEM },
+      ...history,
+      { role: "user", content: text },
+    ],
   });
 
-  const intent =
-    response.content[0].type === "text"
-      ? response.content[0].text.trim().toLowerCase()
-      : "other";
-
-  return intent;
+  return (response.choices[0].message.content ?? "other").trim().toLowerCase();
 }
 
 function extractListingId(text: string): string | null {
@@ -287,23 +285,20 @@ async function handleWhy(
     ? `Property: ${listing.title} at ${listing.address} (£${listing.price?.toLocaleString()})\n\nEvaluation:\n${JSON.stringify(evaluation, null, 2)}`
     : `Evaluation:\n${JSON.stringify(evaluation, null, 2)}`;
 
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    {
-      role: "user",
-      content: `Explain the scores for this property.\n\n${context}`,
-    },
-  ];
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+  const response = await client.chat.completions.create({
+    model: "gemini-2.0-flash",
     max_tokens: 768,
-    system: WHY_EXPLANATION_SYSTEM,
-    messages,
+    messages: [
+      { role: "system", content: WHY_EXPLANATION_SYSTEM },
+      ...history,
+      {
+        role: "user",
+        content: `Explain the scores for this property.\n\n${context}`,
+      },
+    ],
   });
 
-  const explanation =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const explanation = response.choices[0].message.content ?? "";
 
   await logConversation({
     direction: "outbound",
@@ -399,23 +394,20 @@ async function handleCompare(
     ? `${listingB.data.title} (${listingB.data.address})`
     : ids[1];
 
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    {
-      role: "user",
-      content: `Compare these two properties:\n\nProperty A — ${labelA}:\n${JSON.stringify(evalA.data, null, 2)}\n\nProperty B — ${labelB}:\n${JSON.stringify(evalB.data, null, 2)}`,
-    },
-  ];
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+  const response = await client.chat.completions.create({
+    model: "gemini-2.0-flash",
     max_tokens: 1024,
-    system: COMPARISON_SYSTEM,
-    messages,
+    messages: [
+      { role: "system", content: COMPARISON_SYSTEM },
+      ...history,
+      {
+        role: "user",
+        content: `Compare these two properties:\n\nProperty A — ${labelA}:\n${JSON.stringify(evalA.data, null, 2)}\n\nProperty B — ${labelB}:\n${JSON.stringify(evalB.data, null, 2)}`,
+      },
+    ],
   });
 
-  const comparison =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const comparison = response.choices[0].message.content ?? "";
 
   await logConversation({
     direction: "outbound",
@@ -496,20 +488,17 @@ async function handleGeneral(
     ? `${text}\n\n---${contextBlock}`
     : text;
 
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: "user", content: userMessage },
-  ];
-
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+  const response = await client.chat.completions.create({
+    model: "gemini-2.0-flash",
     max_tokens: 768,
-    system: CONVERSATION_AGENT_SYSTEM,
-    messages,
+    messages: [
+      { role: "system", content: CONVERSATION_AGENT_SYSTEM },
+      ...history,
+      { role: "user", content: userMessage },
+    ],
   });
 
-  const reply =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const reply = response.choices[0].message.content ?? "";
 
   await logConversation({
     direction: "outbound",
