@@ -1,12 +1,9 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { Resend } from "resend";
 import { supabaseAdmin, getListing, logConversation, updateListingStatus } from "@/lib/supabase";
 import { VIEWING_EMAIL_SYSTEM } from "@/lib/prompts";
 
-const client = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 function getResend() {
   if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is not set");
@@ -17,11 +14,11 @@ export const viewingAgent = {
   async draftEmail(listingId: string): Promise<string> {
     const listing = await getListing(listingId);
 
-    const response = await client.chat.completions.create({
-      model: "gemini-2.0-flash",
+    const response = await client.messages.create({
+      model: "claude-3-5-haiku-20241022",
       max_tokens: 512,
+      system: VIEWING_EMAIL_SYSTEM,
       messages: [
-        { role: "system", content: VIEWING_EMAIL_SYSTEM },
         {
           role: "user",
           content: `Write a viewing request email for:\nProperty: ${listing.title}\nAddress: ${listing.address}\nAgent: ${listing.agent_name}\nURL: ${listing.url}`,
@@ -29,7 +26,7 @@ export const viewingAgent = {
       ],
     });
 
-    return response.choices[0].message.content ?? "";
+    return response.content[0].type === "text" ? response.content[0].text : "";
   },
 
   async sendEmail(listingId: string): Promise<void> {

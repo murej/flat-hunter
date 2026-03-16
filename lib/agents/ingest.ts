@@ -1,13 +1,10 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "@/lib/supabase";
 import { EMAIL_PARSER_SYSTEM } from "@/lib/prompts";
 import { runEvaluationPipeline } from "./propertyEvaluator";
 import { sendMessage } from "@/lib/telegram";
 
-const client = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 interface RawListing {
   portal_id: string;
@@ -28,11 +25,11 @@ interface RawListing {
 }
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
-  const response = await client.chat.completions.create({
-    model: "gemini-2.0-flash",
+  const response = await client.messages.create({
+    model: "claude-3-5-sonnet-20241022",
     max_tokens: 4096,
+    system: EMAIL_PARSER_SYSTEM,
     messages: [
-      { role: "system", content: EMAIL_PARSER_SYSTEM },
       {
         role: "user",
         content: `Parse the following property alert email HTML and extract all listings:\n\n${html}`,
@@ -40,7 +37,8 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
     ],
   });
 
-  const text = response.choices[0].message.content ?? "[]";
+  const text =
+    response.content[0].type === "text" ? response.content[0].text : "[]";
 
   const jsonMatch = text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) return [];

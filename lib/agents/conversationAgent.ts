@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import {
   getPreferences,
   supabaseAdmin,
@@ -17,10 +17,7 @@ import {
   COMPARISON_SYSTEM,
 } from "@/lib/prompts";
 
-const client = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function conversationAgent(
   text: string,
@@ -91,17 +88,24 @@ async function classifyIntent(
   text: string,
   history: Array<{ role: "user" | "assistant"; content: string }>
 ): Promise<string> {
-  const response = await client.chat.completions.create({
-    model: "gemini-2.0-flash",
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: "user", content: text },
+  ];
+
+  const response = await client.messages.create({
+    model: "claude-3-5-haiku-20241022",
     max_tokens: 16,
-    messages: [
-      { role: "system", content: INTENT_CLASSIFIER_SYSTEM },
-      ...history,
-      { role: "user", content: text },
-    ],
+    system: INTENT_CLASSIFIER_SYSTEM,
+    messages,
   });
 
-  return (response.choices[0].message.content ?? "other").trim().toLowerCase();
+  const intent =
+    response.content[0].type === "text"
+      ? response.content[0].text.trim().toLowerCase()
+      : "other";
+
+  return intent;
 }
 
 function extractListingId(text: string): string | null {
@@ -285,20 +289,23 @@ async function handleWhy(
     ? `Property: ${listing.title} at ${listing.address} (£${listing.price?.toLocaleString()})\n\nEvaluation:\n${JSON.stringify(evaluation, null, 2)}`
     : `Evaluation:\n${JSON.stringify(evaluation, null, 2)}`;
 
-  const response = await client.chat.completions.create({
-    model: "gemini-2.0-flash",
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    {
+      role: "user",
+      content: `Explain the scores for this property.\n\n${context}`,
+    },
+  ];
+
+  const response = await client.messages.create({
+    model: "claude-3-5-haiku-20241022",
     max_tokens: 768,
-    messages: [
-      { role: "system", content: WHY_EXPLANATION_SYSTEM },
-      ...history,
-      {
-        role: "user",
-        content: `Explain the scores for this property.\n\n${context}`,
-      },
-    ],
+    system: WHY_EXPLANATION_SYSTEM,
+    messages,
   });
 
-  const explanation = response.choices[0].message.content ?? "";
+  const explanation =
+    response.content[0].type === "text" ? response.content[0].text : "";
 
   await logConversation({
     direction: "outbound",
@@ -394,20 +401,23 @@ async function handleCompare(
     ? `${listingB.data.title} (${listingB.data.address})`
     : ids[1];
 
-  const response = await client.chat.completions.create({
-    model: "gemini-2.0-flash",
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    {
+      role: "user",
+      content: `Compare these two properties:\n\nProperty A — ${labelA}:\n${JSON.stringify(evalA.data, null, 2)}\n\nProperty B — ${labelB}:\n${JSON.stringify(evalB.data, null, 2)}`,
+    },
+  ];
+
+  const response = await client.messages.create({
+    model: "claude-3-5-haiku-20241022",
     max_tokens: 1024,
-    messages: [
-      { role: "system", content: COMPARISON_SYSTEM },
-      ...history,
-      {
-        role: "user",
-        content: `Compare these two properties:\n\nProperty A — ${labelA}:\n${JSON.stringify(evalA.data, null, 2)}\n\nProperty B — ${labelB}:\n${JSON.stringify(evalB.data, null, 2)}`,
-      },
-    ],
+    system: COMPARISON_SYSTEM,
+    messages,
   });
 
-  const comparison = response.choices[0].message.content ?? "";
+  const comparison =
+    response.content[0].type === "text" ? response.content[0].text : "";
 
   await logConversation({
     direction: "outbound",
@@ -488,17 +498,20 @@ async function handleGeneral(
     ? `${text}\n\n---${contextBlock}`
     : text;
 
-  const response = await client.chat.completions.create({
-    model: "gemini-2.0-flash",
+  const messages: Anthropic.MessageParam[] = [
+    ...history,
+    { role: "user", content: userMessage },
+  ];
+
+  const response = await client.messages.create({
+    model: "claude-3-5-haiku-20241022",
     max_tokens: 768,
-    messages: [
-      { role: "system", content: CONVERSATION_AGENT_SYSTEM },
-      ...history,
-      { role: "user", content: userMessage },
-    ],
+    system: CONVERSATION_AGENT_SYSTEM,
+    messages,
   });
 
-  const reply = response.choices[0].message.content ?? "";
+  const reply =
+    response.content[0].type === "text" ? response.content[0].text : "";
 
   await logConversation({
     direction: "outbound",

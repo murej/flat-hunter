@@ -1,20 +1,17 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { AREA_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import type { AreaEvalResult } from "@/types";
 
-const client = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function areaEvaluator(
   addressOrPostcode: string
 ): Promise<AreaEvalResult> {
-  const response = await client.chat.completions.create({
-    model: "gemini-2.0-flash",
+  const response = await client.messages.create({
+    model: "claude-3-5-sonnet-20241022",
     max_tokens: 4096,
+    system: AREA_EVALUATOR_SYSTEM,
     messages: [
-      { role: "system", content: AREA_EVALUATOR_SYSTEM },
       {
         role: "user",
         content: `Evaluate the area for this property location: ${addressOrPostcode}`,
@@ -22,7 +19,8 @@ export async function areaEvaluator(
     ],
   });
 
-  const text = response.choices[0].message.content ?? "{}";
+  const text =
+    response.content[0].type === "text" ? response.content[0].text : "{}";
   const jsonMatch = text.match(/\{[\s\S]*\}/);
 
   if (!jsonMatch) throw new Error("No JSON in area evaluator response");

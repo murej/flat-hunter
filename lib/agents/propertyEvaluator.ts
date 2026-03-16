@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { PROPERTY_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import { areaEvaluator } from "./areaEvaluator";
@@ -7,10 +7,7 @@ import { financeAgent } from "./financeAgent";
 import { scorecardComposer } from "./scorecardComposer";
 import type { PropertyEvalResult } from "@/types";
 
-const client = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SCORE_THRESHOLD = 5;
 
@@ -20,11 +17,11 @@ export async function propertyEvaluator(
 ): Promise<PropertyEvalResult> {
   const listing = await getListing(listingId);
 
-  const response = await client.chat.completions.create({
-    model: "gemini-2.0-flash",
+  const response = await client.messages.create({
+    model: "claude-3-5-sonnet-20241022",
     max_tokens: 1024,
+    system: PROPERTY_EVALUATOR_SYSTEM,
     messages: [
-      { role: "system", content: PROPERTY_EVALUATOR_SYSTEM },
       {
         role: "user",
         content: `Property:\n${JSON.stringify(listing, null, 2)}\n\nPreferences:\n${JSON.stringify(preferences, null, 2)}`,
@@ -32,7 +29,8 @@ export async function propertyEvaluator(
     ],
   });
 
-  const text = response.choices[0].message.content ?? "{}";
+  const text =
+    response.content[0].type === "text" ? response.content[0].text : "{}";
   const jsonMatch = text.match(/\{[\s\S]*\}/);
 
   if (!jsonMatch) throw new Error("No JSON in property evaluator response");
