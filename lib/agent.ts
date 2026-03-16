@@ -20,6 +20,22 @@ import {
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const ANTHROPIC_OUT_OF_CREDITS_MSG =
+  "No more credits, feed Claude. I don't know what to say 😢";
+
+function isAnthropicOutOfCredits(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as Record<string, unknown>;
+  const status = err.status as number | undefined;
+  const message = [err.message, err.error, JSON.stringify(err)]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const isQuota = message.includes("insufficient") && message.includes("quota");
+  const isCreditBalance = message.includes("credit balance is too low");
+  return status === 400 && (isQuota || isCreditBalance);
+}
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: "skip_listing",
@@ -438,124 +454,131 @@ export async function conversationAgent(
   });
   if (!inserted) return;
 
-  const preferences = await getPreferences();
-  if (!preferences) {
-    await collectPreferences(text, messageId);
-    return;
-  }
+  try {
+    const preferences = await getPreferences();
+    if (!preferences) {
+      await collectPreferences(text, messageId);
+      return;
+    }
 
-  const history = await getConversationHistory(8);
-  const listingIdFromText = extractListingId(text);
-  const activeListingId = listingIdFromText ?? (await getActiveListingId(10));
+    const history = await getConversationHistory(8);
+    const listingIdFromText = extractListingId(text);
+    const activeListingId = listingIdFromText ?? (await getActiveListingId(10));
 
-  const systemPrompt = activeListingId
-    ? `${CONVERSATION_AGENT_SYSTEM}\n\n[Active listing ID: ${activeListingId}]`
-    : CONVERSATION_AGENT_SYSTEM;
+    const systemPrompt = activeListingId
+      ? `${CONVERSATION_AGENT_SYSTEM}\n\n[Active listing ID: ${activeListingId}]`
+      : CONVERSATION_AGENT_SYSTEM;
 
-  const messages: Anthropic.MessageParam[] = [
-    ...history,
-    { role: "user", content: text },
-  ];
+    const messages: Anthropic.MessageParam[] = [
+      ...history,
+      { role: "user", content: text },
+    ];
 
-  // Single LLM call — Claude either responds directly or invokes a tool
-  const response = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 1024,
-    system: systemPrompt,
-    tools: TOOLS,
-    messages,
-  });
-
-  const toolBlock = response.content.find(
-    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-  );
-  const textBlock = response.content.find(
-    (b): b is Anthropic.TextBlock => b.type === "text"
-  );
-
-  // No tool called — Claude responded directly (general conversation)
-  if (!toolBlock) {
-    const reply = textBlock?.text ?? "";
-    await logConversation({
-      direction: "outbound",
-      message: reply,
-      listing_id: activeListingId,
-      intent: "other",
+    // Single LLM call — Claude either responds directly or invokes a tool
+    const response = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      system: systemPrompt,
+      tools: TOOLS,
+      messages,
     });
-    await sendMessage(reply);
-    return;
-  }
 
-  // Tool called — execute it
-  const toolInput = toolBlock.input as Record<string, string>;
-  const result = await executeTool(
-    toolBlock.name,
-    toolInput,
-    activeListingId,
-    preferences,
-    text,
-    messageId
-  );
+    const toolBlock = response.content.find(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+    );
+    const textBlock = response.content.find(
+      (b): b is Anthropic.TextBlock => b.type === "text"
+    );
 
-  if (result.type === "direct") {
-    // Action complete — send the pre-formed message without a second LLM call
-    if (result.message) {
+    // No tool called — Claude responded directly (general conversation)
+    if (!toolBlock) {
+      const reply = textBlock?.text ?? "";
       await logConversation({
         direction: "outbound",
-        message: result.message,
-        listing_id: result.listingId ?? activeListingId,
-        intent: result.intent ?? null,
+        message: reply,
+        listing_id: activeListingId,
+        intent: "other",
       });
-      if (result.scorecard && result.listingId) {
-        await sendWithButtons(result.message, [
-          { text: "👁 View", callback_data: `view:${result.listingId}` },
-          { text: "💾 Save", callback_data: `save:${result.listingId}` },
-          { text: "⏭ Skip", callback_data: `skip:${result.listingId}` },
-          { text: "❓ Why?", callback_data: `why:${result.listingId}` },
-        ]);
-      } else {
-        await sendMessage(result.message);
-      }
+      await sendMessage(reply);
+      return;
     }
-    return;
+
+    // Tool called — execute it
+    const toolInput = toolBlock.input as Record<string, string>;
+    const result = await executeTool(
+      toolBlock.name,
+      toolInput,
+      activeListingId,
+      preferences,
+      text,
+      messageId
+    );
+
+    if (result.type === "direct") {
+      // Action complete — send the pre-formed message without a second LLM call
+      if (result.message) {
+        await logConversation({
+          direction: "outbound",
+          message: result.message,
+          listing_id: result.listingId ?? activeListingId,
+          intent: result.intent ?? null,
+        });
+        if (result.scorecard && result.listingId) {
+          await sendWithButtons(result.message, [
+            { text: "👁 View", callback_data: `view:${result.listingId}` },
+            { text: "💾 Save", callback_data: `save:${result.listingId}` },
+            { text: "⏭ Skip", callback_data: `skip:${result.listingId}` },
+            { text: "❓ Why?", callback_data: `why:${result.listingId}` },
+          ]);
+        } else {
+          await sendMessage(result.message);
+        }
+      }
+      return;
+    }
+
+    // Tool returned data — second LLM call to formulate the response
+    const secondPassMessages: Anthropic.MessageParam[] = [
+      ...messages,
+      { role: "assistant", content: response.content },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result" as const,
+            tool_use_id: toolBlock.id,
+            content: result.data,
+          },
+        ],
+      },
+    ];
+
+    const finalResponse = await client.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      system: SECOND_PASS_SYSTEM[result.toolName] ?? CONVERSATION_AGENT_SYSTEM,
+      messages: secondPassMessages,
+    });
+
+    const finalText =
+      finalResponse.content[0]?.type === "text"
+        ? finalResponse.content[0].text
+        : "";
+
+    await logConversation({
+      direction: "outbound",
+      message: finalText,
+      listing_id: activeListingId,
+      intent: SECOND_PASS_INTENT[result.toolName] ?? "other",
+    });
+
+    await sendMessage(finalText);
+  } catch (e) {
+    if (isAnthropicOutOfCredits(e)) {
+      await sendMessage(ANTHROPIC_OUT_OF_CREDITS_MSG);
+    }
+    throw e;
   }
-
-  // Tool returned data — second LLM call to formulate the response
-  const secondPassMessages: Anthropic.MessageParam[] = [
-    ...messages,
-    { role: "assistant", content: response.content },
-    {
-      role: "user",
-      content: [
-        {
-          type: "tool_result" as const,
-          tool_use_id: toolBlock.id,
-          content: result.data,
-        },
-      ],
-    },
-  ];
-
-  const finalResponse = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 1024,
-    system: SECOND_PASS_SYSTEM[result.toolName] ?? CONVERSATION_AGENT_SYSTEM,
-    messages: secondPassMessages,
-  });
-
-  const finalText =
-    finalResponse.content[0]?.type === "text"
-      ? finalResponse.content[0].text
-      : "";
-
-  await logConversation({
-    direction: "outbound",
-    message: finalText,
-    listing_id: activeListingId,
-    intent: SECOND_PASS_INTENT[result.toolName] ?? "other",
-  });
-
-  await sendMessage(finalText);
 }
 
 function extractListingId(text: string): string | null {
