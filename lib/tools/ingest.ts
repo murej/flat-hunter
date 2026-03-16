@@ -107,6 +107,10 @@ export async function ingestAgent(html: string): Promise<void> {
 
   if (newIds.length === 0) return;
 
+  await sendMessage(
+    "I have new listings, will get back to you if there's anything worth checking out.",
+  );
+
   const evalResults = await Promise.all(
     newIds.map((id) =>
       runEvaluationPipeline(id).catch((e) => {
