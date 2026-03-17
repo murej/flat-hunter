@@ -1,4 +1,5 @@
 import type { CommuteEvalResult } from "@/types";
+import { retryWithBackoff } from "@/lib/utils/retry";
 
 const TFL_BASE = "https://api.tfl.gov.uk/journey/journeyresults";
 const fullPostcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
@@ -6,11 +7,14 @@ const outwardCodeRe = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
 
 async function geocodeAddress(address: string): Promise<string | null> {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=gb`,
-      { headers: { "User-Agent": "flat-hunter/1.0" } }
-    );
-    if (!res.ok) return null;
+    const res = await retryWithBackoff(async () => {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=gb`,
+        { headers: { "User-Agent": "flat-hunter/1.0" } },
+      );
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
+    });
     const data = await res.json();
     if (!data?.[0]?.lat || !data?.[0]?.lon) return null;
     return `${data[0].lat},${data[0].lon}`;
@@ -32,10 +36,13 @@ async function resolveFromLocation(
 
   if (outwardCodeRe.test(postcode.trim())) {
     try {
-      const res = await fetch(
-        `https://api.postcodes.io/postcodes?q=${encodeURIComponent(postcode.trim())}&limit=1`
-      );
-      if (!res.ok) return null;
+      const res = await retryWithBackoff(async () => {
+        const r = await fetch(
+          `https://api.postcodes.io/postcodes?q=${encodeURIComponent(postcode.trim())}&limit=1`,
+        );
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r;
+      });
       const data = await res.json();
       return (data?.result?.[0]?.postcode as string) ?? null;
     } catch {
@@ -83,10 +90,11 @@ export async function evaluateCommute(
 
   const url = `${TFL_BASE}/${from}/to/${to}?${params.toString()}`;
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`TfL API error: ${res.status}`);
-  }
+  const res = await retryWithBackoff(async () => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`TfL API error: ${r.status}`);
+    return r;
+  });
 
   const data = await res.json();
   const journeys = data.journeys as Array<{

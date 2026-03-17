@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
+import { retryWithBackoff } from "@/lib/utils/retry";
 import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";
@@ -16,17 +17,19 @@ export async function combinedEvaluator(
 ): Promise<CombinedEvalResult> {
   const listing = await getListing(listingId);
 
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    system: COMBINED_EVALUATOR_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Property:\n${JSON.stringify(listing, null, 2)}\n\nPreferences:\n${JSON.stringify(preferences, null, 2)}`,
-      },
-    ],
-  });
+  const response = await retryWithBackoff(() =>
+    client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      system: COMBINED_EVALUATOR_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: `Property:\n${JSON.stringify(listing, null, 2)}\n\nPreferences:\n${JSON.stringify(preferences, null, 2)}`,
+        },
+      ],
+    }),
+  );
 
   const text =
     response.content[0].type === "text" ? response.content[0].text : "{}";

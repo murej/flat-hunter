@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
+import { retryWithBackoff } from "@/lib/utils/retry";
 import { EMAIL_PARSER_SYSTEM, EMAIL_VERIFICATION_DETECTOR_SYSTEM } from "@/lib/prompts";
 import {
   runEvaluationPipeline,
@@ -29,17 +30,19 @@ interface RawListing {
 }
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    system: EMAIL_PARSER_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Parse the following property alert email HTML and extract all listings:\n\n${html}`,
-      },
-    ],
-  });
+  const response = await retryWithBackoff(() =>
+    client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      system: EMAIL_PARSER_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: `Parse the following property alert email HTML and extract all listings:\n\n${html}`,
+        },
+      ],
+    }),
+  );
 
   const text =
     response.content[0].type === "text" ? response.content[0].text : "[]";
@@ -117,17 +120,19 @@ export async function parseVerificationEmail(
   subject?: string
 ): Promise<{ isVerification: boolean; verificationUrl?: string }> {
   const subjectContext = subject ? `Subject: ${subject}\n\n` : "";
-  const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 512,
-    system: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `${subjectContext}Email HTML:\n\n${html}`,
-      },
-    ],
-  });
+  const response = await retryWithBackoff(() =>
+    client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 512,
+      system: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: `${subjectContext}Email HTML:\n\n${html}`,
+        },
+      ],
+    }),
+  );
 
   const text =
     response.content[0].type === "text" ? response.content[0].text : "{}";
