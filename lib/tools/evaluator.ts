@@ -200,11 +200,6 @@ export async function runEvaluationPipeline(
 
   if (error) throw error;
 
-  await supabaseAdmin
-    .from("listings")
-    .update({ status: "evaluated" })
-    .eq("id", listingId);
-
   const unknownScores = {
     property: combinedResult.property_unknown,
     area: combinedResult.area_unknown,
@@ -237,8 +232,18 @@ export async function runEvaluationPipeline(
       );
       return true;
     }
+    await supabaseAdmin
+      .from("listings")
+      .update({ status: "evaluated" })
+      .eq("id", listingId);
     return false;
   }
 
+  if (!result.sent) {
+    await supabaseAdmin
+      .from("listings")
+      .update({ status: "evaluated" })
+      .eq("id", listingId);
+  }
   return result;
 }

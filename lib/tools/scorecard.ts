@@ -1,4 +1,4 @@
-import { supabaseAdmin, logConversation } from "@/lib/supabase";
+import { supabaseAdmin, logConversation, updateListingStatus } from "@/lib/supabase";
 import { sendWithButtons } from "@/lib/telegram";
 import type { Evaluation, Listing } from "@/types";
 
@@ -64,6 +64,7 @@ export async function composeScorecard(
     { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
     { text: "❓ Why?", callback_data: `why:${listing.id}` },
   ]);
+  await updateListingStatus(listing.id, "evaluated");
 }
 
 export async function composeNoScoreScorecard(
@@ -96,4 +97,5 @@ No score
     { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
     { text: "❓ Why?", callback_data: `why:${listing.id}` },
   ]);
+  await updateListingStatus(listing.id, "evaluated");
 }
