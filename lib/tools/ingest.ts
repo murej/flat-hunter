@@ -139,7 +139,11 @@ export async function parseVerificationEmail(
   html: string,
   subject?: string,
   plain?: string
-): Promise<{ isVerification: boolean; verificationUrl?: string }> {
+): Promise<{
+  isVerification: boolean;
+  verificationUrl?: string;
+  verificationCode?: string;
+}> {
   const parts: string[] = [];
   if (subject) parts.push(`Subject: ${subject}\n`);
   if (html) parts.push(`Email HTML:\n\n${html}`);
@@ -165,13 +169,56 @@ export async function parseVerificationEmail(
     const parsed = JSON.parse(jsonMatch[0]) as {
       isVerification?: boolean;
       verificationUrl?: string;
+      verificationCode?: string;
     };
+    let verificationUrl: string | undefined =
+      typeof parsed.verificationUrl === "string"
+        ? parsed.verificationUrl
+        : undefined;
+    let verificationCode: string | undefined =
+      typeof parsed.verificationCode === "string"
+        ? parsed.verificationCode
+        : undefined;
+
+    // Fallback: extract URL or code from content when LLM detects verification but didn't extract
+    if (Boolean(parsed.isVerification) && !verificationUrl && !verificationCode) {
+      const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+      const urlMatches = [...content.matchAll(hrefRegex)];
+      const urls = urlMatches.map((m) => m[1]);
+      if (urls.length > 0) {
+        verificationUrl =
+          urls.find(
+            (u) =>
+              /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
+                u
+              )
+          ) ?? urls[0];
+      }
+      if (!verificationUrl) {
+        const codeMatch = content.match(/\b(\d{6})\b/);
+        if (codeMatch) verificationCode = codeMatch[1];
+      }
+    }
+
+    let isVerification = Boolean(parsed.isVerification);
+
+    // Fallback: LLM may return false for code-based verification. If subject/content strongly suggest verification + we found a code, treat as verification.
+    if (
+      !isVerification &&
+      (verificationCode || /verify|confirm|activation/i.test(subject ?? "")) &&
+      content.match(/\b\d{6}\b/)
+    ) {
+      const codeMatch = content.match(/\b(\d{6})\b/);
+      if (codeMatch) {
+        isVerification = true;
+        verificationCode = verificationCode ?? codeMatch[1];
+      }
+    }
+
     return {
-      isVerification: Boolean(parsed.isVerification),
-      verificationUrl:
-        typeof parsed.verificationUrl === "string"
-          ? parsed.verificationUrl
-          : undefined,
+      isVerification,
+      verificationUrl,
+      verificationCode,
     };
   } catch {
     console.error("Failed to parse verification JSON from Claude response");
@@ -200,9 +247,13 @@ export async function ingestAgent(
       await sendMessage(
         `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
       );
+    } else if (verification.verificationCode) {
+      await sendMessage(
+        `📬 New subscription detected. Your verification code is: *${verification.verificationCode}*\n\nEnter it on the verification page to activate your alerts.`,
+      );
     } else {
       await sendMessage(
-        "📬 This looks like a verification email. Please check your inbox and click the verification link to activate your alerts.",
+        "📬 This looks like a verification email. Please check your inbox and click the verification link (or enter the code) to activate your alerts.",
       );
     }
     return { done: true };
