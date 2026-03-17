@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { EMAIL_PARSER_SYSTEM, EMAIL_VERIFICATION_DETECTOR_SYSTEM } from "@/lib/prompts";
 import { runEvaluationPipeline } from "./evaluator";
 import { sendMessage } from "@/lib/telegram";
@@ -185,6 +185,15 @@ export async function ingestAgent(
 export async function runEvaluationsAndNotify(
   newIds: string[]
 ): Promise<void> {
+  const preferences = await getPreferences();
+
+  if (!preferences) {
+    await sendMessage(
+      `I have *${newIds.length}* new ${newIds.length === 1 ? "listing" : "listings"} — set your preferences via Telegram to get scorecards.`,
+    );
+    return;
+  }
+
   await sendMessage(
     "I have new listings, will get back to you if there's anything worth checking out.",
   );
