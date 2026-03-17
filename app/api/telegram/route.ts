@@ -14,6 +14,7 @@ import {
   logConversation,
   getPreferences,
 } from "@/lib/supabase";
+import { buildNoScoreScorecardText, buildScorecardText } from "@/lib/tools/scorecard";
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,19 +60,33 @@ export async function POST(req: NextRequest) {
           ] = await Promise.all([
             supabaseAdmin
               .from("evaluations")
-              .select("scorecard_text")
+              .select(
+                "price_score, size_score, fit_score, area_score, commute_score, overall_score, deal_breaker_flags, commute_minutes, monthly_mortgage, property_summary, area_summary"
+              )
               .eq("listing_id", listingId)
               .order("created_at", { ascending: false })
               .limit(1)
               .single(),
             supabaseAdmin
               .from("listings")
-              .select("status")
+              .select("status, title, price, url")
               .eq("id", listingId)
               .single(),
           ]);
-          if (evaluation?.scorecard_text) {
-            const saved = listing?.status === "saved";
+          if (evaluation && listing) {
+            const unknownScores = {
+              property: false,
+              area: false,
+              commute: false,
+            };
+            const scorecardText = buildScorecardText(
+              evaluation as any,
+              listing as any,
+              [],
+              evaluation.commute_minutes,
+              unknownScores,
+            );
+            const saved = listing.status === "saved";
             const saveButton = saved
               ? { text: "🗑 Unsave", callback_data: `unsave:${listingId}` }
               : { text: "💾 Save", callback_data: `save:${listingId}` };
@@ -84,11 +99,11 @@ export async function POST(req: NextRequest) {
             const buttons = [scorecardButtons];
             await logConversation({
               direction: "outbound",
-              message: evaluation.scorecard_text,
+              message: scorecardText,
               listing_id: listingId,
               intent: null,
             });
-            await sendWithButtons(evaluation.scorecard_text, buttons);
+            await sendWithButtons(scorecardText, buttons);
           }
         }
         return NextResponse.json({ ok: true });

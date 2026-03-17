@@ -8,6 +8,7 @@ import {
   getActiveListingId,
   getConversationHistory,
 } from "@/lib/supabase";
+import { buildScorecardText } from "@/lib/tools/scorecard";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { collectPreferences } from "./tools/preference";
 import { requestViewing } from "./tools/viewing";
@@ -243,27 +244,41 @@ async function executeToolInternal(
       ] = await Promise.all([
         supabaseAdmin
           .from("evaluations")
-          .select("scorecard_text")
+          .select(
+            "price_score, size_score, fit_score, area_score, commute_score, overall_score, deal_breaker_flags, commute_minutes, monthly_mortgage, property_summary, area_summary"
+          )
           .eq("listing_id", listingId)
           .order("created_at", { ascending: false })
           .limit(1)
           .single(),
         supabaseAdmin
           .from("listings")
-          .select("status")
+          .select("status, title, price, url")
           .eq("id", listingId)
           .single(),
       ]);
-      if (!evaluation?.scorecard_text) {
+      if (!evaluation || !listing) {
         return {
           type: "direct",
           message:
             "I couldn't find a scorecard for that property — it may not have been evaluated yet.",
         };
       }
+      const unknownScores = {
+        property: false,
+        area: false,
+        commute: false,
+      };
+      const scorecardText = buildScorecardText(
+        evaluation as any,
+        listing as any,
+        [],
+        evaluation.commute_minutes,
+        unknownScores,
+      );
       return {
         type: "direct",
-        message: evaluation.scorecard_text,
+        message: scorecardText,
         listingId,
         intent: "other",
         scorecard: true,

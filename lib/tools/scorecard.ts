@@ -1,9 +1,3 @@
-import {
-  supabaseAdmin,
-  logConversation,
-  updateListingStatus,
-} from "@/lib/supabase";
-import { sendWithButtons } from "@/lib/telegram";
 import type { Evaluation, Listing } from "@/types";
 
 type UnknownScores = {
@@ -15,13 +9,13 @@ type UnknownScores = {
 const s = (score: number, unknown?: boolean) =>
   unknown ? "N/A  " : `${score}/10`;
 
-export async function composeScorecard(
+export function buildScorecardText(
   evaluation: Evaluation,
   listing: Listing,
   notableFlags: string[],
   commuteMinutes: number,
   unknownScores: UnknownScores = {},
-): Promise<void> {
+): string {
   const allFlags = [...(evaluation.deal_breaker_flags || []), ...notableFlags];
 
   const watchOuts =
@@ -53,34 +47,13 @@ export async function composeScorecard(
   ${watchOuts}
 
 ${urlLine}`;
-
-  await supabaseAdmin
-    .from("evaluations")
-    .update({ scorecard_text: scorecardText })
-    .eq("id", evaluation.id);
-
-  await logConversation({
-    direction: "outbound",
-    message: scorecardText,
-    listing_id: listing.id,
-    intent: null,
-  });
-
-  await sendWithButtons(scorecardText, [
-    [
-      { text: "👁 View", callback_data: `view:${listing.id}` },
-      { text: "💾 Save", callback_data: `save:${listing.id}` },
-      { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
-      { text: "❓ Why?", callback_data: `why:${listing.id}` },
-    ],
-  ]);
-  await updateListingStatus(listing.id, "evaluated");
+  return scorecardText;
 }
 
-export async function composeNoScoreScorecard(
-  evaluation: Evaluation,
+export function buildNoScoreScorecardText(
+  _evaluation: Evaluation,
   listing: Listing,
-): Promise<void> {
+): string {
   const title = listing.title || "Untitled property";
   const urlLine = listing.url
     ? `[🔗 View listing](${listing.url})`
@@ -93,26 +66,5 @@ No score
   This property couldn't be evaluated — not enough data to score it against your preferences.
 
 ${urlLine}`;
-
-  await supabaseAdmin
-    .from("evaluations")
-    .update({ scorecard_text: scorecardText })
-    .eq("id", evaluation.id);
-
-  await logConversation({
-    direction: "outbound",
-    message: scorecardText,
-    listing_id: listing.id,
-    intent: null,
-  });
-
-  await sendWithButtons(scorecardText, [
-    [
-      { text: "👁 View", callback_data: `view:${listing.id}` },
-      { text: "💾 Save", callback_data: `save:${listing.id}` },
-      { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
-      { text: "❓ Why?", callback_data: `why:${listing.id}` },
-    ],
-  ]);
-  await updateListingStatus(listing.id, "evaluated");
+  return scorecardText;
 }

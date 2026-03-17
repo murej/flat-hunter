@@ -61,7 +61,6 @@ create table evaluations (
   estimated_monthly_total numeric,
   property_summary text,
   area_summary text,
-  scorecard_text text,
   raw_property_eval jsonb,
   raw_area_eval jsonb,
   raw_finance_eval jsonb

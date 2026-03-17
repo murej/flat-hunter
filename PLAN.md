@@ -96,7 +96,7 @@ stamp_duty numeric,
 estimated_monthly_total numeric,
 property_summary text,
 area_summary text,
-scorecard_text text, -- formatted Telegram message
+-- scorecard_text text, -- (deprecated) previously stored formatted Telegram message
 raw_property_eval jsonb,
 raw_area_eval jsonb,
 raw_finance_eval jsonb
@@ -230,29 +230,9 @@ In /app/api/evaluate/route.ts:
 
 ## Phase 6: Scorecard Composer + Telegram notification
 
-In /lib/agents/scorecardComposer.ts:
-
-- Takes evaluation object
-- Claude call to format a clean Telegram message (see format below)
-- Stores scorecard_text in evaluations table
-- Sends to Telegram with inline buttons: [View] [Save] [Skip] [Why?]
-
-Message format:
-🏠 {title}
-💰 £{price} · £{monthlyMortgage}/mo
-
-✅ Scores
-Property fit: {fitScore}/10
-Area: {areaScore}/10
-Commute: {commuteScore}/10 ({commuteMinutes} min)
-Value: {priceScore}/10
-
-⚠️ Watch outs
-{dealBreakerFlags and notableFlags}
-
-🔗 {url}
-
----
+Scorecards are constructed from evaluation and listing data at send-time
+using the helpers in `lib/tools/scorecard.ts`, then sent to Telegram
+with inline buttons: [View] [Save] [Skip] [Why?].
 
 ## Phase 7: Conversation Agent (full implementation)
 

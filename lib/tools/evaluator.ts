@@ -1,11 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
+import {
+  supabaseAdmin,
+  getListing,
+  getPreferences,
+  logConversation,
+  updateListingStatus,
+} from "@/lib/supabase";
+import { sendWithButtons } from "@/lib/telegram";
 import { retryWithBackoff } from "@/lib/utils/retry";
 import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import { fetchAreaContext } from "./area-context";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";
-import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
+import {
+  buildNoScoreScorecardText,
+  buildScorecardText,
+} from "./scorecard";
 import type { CombinedEvalResult, Evaluation, Listing } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -152,6 +162,7 @@ export type EvaluationPipelineResult = {
   commute_minutes: number;
   unknownScores: { property?: boolean; area?: boolean; commute?: boolean };
   shouldSendNoScore: boolean;
+  scorecardText: string;
 };
 
 export async function runEvaluationPipeline(
@@ -310,6 +321,16 @@ export async function runEvaluationPipeline(
     commute: Boolean(commuteResult.commute_unknown),
   };
 
+  const scorecardText = components.length === 0
+    ? buildNoScoreScorecardText(evaluation, listing)
+    : buildScorecardText(
+        evaluation,
+        listing,
+        combinedResult.notable_flags,
+        commuteResult.commute_minutes,
+        unknownScores,
+      );
+
   const result: EvaluationPipelineResult = {
     sent: components.length === 0 || overall_score > SCORE_THRESHOLD,
     evaluation,
@@ -319,21 +340,26 @@ export async function runEvaluationPipeline(
     commute_minutes: commuteResult.commute_minutes,
     unknownScores,
     shouldSendNoScore: components.length === 0,
+    scorecardText,
   };
 
   if (sendImmediately) {
-    if (result.shouldSendNoScore) {
-      await composeNoScoreScorecard(evaluation, listing);
-      return true;
-    }
-    if (overall_score > SCORE_THRESHOLD) {
-      await composeScorecard(
-        evaluation,
-        listing,
-        combinedResult.notable_flags,
-        commuteResult.commute_minutes,
-        unknownScores,
-      );
+    if (result.shouldSendNoScore || overall_score > SCORE_THRESHOLD) {
+      await logConversation({
+        direction: "outbound",
+        message: scorecardText,
+        listing_id: listing.id,
+        intent: null,
+      });
+      await sendWithButtons(scorecardText, [
+        [
+          { text: "👁 View", callback_data: `view:${listing.id}` },
+          { text: "💾 Save", callback_data: `save:${listing.id}` },
+          { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
+          { text: "❓ Why?", callback_data: `why:${listing.id}` },
+        ],
+      ]);
+      await updateListingStatus(listing.id, "evaluated");
       return true;
     }
     await supabaseAdmin

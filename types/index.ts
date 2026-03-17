@@ -71,7 +71,6 @@ export interface Evaluation {
   estimated_monthly_total: number;
   property_summary: string;
   area_summary: string;
-  scorecard_text: string;
   raw_property_eval: Record<string, unknown>;
   raw_area_eval: Record<string, unknown>;
   raw_finance_eval: Record<string, unknown>;
