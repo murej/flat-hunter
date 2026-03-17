@@ -7,8 +7,9 @@
     "dev:tunnel": "bash scripts/dev-tunnel.sh",
     "use:prod": "bash scripts/use-prod.sh",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "npm run use:prod && next start",
+    "lint": "next lint",
+    "env:push": "bash scripts/push-env-to-vercel.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "vercel": "^50",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10",
