@@ -29,7 +29,12 @@ export async function composeScorecard(
     ? "N/A  "
     : `${evaluation.commute_score}/10 (${commuteMinutes} min)`;
 
-  const scorecardText = `🏠 ${listing.title}
+  const title = listing.title || "Untitled property";
+  const urlLine = listing.url
+    ? `[🔗 View listing](${listing.url})`
+    : "Listing URL unavailable";
+
+  const scorecardText = `🏠 ${title}
 💰 £${listing.price?.toLocaleString()} · £${evaluation.monthly_mortgage}/mo
 
 ✅ Scores
@@ -44,7 +49,7 @@ export async function composeScorecard(
 ⚠️ Watch outs
   ${watchOuts}
 
-[🔗 View listing](${listing.url})`;
+${urlLine}`;
 
   await supabaseAdmin
     .from("evaluations")
@@ -73,13 +78,18 @@ export async function composeNoScoreScorecard(
   evaluation: Evaluation,
   listing: Listing,
 ): Promise<void> {
-  const scorecardText = `🏠 ${listing.title}
+  const title = listing.title || "Untitled property";
+  const urlLine = listing.url
+    ? `[🔗 View listing](${listing.url})`
+    : "Listing URL unavailable";
+
+  const scorecardText = `🏠 ${title}
 💰 £${listing.price?.toLocaleString()}
 
 No score
   This property couldn't be evaluated — not enough data to score it against your preferences.
 
-[🔗 View listing](${listing.url})`;
+${urlLine}`;
 
   await supabaseAdmin
     .from("evaluations")

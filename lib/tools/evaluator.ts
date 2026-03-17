@@ -17,7 +17,6 @@ export async function combinedEvaluator(
   preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>,
 ): Promise<CombinedEvalResult> {
   const listing = await getListing(listingId);
-
   const areaContext = await fetchAreaContext(
     listing.postcode ?? "",
     preferences.areas ?? [],
@@ -61,19 +60,37 @@ export async function combinedEvaluator(
       messages: [
         {
           role: "user",
-          content: `Property:\n${JSON.stringify(listing, null, 2)}\n\nPreferences:\n${JSON.stringify(preferences, null, 2)}${areaContextBlock}`,
+          content: `Property:\n${JSON.stringify(
+            listing,
+            null,
+            2,
+          )}\n\nPreferences:\n${JSON.stringify(
+            preferences,
+            null,
+            2,
+          )}${areaContextBlock}`,
         },
       ],
     }),
   );
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "{}";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  const firstBlock = response.content[0];
+  if (!firstBlock || firstBlock.type !== "text") {
+    throw new Error("Combined evaluator response missing text content");
+  }
 
-  if (!jsonMatch) throw new Error("No JSON in combined evaluator response");
+  const jsonMatch = firstBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("No JSON in combined evaluator response");
+  }
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonMatch[0]) as unknown;
+  } catch (err) {
+    console.error("Failed to parse combined evaluator JSON:", err);
+    throw new Error("Invalid JSON in combined evaluator response");
+  }
 
   return {
     price_score: parsed.price_score ?? 5,
@@ -238,9 +255,9 @@ export async function runEvaluationPipeline(
   if (error) throw error;
 
   const unknownScores = {
-    property: combinedResult.property_unknown,
-    area: combinedResult.area_unknown,
-    commute: commuteResult.commute_unknown,
+    property: Boolean(combinedResult.property_unknown),
+    area: Boolean(combinedResult.area_unknown),
+    commute: Boolean(commuteResult.commute_unknown),
   };
 
   const result: EvaluationPipelineResult = {

@@ -107,6 +107,7 @@ export async function evaluateCommute(
       commute_minutes: 0,
       commute_route: "No journey found",
       commute_score: 0,
+      commute_unknown: true,
     };
   }
 

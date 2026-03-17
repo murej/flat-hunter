@@ -50,11 +50,11 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
     .from("ingest_idempotency")
     .insert({ idempotency_key: key });
 
-  if (error) {
-    if (error.code === "23505") return false;
-    throw error;
-  }
-  return true;
+  if (!error) return true;
+  if ((error as { code?: string }).code === "23505") return false;
+
+  console.error("Failed to claim ingest idempotency key:", error);
+  throw error;
 }
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
@@ -87,12 +87,47 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   const jsonMatch = text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) return [];
 
+  let parsed: unknown;
   try {
-    return JSON.parse(jsonMatch[0]);
-  } catch {
-    console.error("Failed to parse listings JSON from Claude response");
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch (e) {
+    console.error("Failed to parse listings JSON from Claude response:", e);
     return [];
   }
+
+  if (!Array.isArray(parsed)) return [];
+
+  const listings: RawListing[] = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== "object") continue;
+    const l = item as Partial<RawListing>;
+    if (!l.portal_id || !l.url) continue;
+    listings.push({
+      portal_id: String(l.portal_id),
+      url: String(l.url),
+      title: String(l.title ?? ""),
+      price: typeof l.price === "number" && l.price > 0 ? l.price : 0,
+      address: String(l.address ?? ""),
+      postcode: String(l.postcode ?? ""),
+      bedrooms: typeof l.bedrooms === "number" && l.bedrooms >= 0 ? l.bedrooms : 0,
+      bathrooms:
+        typeof l.bathrooms === "number" && l.bathrooms >= 0 ? l.bathrooms : 0,
+      sqft: typeof l.sqft === "number" && l.sqft >= 0 ? l.sqft : 0,
+      description: String(l.description ?? ""),
+      image_urls: Array.isArray(l.image_urls)
+        ? l.image_urls.map((u) => String(u))
+        : [],
+      floorplan_url: String(l.floorplan_url ?? ""),
+      agent_name: String(l.agent_name ?? ""),
+      agent_email: String(l.agent_email ?? ""),
+      listed_date:
+        typeof l.listed_date === "string" && l.listed_date
+          ? l.listed_date
+          : new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  return listings;
 }
 
 export async function deduplicateAndStore(
@@ -170,7 +205,9 @@ export async function parseVerificationEmail(
   if (plain && plain !== html) parts.push(`\nPlain text:\n\n${plain}`);
   const fullContent = parts.join("\n") || "(empty email)";
 
-  if (/verify|confirm|activation/i.test(subject ?? "")) {
+  const safeSubject = typeof subject === "string" ? subject : "";
+
+  if (/verify|confirm|activation/i.test(safeSubject)) {
     const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
     let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
     if (urls.length === 0) {
@@ -211,10 +248,12 @@ export async function parseVerificationEmail(
     }),
   );
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "{}";
+  const firstBlock = response.content[0];
+  if (!firstBlock || firstBlock.type !== "text") {
+    return { isVerification: false };
+  }
 
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  const jsonMatch = firstBlock.text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return { isVerification: false };
 
   try {
@@ -259,7 +298,7 @@ export async function parseVerificationEmail(
     let isVerification = Boolean(parsed.isVerification);
 
     // Fallback: LLM may return false for verification emails. When subject suggests verification, try URL extraction first, then code.
-    if (!isVerification && /verify|confirm|activation/i.test(subject ?? "")) {
+    if (!isVerification && /verify|confirm|activation/i.test(safeSubject)) {
       if (!verificationUrl) {
         const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
         let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);

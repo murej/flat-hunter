@@ -9,17 +9,33 @@ export function calculateFinance(
   const loanAmount = price - deposit;
   const termMonths = 25 * 12;
 
+  if (loanAmount <= 0) {
+    const raw = {
+      price,
+      deposit,
+      loan_amount: loanAmount,
+      rate_used: parseFloat(process.env.MORTGAGE_RATE ?? "4.5"),
+      term_years: 25,
+      reason: "no borrowing required",
+    };
+
+    return Promise.resolve({
+      monthly_mortgage: 0,
+      monthly_interest_only: 0,
+      stamp_duty: calculateSDLT(price, true),
+      estimated_monthly_total: 200,
+      raw,
+    });
+  }
+
   // Repayment mortgage monthly payment
   const monthly_mortgage =
-    loanAmount > 0
-      ? (loanAmount * mortgageRate * Math.pow(1 + mortgageRate, termMonths)) /
-        (Math.pow(1 + mortgageRate, termMonths) - 1)
-      : 0;
+    (loanAmount * mortgageRate * Math.pow(1 + mortgageRate, termMonths)) /
+    (Math.pow(1 + mortgageRate, termMonths) - 1);
 
   // Interest-only monthly payment
   const annualRate = parseFloat(process.env.MORTGAGE_RATE ?? "4.5") / 100;
-  const monthly_interest_only =
-    loanAmount > 0 ? (loanAmount * annualRate) / 12 : 0;
+  const monthly_interest_only = (loanAmount * annualRate) / 12;
 
   // Stamp Duty Land Tax (SDLT) — first-time buyer relief
   const stamp_duty = calculateSDLT(price, true);

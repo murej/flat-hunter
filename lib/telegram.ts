@@ -27,6 +27,7 @@ export async function sendMessage(
 
   if (!res.ok) {
     const body = await res.text();
+    console.error("Telegram sendMessage failed:", body);
     throw new Error(`Telegram sendMessage failed: ${body}`);
   }
 }
@@ -38,6 +39,23 @@ export async function sendWithButtons(
   await sendMessage(text, {
     reply_markup: {
       inline_keyboard: buttons,
+    },
+  });
+}
+
+export type ReplyKeyboardRow = Array<{ text: string }>;
+
+export async function sendWithReplyKeyboard(
+  text: string,
+  keyboardRows: ReplyKeyboardRow[],
+  options: { is_persistent?: boolean; resize_keyboard?: boolean } = {}
+): Promise<void> {
+  const { is_persistent = true, resize_keyboard = true } = options;
+  await sendMessage(text, {
+    reply_markup: {
+      keyboard: keyboardRows,
+      is_persistent,
+      resize_keyboard,
     },
   });
 }
@@ -79,6 +97,7 @@ export async function answerCallbackQuery(
 
   if (!res.ok) {
     const body = await res.text();
+    console.error("Telegram answerCallbackQuery failed:", body);
     throw new Error(`Telegram answerCallbackQuery failed: ${body}`);
   }
 }
