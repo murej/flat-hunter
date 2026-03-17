@@ -118,6 +118,8 @@ export async function runEvaluationPipeline(
       ? scoreComponents.reduce((a, b) => a + b, 0) / scoreComponents.length
       : 0;
 
+  const raw = combinedResult.raw as Record<string, unknown> | undefined;
+
   const { data: evaluation, error } = await supabaseAdmin
     .from("evaluations")
     .insert({
@@ -137,8 +139,18 @@ export async function runEvaluationPipeline(
       estimated_monthly_total: financeResult.estimated_monthly_total,
       property_summary: combinedResult.property_summary,
       area_summary: combinedResult.area_summary,
-      raw_property_eval: combinedResult.raw,
-      raw_area_eval: combinedResult.raw,
+      raw_property_eval: {
+        price_score: raw?.price_score,
+        size_score: raw?.size_score,
+        fit_score: raw?.fit_score,
+        deal_breaker_flags: (raw?.deal_breaker_flags as string[] | undefined) ?? [],
+        property_summary: raw?.property_summary,
+      },
+      raw_area_eval: {
+        area_score: raw?.area_score,
+        area_summary: raw?.area_summary,
+        notable_flags: (raw?.notable_flags as string[] | undefined) ?? [],
+      },
       raw_finance_eval: financeResult.raw,
     })
     .select()
