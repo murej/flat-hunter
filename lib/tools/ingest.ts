@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin } from "@/lib/supabase";
-import { EMAIL_PARSER_SYSTEM } from "@/lib/prompts";
+import { EMAIL_PARSER_SYSTEM, EMAIL_VERIFICATION_DETECTOR_SYSTEM } from "@/lib/prompts";
 import { runEvaluationPipeline } from "./evaluator";
 import { sendMessage } from "@/lib/telegram";
 
@@ -101,11 +101,65 @@ export async function deduplicateAndStore(
   return newListingIds;
 }
 
-export async function ingestAgent(html: string): Promise<void> {
-  const listings = await parseEmailHtml(html);
-  const newIds = await deduplicateAndStore(listings);
+export async function parseVerificationEmail(
+  html: string,
+  subject?: string
+): Promise<{ isVerification: boolean; verificationUrl?: string }> {
+  const subjectContext = subject ? `Subject: ${subject}\n\n` : "";
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 512,
+    system: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `${subjectContext}Email HTML:\n\n${html}`,
+      },
+    ],
+  });
 
-  if (newIds.length === 0) return;
+  const text =
+    response.content[0].type === "text" ? response.content[0].text : "{}";
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return { isVerification: false };
+
+  try {
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      isVerification?: boolean;
+      verificationUrl?: string;
+    };
+    return {
+      isVerification: Boolean(parsed.isVerification),
+      verificationUrl:
+        typeof parsed.verificationUrl === "string"
+          ? parsed.verificationUrl
+          : undefined,
+    };
+  } catch {
+    console.error("Failed to parse verification JSON from Claude response");
+    return { isVerification: false };
+  }
+}
+
+export async function ingestAgent(
+  html: string,
+  subject?: string
+): Promise<void> {
+  const listings = await parseEmailHtml(html);
+
+  if (listings.length === 0) {
+    const verification = await parseVerificationEmail(html, subject);
+    if (verification.isVerification && verification.verificationUrl) {
+      await sendMessage(
+        `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
+      );
+      return;
+    }
+    return;
+  }
+
+  const newIds = await deduplicateAndStore(listings);
 
   await sendMessage(
     "I have new listings, will get back to you if there's anything worth checking out.",

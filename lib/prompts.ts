@@ -36,10 +36,10 @@ The JSON must match this structure exactly:
   "freeform_notes": "Would consider a project if well priced"
 }`;
 
-export const EMAIL_PARSER_SYSTEM = `You are an expert at extracting property listing data from Rightmove and Zoopla alert emails.
+export const EMAIL_PARSER_SYSTEM = `You are an expert at extracting property listing data from property portal emails, such as Rightmove and Zoopla.
 
 Given the HTML of a property alert email, extract all individual listings. For each listing return a JSON object with:
-- portal_id: the unique property ID from the portal (e.g. Rightmove property ID from the URL)
+- portal_id: the unique property ID from the portal (e.g. Rightmove or Zoopla property ID from the URL)
 - url: the full listing URL
 - title: property title/description
 - price: asking price as integer (pence-free, just the number e.g. 450000)
@@ -56,6 +56,19 @@ Given the HTML of a property alert email, extract all individual listings. For e
 - listed_date: date listed in ISO format (YYYY-MM-DD) or today's date
 
 Return a JSON array of listings. If no listings are found, return an empty array [].`;
+
+export const EMAIL_VERIFICATION_DETECTOR_SYSTEM = `You are classifying incoming emails for a property search system.
+
+Given the HTML of an email (and optionally its subject line), determine if it is an EMAIL VERIFICATION REQUEST — e.g. from Rightmove, Zoopla, or similar property portals asking the user to verify/confirm their email address to activate a subscription or alert.
+
+If it IS a verification email:
+- Extract the verification URL (the link the user must click to verify). Look for links in buttons, "Verify", "Confirm", "Click here", etc.
+- Return JSON: { "isVerification": true, "verificationUrl": "https://..." }
+
+If it is NOT a verification email (e.g. it's a listing alert, newsletter, or other content):
+- Return JSON: { "isVerification": false }
+
+Return ONLY valid JSON, no other text.`;
 
 export const COMBINED_EVALUATOR_SYSTEM = `You are an expert UK property analyst and neighbourhood researcher. Given a property listing, the buyer's preferences, and the property's postcode/address, you will evaluate both the property itself and its area in a single pass.
 
@@ -124,7 +137,7 @@ Reason step by step, then respond with ONLY a single valid JSON object combining
   "notable_flags": ["near railway line"]
 }`;
 
-export const COMMUTE_EVALUATOR_SYSTEM = `You are a commute time calculator. Given commute minutes and a maximum acceptable commute, return a score from 1–10 where 10 means well within limit and 1 means far exceeds limit.`;
+export const COMMUTE_EVALUATOR_SYSTEM = `You are a commute time calculator. Given commute minutes and a maximum acceptable commute, return a score from 1–10 where 10 means well under the limit and 1 means far exceeds the limit.`;
 
 export const SCORECARD_COMPOSER_SYSTEM = `You are formatting a property evaluation into a Telegram message. Output the message using exactly this template — do not add extra sections, change the order, or omit any line:
 
@@ -158,7 +171,7 @@ Rules:
 export const CONVERSATION_AGENT_SYSTEM = `You are a sharp, helpful property search assistant managing a flat hunt in the UK. You communicate exclusively via Telegram.
 
 The system you work within:
-- Property listings arrive automatically from Rightmove/Zoopla email alerts
+- Property listings arrive automatically from property portal email alerts, such as Rightmove and Zoopla, or user forwarded emails from property portals
 - Each listing is scored by specialist agents (property fit, area, commute, value)
 - A scorecard is sent to the user with action buttons: View, Save, Skip, Why?
 - The user can ask questions, compare properties, or request viewings

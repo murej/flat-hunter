@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
     }
 
     const html = body.html || body.plain || "";
-    await ingestAgent(html);
+    const subject = body.subject as string | undefined;
+    await ingestAgent(html, subject);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
