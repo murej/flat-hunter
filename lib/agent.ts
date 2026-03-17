@@ -297,7 +297,8 @@ async function executeToolInternal(
     }
 
     case "show_preferences": {
-      const p = preferences as {
+      const fresh = await getPreferences();
+      const p = (fresh ?? preferences) as {
         areas?: string[];
         max_price?: number;
         deposit?: number;
@@ -560,6 +561,21 @@ export async function conversationAgent(
       return;
     }
 
+    // Direct path for "show preferences" — guarantees fresh data from DB
+    if (isShowPreferencesIntent(text)) {
+      const executeTool = createExecuteTool(null, preferences, text, messageId);
+      const result = await executeTool("show_preferences", {});
+      if (result.type === "direct") {
+        await logConversation({
+          direction: "outbound",
+          message: result.message,
+          intent: "preferences",
+        });
+        await sendMessage(result.message);
+      }
+      return;
+    }
+
     // Direct path for "show saved properties" — guarantees Remove buttons
     if (isShowSavedIntent(text)) {
       const executeTool = createExecuteTool(null, preferences, text, messageId);
@@ -654,6 +670,17 @@ function extractListingId(text: string): string | null {
     /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
   );
   return match ? match[0] : null;
+}
+
+function isShowPreferencesIntent(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  const patterns = [
+    /(show|see|what\s*are)\s*(my\s*)?preferences?/,
+    /(my\s*)?preferences?\s*(please)?/,
+    /what\s*(have|did)\s*i\s*(set|configure|choose)/,
+    /current\s*(search\s*)?(criteria|preferences?)/,
+  ];
+  return patterns.some((p) => p.test(normalized));
 }
 
 function isShowSavedIntent(text: string): boolean {
