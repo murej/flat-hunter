@@ -1,4 +1,8 @@
-import { supabaseAdmin, logConversation, updateListingStatus } from "@/lib/supabase";
+import {
+  supabaseAdmin,
+  logConversation,
+  updateListingStatus,
+} from "@/lib/supabase";
 import { sendWithButtons } from "@/lib/telegram";
 import type { Evaluation, Listing } from "@/types";
 
@@ -34,17 +38,16 @@ export async function composeScorecard(
     ? `[🔗 View listing](${listing.url})`
     : "Listing URL unavailable";
 
-  const scorecardText = `🏠 ${title}
+  const scorecardText = `🏠 **${title}**
 💰 £${listing.price?.toLocaleString()} · £${evaluation.monthly_mortgage}/mo
 
-✅ Scores
-  Property fit:  ${s(evaluation.fit_score, unknownScores.property)}
-  Size:          ${s(evaluation.size_score, unknownScores.property)}
-  Area:          ${s(evaluation.area_score, unknownScores.area)}
-  Commute:       ${commuteLabel}
-  Value:         ${s(evaluation.price_score, unknownScores.property)}
-  --------------------------
-  Overall:       ${s(evaluation.overall_score)}
+✅ Score: ${s(evaluation.overall_score)}
+  -----------------------------------
+  Property fit:           ${s(evaluation.fit_score, unknownScores.property)}
+  Size:                   ${s(evaluation.size_score, unknownScores.property)}
+  Area:                   ${s(evaluation.area_score, unknownScores.area)}
+  Commute:                ${commuteLabel}
+  Value:                  ${s(evaluation.price_score, unknownScores.property)}  
 
 ⚠️ Watch outs
   ${watchOuts}

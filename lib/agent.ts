@@ -598,9 +598,11 @@ export async function conversationAgent(
           intent: "other",
         });
         if (result.buttons && result.buttons.length > 0) {
-          await sendWithButtons(result.message, result.buttons);
+          await sendWithButtons(result.message, result.buttons, {
+            disable_web_page_preview: true,
+          });
         } else {
-          await sendMessage(result.message);
+          await sendMessage(result.message, { disable_web_page_preview: true });
         }
       }
       return;

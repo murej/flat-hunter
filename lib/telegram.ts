@@ -34,12 +34,14 @@ export async function sendMessage(
 
 export async function sendWithButtons(
   text: string,
-  buttons: AgentButton[][]
+  buttons: AgentButton[][],
+  options: Record<string, unknown> = {}
 ): Promise<void> {
   await sendMessage(text, {
     reply_markup: {
       inline_keyboard: buttons,
     },
+    ...options,
   });
 }
 
