@@ -181,6 +181,7 @@ type InternalDirectResult = {
   scorecard?: boolean;
   saved?: boolean;
   savedListings?: Array<{ id: string }>;
+  buttons?: AgentButton[][];
 };
 
 type InternalDataResult = {
@@ -324,9 +325,13 @@ async function executeToolInternal(
         `🏘 *Area preferences:* ${p.area_preferences?.join(", ") || "None specified"}`,
         `🏠 *Style:* ${p.style_notes || "Not set"}`,
         ``,
-        `_Say "update preferences" to change any of these._`,
       ].join("\n");
-      return { type: "direct", message: msg, intent: "preferences" };
+      return {
+        type: "direct",
+        message: msg,
+        intent: "preferences",
+        buttons: [[{ text: "Update", callback_data: "update preferences" }]],
+      };
     }
 
     case "get_property_evaluation": {
@@ -515,7 +520,9 @@ function createExecuteTool(
     );
     if (result.type === "direct") {
       let buttons: AgentButton[][] | undefined;
-      if (result.scorecard && result.listingId) {
+      if (result.buttons && result.buttons.length > 0) {
+        buttons = result.buttons;
+      } else if (result.scorecard && result.listingId) {
         const saveButton = result.saved
           ? { text: "🗑 Unsave", callback_data: `unsave:${result.listingId}` }
           : { text: "💾 Save", callback_data: `save:${result.listingId}` };
@@ -571,7 +578,11 @@ export async function conversationAgent(
           message: result.message,
           intent: "preferences",
         });
-        await sendMessage(result.message);
+        if (result.buttons && result.buttons.length > 0) {
+          await sendWithButtons(result.message, result.buttons);
+        } else {
+          await sendMessage(result.message);
+        }
       }
       return;
     }
@@ -675,6 +686,7 @@ function extractListingId(text: string): string | null {
 function isShowPreferencesIntent(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   const patterns = [
+    /^\/?preferences?$/,
     /(show|see|what\s*are)\s*(my\s*)?preferences?/,
     /(my\s*)?preferences?\s*(please)?/,
     /what\s*(have|did)\s*i\s*(set|configure|choose)/,
@@ -686,6 +698,7 @@ function isShowPreferencesIntent(text: string): boolean {
 function isShowSavedIntent(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   const patterns = [
+    /^\/?saved$/,
     /saved\s*(properties|list|ones?)?/,
     /(show|see|list|view)\s*(my\s*)?saved/,
     /(my\s*)?shortlist/,
