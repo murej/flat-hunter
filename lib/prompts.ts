@@ -42,7 +42,7 @@ score_weights is optional; omit if equal weighting is fine.`;
 
 export const EMAIL_PARSER_SYSTEM = `You are an expert at extracting property listing data from property portal emails, such as Rightmove and Zoopla.
 
-Given the HTML of a property alert email, extract all individual listings. For each listing return a JSON object with:
+Given the text and URLs extracted from a property alert email, extract all individual listings. For each listing return a JSON object with:
 - portal_id: the unique property ID from the portal (e.g. Rightmove or Zoopla property ID from the URL)
 - url: the full listing URL
 - title: property title/description

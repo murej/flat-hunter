@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
+import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
 import { EMAIL_PARSER_SYSTEM, EMAIL_VERIFICATION_DETECTOR_SYSTEM } from "@/lib/prompts";
 import {
   runEvaluationPipeline,
@@ -50,6 +51,7 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
 }
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
+  const content = extractTextAndUrlsFromHtml(html);
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
@@ -58,7 +60,7 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       messages: [
         {
           role: "user",
-          content: `Parse the following property alert email HTML and extract all listings:\n\n${html}`,
+          content: `Parse the following property alert email (text and URLs extracted from HTML) and extract all listings:\n\n${content}`,
         },
       ],
     }),
@@ -146,13 +148,13 @@ export async function parseVerificationEmail(
 }> {
   const parts: string[] = [];
   if (subject) parts.push(`Subject: ${subject}\n`);
-  if (html) parts.push(`Email HTML:\n\n${html}`);
+  if (html) parts.push(`Email content (text and URLs):\n\n${extractTextAndUrlsFromHtml(html)}`);
   if (plain && plain !== html) parts.push(`\nPlain text:\n\n${plain}`);
   const fullContent = parts.join("\n") || "(empty email)";
 
   if (/verify|confirm|activation/i.test(subject ?? "")) {
     const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-    let urls = [...fullContent.matchAll(hrefRegex)].map((m) => m[1]);
+    let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
     if (urls.length === 0) {
       urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
         u.replace(/[.,;:!?)]+$/, "")
@@ -216,7 +218,7 @@ export async function parseVerificationEmail(
     // Always try URL first when missing — LLM may wrongly return only verificationCode for link-based emails
     if (Boolean(parsed.isVerification) && !verificationUrl) {
       const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-      let urls = [...fullContent.matchAll(hrefRegex)].map((m) => m[1]);
+      let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
       if (urls.length === 0) {
         urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
           u.replace(/[.,;:!?)]+$/, "")
@@ -243,8 +245,7 @@ export async function parseVerificationEmail(
     if (!isVerification && /verify|confirm|activation/i.test(subject ?? "")) {
       if (!verificationUrl) {
         const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-        let urlMatches = [...fullContent.matchAll(hrefRegex)];
-        let urls = urlMatches.map((m) => m[1]);
+        let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
         if (urls.length === 0) {
           urls = fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? [];
           urls = urls.map((u) => u.replace(/[.,;:!?)]+$/, ""));
