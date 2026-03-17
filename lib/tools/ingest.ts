@@ -54,51 +54,58 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
 export async function deduplicateAndStore(
   listings: RawListing[],
 ): Promise<string[]> {
-  const newListingIds: string[] = [];
+  if (listings.length === 0) return [];
 
-  for (const listing of listings) {
-    const { data: existing } = await supabaseAdmin
-      .from("listings")
-      .select("id")
-      .eq("portal_id", listing.portal_id)
-      .single();
+  const portalIds = Array.from(new Set(listings.map((l) => l.portal_id)));
 
-    if (existing) continue;
+  const { data: existing } = await supabaseAdmin
+    .from("listings")
+    .select("portal_id")
+    .in("portal_id", portalIds);
 
-    const { data: inserted, error } = await supabaseAdmin
-      .from("listings")
-      .insert({
-        portal_id: listing.portal_id,
-        url: listing.url,
-        title: listing.title,
-        price: listing.price,
-        address: listing.address,
-        postcode: listing.postcode,
-        bedrooms: listing.bedrooms,
-        bathrooms: listing.bathrooms,
-        sqft: listing.sqft,
-        description: listing.description,
-        image_urls: listing.image_urls,
-        floorplan_url: listing.floorplan_url,
-        agent_name: listing.agent_name,
-        agent_email: listing.agent_email,
-        listed_date: listing.listed_date,
-        status: "pending_evaluation",
-      })
-      .select("id")
-      .single();
+  const existingPortalIds = new Set(
+    (existing ?? []).map((r) => r.portal_id as string),
+  );
 
-    if (error) {
-      console.error("Failed to insert listing:", error);
-      continue;
-    }
+  const seenInBatch = new Set<string>();
+  const toInsert = listings.filter((l) => {
+    if (existingPortalIds.has(l.portal_id) || seenInBatch.has(l.portal_id))
+      return false;
+    seenInBatch.add(l.portal_id);
+    return true;
+  });
+  if (toInsert.length === 0) return [];
 
-    if (inserted) {
-      newListingIds.push(inserted.id);
-    }
+  const rows = toInsert.map((listing) => ({
+    portal_id: listing.portal_id,
+    url: listing.url,
+    title: listing.title,
+    price: listing.price,
+    address: listing.address,
+    postcode: listing.postcode,
+    bedrooms: listing.bedrooms,
+    bathrooms: listing.bathrooms,
+    sqft: listing.sqft,
+    description: listing.description,
+    image_urls: listing.image_urls,
+    floorplan_url: listing.floorplan_url,
+    agent_name: listing.agent_name,
+    agent_email: listing.agent_email,
+    listed_date: listing.listed_date,
+    status: "pending_evaluation",
+  }));
+
+  const { data: inserted, error } = await supabaseAdmin
+    .from("listings")
+    .insert(rows)
+    .select("id");
+
+  if (error) {
+    console.error("Failed to batch insert listings:", error);
+    return [];
   }
 
-  return newListingIds;
+  return (inserted ?? []).map((r) => r.id as string);
 }
 
 export async function parseVerificationEmail(
