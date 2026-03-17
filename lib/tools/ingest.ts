@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
@@ -28,6 +29,24 @@ interface RawListing {
   agent_name: string;
   agent_email: string;
   listed_date: string;
+}
+
+export function computeIdempotencyKey(html: string, subject?: string): string {
+  return createHash("sha256")
+    .update(html + (subject ?? ""))
+    .digest("hex");
+}
+
+export async function claimIdempotencyKey(key: string): Promise<boolean> {
+  const { error } = await supabaseAdmin
+    .from("ingest_idempotency")
+    .insert({ idempotency_key: key });
+
+  if (error) {
+    if (error.code === "23505") return false;
+    throw error;
+  }
+  return true;
 }
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
@@ -167,6 +186,11 @@ export async function ingestAgent(
   html: string,
   subject?: string
 ): Promise<IngestResult> {
+  const key = computeIdempotencyKey(html, subject);
+  if (!(await claimIdempotencyKey(key))) {
+    return { done: true };
+  }
+
   const listings = await parseEmailHtml(html);
 
   if (listings.length === 0) {
