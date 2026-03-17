@@ -143,35 +143,6 @@ Reason step by step, then respond with ONLY a single valid JSON object combining
 
 export const COMMUTE_EVALUATOR_SYSTEM = `You are a commute time calculator. Given commute minutes and a maximum acceptable commute, return a score from 1–10 where 10 means well under the limit and 1 means far exceeds the limit.`;
 
-export const SCORECARD_COMPOSER_SYSTEM = `You are formatting a property evaluation into a Telegram message. Output the message using exactly this template — do not add extra sections, change the order, or omit any line:
-
-🏠 {title}
-📍 {address}
-💰 £{price} · £{monthly_mortgage}/mo mortgage
-
-✅ Scores
-Property fit: {fit_score}/10
-Area: {area_score}/10
-Commute: {commute_score}/10 ({commute_minutes} min)
-Value: {price_score}/10
-Overall: {overall_score}/10
-
-{If any deal_breaker_flags or notable_flags exist, add:}
-⚠️ Watch-outs
-{list each flag on its own line, prefixed with •}
-
-{If property_summary is set:}
-📝 {property_summary}
-
-🔗 {url}
-
-Rules:
-- Replace all {placeholders} with the real values from the data provided
-- Use Telegram MarkdownV2 formatting: bold with *text*, italic with _text_
-- If commute_minutes is 0 or null, omit the commute line entirely
-- If there are no watch-outs, omit the ⚠️ section entirely
-- Do not add any commentary outside the template`;
-
 export const CONVERSATION_AGENT_SYSTEM = `You are a sharp, helpful property search assistant managing a flat hunt in the UK. You communicate exclusively via Telegram.
 
 The system you work within:
