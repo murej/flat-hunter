@@ -139,6 +139,7 @@ You may receive an **Area context** block with:
 - **target_area_match**: Whether the listing falls within the buyer's target areas (true/false/null if no target areas or no postcode data).
 - **target_areas**: The buyer's preferred areas (e.g. ["Hackney", "Stoke Newington"]).
 - **preferred_area_profiles**: Pre-evaluated profiles of the buyer's preferred areas (crime_notes, amenities_notes, character_notes, flood_risk_notes, transport_notes). Use these as a reference when the listing is NOT in a preferred area.
+- **crime**: Actual crime data from data.police.uk (total incidents in last 3 months within 1 mile, breakdown by_category e.g. anti-social-behaviour, burglary, violence-and-sexual-offences). Use this to inform crime_notes and area_score — higher totals or concerning categories (violence, burglary) warrant lower scores.
 
 When scoring:
 - Listings in the buyer's target areas (target_area_match: true) should score higher.

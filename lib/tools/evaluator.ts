@@ -31,12 +31,14 @@ export async function combinedEvaluator(
   const areaContextBlock =
     areaContext.postcode ||
     areaContext.target_area_match !== null ||
-    Object.keys(areaProfiles).length > 0
+    Object.keys(areaProfiles).length > 0 ||
+    areaContext.crime
       ? `\n\nArea context:\n${JSON.stringify(
           {
             postcode: areaContext.postcode,
             target_area_match: areaContext.target_area_match,
             target_areas: areaContext.target_areas,
+            crime: areaContext.crime,
             preferred_area_profiles: areaProfiles,
           },
           null,

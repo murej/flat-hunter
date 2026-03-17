@@ -26,12 +26,21 @@ export interface PostcodeContext {
   bua: string | null;
   ttwa: string | null;
   lsoa: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+export interface CrimeContext {
+  total: number;
+  months_covered: number;
+  by_category: Record<string, number>;
 }
 
 export interface AreaContext {
   postcode: PostcodeContext | null;
   target_area_match: boolean | null;
   target_areas: string[];
+  crime: CrimeContext | null;
 }
 
 async function resolveToFullPostcode(
@@ -70,6 +79,60 @@ function normalizeForMatch(s: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .trim();
+}
+
+const CRIME_API = "https://data.police.uk/api/crimes-street/all-crime";
+
+function getLastMonths(count: number): string[] {
+  const months: string[] = [];
+  const d = new Date();
+  for (let i = 0; i < count; i++) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    months.push(`${y}-${m}`);
+    d.setMonth(d.getMonth() - 1);
+  }
+  return months;
+}
+
+async function fetchCrimeData(
+  lat: number,
+  lng: number,
+): Promise<CrimeContext | null> {
+  const months = getLastMonths(3);
+  const byCategory: Record<string, number> = {};
+  let total = 0;
+
+  const results = await Promise.all(
+    months.map(async (date) => {
+      try {
+        const res = await retryWithBackoff(async () => {
+          const r = await fetch(
+            `${CRIME_API}?lat=${lat}&lng=${lng}&date=${date}`,
+          );
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r;
+        });
+        return (await res.json()) as Array<{ category?: string }>;
+      } catch {
+        return [] as Array<{ category?: string }>;
+      }
+    }),
+  );
+
+  for (const crimes of results) {
+    for (const c of crimes) {
+      const cat = c.category ?? "other";
+      byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+      total++;
+    }
+  }
+
+  return {
+    total,
+    months_covered: results.filter((r) => r.length > 0).length,
+    by_category: byCategory,
+  };
 }
 
 function computeTargetAreaMatch(
@@ -131,10 +194,27 @@ export async function fetchAreaContext(
           bua: r.bua ?? null,
           ttwa: r.ttwa ?? null,
           lsoa: r.lsoa ?? null,
+          latitude: typeof r.latitude === "number" ? r.latitude : null,
+          longitude: typeof r.longitude === "number" ? r.longitude : null,
         };
       }
     } catch {
       // Fall through with null context
+    }
+  }
+
+  let crime: CrimeContext | null = null;
+  if (
+    postcodeContext?.latitude != null &&
+    postcodeContext?.longitude != null
+  ) {
+    try {
+      crime = await fetchCrimeData(
+        postcodeContext.latitude,
+        postcodeContext.longitude,
+      );
+    } catch (e) {
+      console.error("Failed to fetch crime data:", e);
     }
   }
 
@@ -144,6 +224,7 @@ export async function fetchAreaContext(
     postcode: postcodeContext,
     target_area_match,
     target_areas: targetAreas,
+    crime,
   };
 }
 
@@ -204,6 +285,8 @@ export async function evaluateAreaProfile(areaName: string): Promise<AreaProfile
           bua: r.bua ?? null,
           ttwa: r.ttwa ?? null,
           lsoa: r.lsoa ?? null,
+          latitude: typeof r.latitude === "number" ? r.latitude : null,
+          longitude: typeof r.longitude === "number" ? r.longitude : null,
         };
       }
     } catch {
