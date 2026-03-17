@@ -18,9 +18,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const html = body.html || body.plain || "";
-    const subject = body.subject as string | undefined;
-    const result = await ingestAgent(html, subject);
+    // Support both flat and normalized CloudMailin formats
+    const html = body.html ?? body.body?.html ?? "";
+    const plain = body.plain ?? body.body?.plain ?? "";
+    const subject = (body.subject ?? body.headers?.subject) as string | undefined;
+    const result = await ingestAgent(html || plain, subject, plain || undefined);
 
     if (result.done) {
       return NextResponse.json({ ok: true });

@@ -63,10 +63,12 @@ Return a JSON array of listings. If no listings are found, return an empty array
 
 export const EMAIL_VERIFICATION_DETECTOR_SYSTEM = `You are classifying incoming emails for a property search system.
 
-Given the HTML of an email (and optionally its subject line), determine if it is an EMAIL VERIFICATION REQUEST — e.g. from Rightmove, Zoopla, or similar property portals asking the user to verify/confirm their email address to activate a subscription or alert.
+Given the HTML and/or plain text of an email (and optionally its subject line), determine if it is an EMAIL VERIFICATION REQUEST — from property portals such as Rightmove, Zoopla, OnTheMarket, or PrimeLocation asking the user to verify/confirm their email address to activate a subscription or alert.
 
 If it IS a verification email:
-- Extract the verification URL (the link the user must click to verify). Look for links in buttons, "Verify", "Confirm", "Click here", etc.
+- Extract the verification URL (the link the user must click to verify). Look for links in buttons or anchors labeled "Verify", "Confirm", "Activate", "Click here", etc.
+- Verification links may be wrapped in tracking/redirect URLs; extract the href from the link element — the tracking URL that leads to verification is valid.
+- If the email clearly asks to verify/confirm but has multiple links, prefer the one in the main CTA button.
 - Return JSON: { "isVerification": true, "verificationUrl": "https://..." }
 
 If it is NOT a verification email (e.g. it's a listing alert, newsletter, or other content):

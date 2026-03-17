@@ -137,20 +137,21 @@ export async function deduplicateAndStore(
 
 export async function parseVerificationEmail(
   html: string,
-  subject?: string
+  subject?: string,
+  plain?: string
 ): Promise<{ isVerification: boolean; verificationUrl?: string }> {
-  const subjectContext = subject ? `Subject: ${subject}\n\n` : "";
+  const parts: string[] = [];
+  if (subject) parts.push(`Subject: ${subject}\n`);
+  if (html) parts.push(`Email HTML:\n\n${html}`);
+  if (plain && plain !== html) parts.push(`\nPlain text:\n\n${plain}`);
+  const content = parts.join("\n") || "(empty email)";
+
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 512,
       system: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: `${subjectContext}Email HTML:\n\n${html}`,
-        },
-      ],
+      messages: [{ role: "user", content }],
     }),
   );
 
@@ -184,23 +185,32 @@ export type IngestResult =
 
 export async function ingestAgent(
   html: string,
-  subject?: string
+  subject?: string,
+  plain?: string
 ): Promise<IngestResult> {
   const key = computeIdempotencyKey(html, subject);
   if (!(await claimIdempotencyKey(key))) {
     return { done: true };
   }
 
-  const listings = await parseEmailHtml(html);
-
-  if (listings.length === 0) {
-    const verification = await parseVerificationEmail(html, subject);
-    if (verification.isVerification && verification.verificationUrl) {
+  // Check verification first (saves listing-parse call for verification emails)
+  const verification = await parseVerificationEmail(html, subject, plain);
+  if (verification.isVerification) {
+    if (verification.verificationUrl) {
       await sendMessage(
         `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
       );
-      return { done: true };
+    } else {
+      await sendMessage(
+        "📬 This looks like a verification email. Please check your inbox and click the verification link to activate your alerts.",
+      );
     }
+    return { done: true };
+  }
+
+  const listings = await parseEmailHtml(html);
+
+  if (listings.length === 0) {
     await sendMessage(
       "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
     );
