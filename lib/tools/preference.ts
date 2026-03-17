@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { supabaseAdmin, logConversation } from "@/lib/supabase";
+import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
 import { sendMessage } from "@/lib/telegram";
 import { PREFERENCE_COLLECTOR_SYSTEM } from "@/lib/prompts";
 
@@ -57,21 +57,32 @@ export async function collectPreferences(
   if (prefMatch) {
     try {
       const parsed = JSON.parse(prefMatch[1].trim());
-      await supabaseAdmin.from("preferences").upsert({
-        areas: parsed.areas ?? [],
-        max_price: parsed.max_price ?? 0,
-        deposit: parsed.deposit ?? 0,
-        min_bedrooms: parsed.min_bedrooms ?? 1,
-        must_haves: parsed.must_haves ?? [],
-        deal_breakers: parsed.deal_breakers ?? [],
-        commute_anchor: parsed.commute_anchor ?? "",
-        commute_anchor_postcode: parsed.commute_anchor_postcode ?? "",
-        max_commute_minutes: parsed.max_commute_minutes ?? 60,
-        style_notes: parsed.style_notes ?? "",
-        freeform_notes: parsed.freeform_notes ?? "",
-        raw_json: parsed,
+      const existing = await getPreferences();
+
+      const merged = {
+        areas: parsed.areas !== undefined ? parsed.areas : (existing?.areas ?? []),
+        max_price: parsed.max_price !== undefined ? parsed.max_price : (existing?.max_price ?? 0),
+        deposit: parsed.deposit !== undefined ? parsed.deposit : (existing?.deposit ?? 0),
+        min_bedrooms: parsed.min_bedrooms !== undefined ? parsed.min_bedrooms : (existing?.min_bedrooms ?? 1),
+        must_haves: parsed.must_haves !== undefined ? parsed.must_haves : (existing?.must_haves ?? []),
+        deal_breakers: parsed.deal_breakers !== undefined ? parsed.deal_breakers : (existing?.deal_breakers ?? []),
+        commute_anchor: parsed.commute_anchor !== undefined ? parsed.commute_anchor : (existing?.commute_anchor ?? ""),
+        commute_anchor_postcode: parsed.commute_anchor_postcode !== undefined ? parsed.commute_anchor_postcode : (existing?.commute_anchor_postcode ?? ""),
+        max_commute_minutes: parsed.max_commute_minutes !== undefined ? parsed.max_commute_minutes : (existing?.max_commute_minutes ?? 60),
+        style_notes: parsed.style_notes !== undefined ? parsed.style_notes : (existing?.style_notes ?? ""),
+        freeform_notes: parsed.freeform_notes !== undefined ? parsed.freeform_notes : (existing?.freeform_notes ?? ""),
+      };
+
+      const payload: Record<string, unknown> = {
+        ...merged,
+        raw_json: { ...merged, score_weights: parsed.score_weights ?? (existing?.raw_json as Record<string, unknown>)?.score_weights },
         updated_at: new Date().toISOString(),
-      });
+      };
+      if (existing?.id) {
+        payload.id = existing.id;
+      }
+
+      await supabaseAdmin.from("preferences").upsert(payload);
 
       const confirmText =
         assistantText.replace(/<preferences>[\s\S]*?<\/preferences>/, "").trim() +
