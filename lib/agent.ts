@@ -17,8 +17,11 @@ import {
   COMPARISON_SYSTEM,
   VIEWING_EMAIL_SYSTEM,
 } from "@/lib/prompts";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import {
+  runGenericAgent,
+  type ToolResult,
+  type AgentButton,
+} from "./agent-core";
 
 const ANTHROPIC_OUT_OF_CREDITS_MSG =
   "No more credits, feed Claude. I don't know what to say 😢";
@@ -170,7 +173,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-type DirectResult = {
+type InternalDirectResult = {
   type: "direct";
   message: string;
   listingId?: string | null;
@@ -178,22 +181,22 @@ type DirectResult = {
   scorecard?: boolean;
 };
 
-type DataResult = {
+type InternalDataResult = {
   type: "data";
   data: string;
   toolName: string;
 };
 
-type ToolResult = DirectResult | DataResult;
+type InternalToolResult = InternalDirectResult | InternalDataResult;
 
-async function executeTool(
+async function executeToolInternal(
   toolName: string,
   toolInput: Record<string, string>,
   activeListingId: string | null,
   preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>,
   userMessage: string,
   messageId: string
-): Promise<ToolResult> {
+): Promise<InternalToolResult> {
   const listingId = toolInput.listing_id ?? activeListingId;
 
   switch (toolName) {
@@ -269,7 +272,7 @@ async function executeTool(
             l: { title: string; price: number; address: string; url: string },
             i: number
           ) =>
-            `${i + 1}. *${l.title}*\n   £${l.price?.toLocaleString()} · ${l.address}\n   ${l.url}`
+            `${i + 1}. *${l.title}*\n   £${l.price?.toLocaleString()} · ${l.address}\n   [🔗 View listing](${l.url})`
         )
         .join("\n\n");
       return {
@@ -436,10 +439,10 @@ async function executeTool(
       } catch (e) {
         const err = e as Error;
         if (err.message.includes("No agent email")) {
+          const listing = await getListing(listingId);
           return {
             type: "direct",
-            message:
-              "⚠️ I don't have the agent's email address for this property. You'll need to contact them directly via the listing URL.",
+            message: `⚠️ I don't have the agent's email address for this property. Contact them directly: [🔗 View listing](${listing.url})`,
             listingId,
             intent: "view",
           };
@@ -459,17 +462,60 @@ async function executeTool(
   }
 }
 
-const SECOND_PASS_SYSTEM: Record<string, string> = {
-  get_property_evaluation: WHY_EXPLANATION_SYSTEM,
-  get_comparison_data: COMPARISON_SYSTEM,
-  get_listing_for_viewing: VIEWING_EMAIL_SYSTEM,
+const EXPLANATION_AGENTS: Record<
+  string,
+  { systemPrompt: string; intent: string }
+> = {
+  get_property_evaluation: {
+    systemPrompt: WHY_EXPLANATION_SYSTEM,
+    intent: "why",
+  },
+  get_comparison_data: { systemPrompt: COMPARISON_SYSTEM, intent: "compare" },
+  get_listing_for_viewing: {
+    systemPrompt: VIEWING_EMAIL_SYSTEM,
+    intent: "view",
+  },
 };
 
-const SECOND_PASS_INTENT: Record<string, string> = {
-  get_property_evaluation: "why",
-  get_comparison_data: "compare",
-  get_listing_for_viewing: "view",
-};
+function createExecuteTool(
+  activeListingId: string | null,
+  preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>,
+  userMessage: string,
+  messageId: string
+): (name: string, input: Record<string, unknown>) => Promise<ToolResult> {
+  return async (
+    name: string,
+    input: Record<string, unknown>
+  ): Promise<ToolResult> => {
+    const toolInput = input as Record<string, string>;
+    const result = await executeToolInternal(
+      name,
+      toolInput,
+      activeListingId,
+      preferences,
+      userMessage,
+      messageId
+    );
+    if (result.type === "direct") {
+      const buttons: AgentButton[] | undefined =
+        result.scorecard && result.listingId
+          ? [
+              { text: "👁 View", callback_data: `view:${result.listingId}` },
+              { text: "💾 Save", callback_data: `save:${result.listingId}` },
+              { text: "⏭ Skip", callback_data: `skip:${result.listingId}` },
+              { text: "❓ Why?", callback_data: `why:${result.listingId}` },
+            ]
+          : undefined;
+      return {
+        type: "direct",
+        message: result.message,
+        metadata: { listingId: result.listingId, intent: result.intent },
+        buttons,
+      };
+    }
+    return result;
+  };
+}
 
 export async function conversationAgent(
   text: string,
@@ -498,110 +544,58 @@ export async function conversationAgent(
       ? `${CONVERSATION_AGENT_SYSTEM}\n\n[Active listing ID: ${activeListingId}]`
       : CONVERSATION_AGENT_SYSTEM;
 
-    const messages: Anthropic.MessageParam[] = [
-      ...history,
-      { role: "user", content: text },
-    ];
+    const messages: Anthropic.MessageParam[] = history;
 
-    // Single LLM call — Claude either responds directly or invokes a tool
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      system: systemPrompt,
+    let result = await runGenericAgent({
+      prompt: text,
+      systemPrompt,
       tools: TOOLS,
       messages,
+      executeTool: createExecuteTool(
+        activeListingId,
+        preferences,
+        text,
+        messageId
+      ),
     });
 
-    const toolBlock = response.content.find(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-    );
-    const textBlock = response.content.find(
-      (b): b is Anthropic.TextBlock => b.type === "text"
-    );
+    let dataToolName: string | undefined;
 
-    // No tool called — Claude responded directly (general conversation)
-    if (!toolBlock) {
-      const reply = textBlock?.text ?? "";
-      await logConversation({
-        direction: "outbound",
-        message: reply,
-        listing_id: activeListingId,
-        intent: "other",
+    // Tool returned data — run explanation agent
+    if ("type" in result && result.type === "data") {
+      dataToolName = result.toolName;
+      const explanationAgent = EXPLANATION_AGENTS[dataToolName];
+      result = await runGenericAgent({
+        prompt: result.data,
+        systemPrompt:
+          explanationAgent?.systemPrompt ?? CONVERSATION_AGENT_SYSTEM,
       });
-      await sendMessage(reply);
-      return;
     }
 
-    // Tool called — execute it
-    const toolInput = toolBlock.input as Record<string, string>;
-    const result = await executeTool(
-      toolBlock.name,
-      toolInput,
-      activeListingId,
-      preferences,
-      text,
-      messageId
-    );
+    const message = "message" in result ? result.message : "";
+    const buttons = "buttons" in result ? result.buttons : undefined;
+    const metadata = "metadata" in result ? result.metadata : undefined;
 
-    if (result.type === "direct") {
-      // Action complete — send the pre-formed message without a second LLM call
-      if (result.message) {
-        await logConversation({
-          direction: "outbound",
-          message: result.message,
-          listing_id: result.listingId ?? activeListingId,
-          intent: result.intent ?? null,
-        });
-        if (result.scorecard && result.listingId) {
-          await sendWithButtons(result.message, [
-            { text: "👁 View", callback_data: `view:${result.listingId}` },
-            { text: "💾 Save", callback_data: `save:${result.listingId}` },
-            { text: "⏭ Skip", callback_data: `skip:${result.listingId}` },
-            { text: "❓ Why?", callback_data: `why:${result.listingId}` },
-          ]);
-        } else {
-          await sendMessage(result.message);
-        }
-      }
-      return;
-    }
-
-    // Tool returned data — second LLM call to formulate the response
-    const secondPassMessages: Anthropic.MessageParam[] = [
-      ...messages,
-      { role: "assistant", content: response.content },
-      {
-        role: "user",
-        content: [
-          {
-            type: "tool_result" as const,
-            tool_use_id: toolBlock.id,
-            content: result.data,
-          },
-        ],
-      },
-    ];
-
-    const finalResponse = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      system: SECOND_PASS_SYSTEM[result.toolName] ?? CONVERSATION_AGENT_SYSTEM,
-      messages: secondPassMessages,
-    });
-
-    const finalText =
-      finalResponse.content[0]?.type === "text"
-        ? finalResponse.content[0].text
-        : "";
+    const listingId = metadata?.listingId ?? activeListingId;
+    const intent =
+      metadata?.intent ??
+      (dataToolName ? EXPLANATION_AGENTS[dataToolName]?.intent : null) ??
+      "other";
 
     await logConversation({
       direction: "outbound",
-      message: finalText,
-      listing_id: activeListingId,
-      intent: SECOND_PASS_INTENT[result.toolName] ?? "other",
+      message,
+      listing_id: listingId,
+      intent,
     });
 
-    await sendMessage(finalText);
+    if (message) {
+      if (buttons && buttons.length > 0) {
+        await sendWithButtons(message, buttons);
+      } else {
+        await sendMessage(message);
+      }
+    }
   } catch (e) {
     if (isAnthropicOutOfCredits(e)) {
       await sendMessage(ANTHROPIC_OUT_OF_CREDITS_MSG);
