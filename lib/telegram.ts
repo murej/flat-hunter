@@ -8,15 +8,20 @@ export async function sendMessage(
   text: string,
   options: Record<string, unknown> = {}
 ): Promise<void> {
+  const { parse_mode, ...rest } = options;
+  const payload: Record<string, unknown> = {
+    chat_id: CHAT_ID,
+    text,
+    ...rest,
+  };
+  if (parse_mode !== null && parse_mode !== false) {
+    payload.parse_mode = parse_mode ?? "Markdown";
+  }
+
   const res = await fetch(`${BASE_URL}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: CHAT_ID,
-      text,
-      parse_mode: "Markdown",
-      ...options,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {

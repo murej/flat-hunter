@@ -68,9 +68,9 @@ Given the HTML and/or plain text of an email (and optionally its subject line), 
 Verification can be URL-based (click a link) OR code-based (enter a code on a page). Both count as verification emails.
 
 If it IS a verification email:
-- URL-based: Extract the verification link from href attributes. Return { "isVerification": true, "verificationUrl": "https://..." }
-- Code-based: Extract the verification code (e.g. 6-digit number the user must enter). Return { "isVerification": true, "verificationCode": "XXXXXX" }
-- Include verificationUrl OR verificationCode (or both if both exist). At least one must be present when isVerification is true.
+- If the email has a "Click here" / "Verify" / "Confirm" link: extract the href and return { "isVerification": true, "verificationUrl": "https://..." }. Prefer the link over a code.
+- If the email has NO such link and only asks the user to enter a code: return { "isVerification": true, "verificationCode": "XXXXXX" }
+- When both exist, include verificationUrl (the link is the primary action).
 
 If it is NOT a verification email (e.g. it's a listing alert, newsletter, or other content):
 - Return { "isVerification": false }

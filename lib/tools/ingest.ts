@@ -148,7 +148,39 @@ export async function parseVerificationEmail(
   if (subject) parts.push(`Subject: ${subject}\n`);
   if (html) parts.push(`Email HTML:\n\n${html}`);
   if (plain && plain !== html) parts.push(`\nPlain text:\n\n${plain}`);
-  const content = parts.join("\n") || "(empty email)";
+  const fullContent = parts.join("\n") || "(empty email)";
+
+  if (/verify|confirm|activation/i.test(subject ?? "")) {
+    const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+    let urls = [...fullContent.matchAll(hrefRegex)].map((m) => m[1]);
+    if (urls.length === 0) {
+      urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
+        u.replace(/[.,;:!?)]+$/, "")
+      );
+    }
+    const verificationUrl =
+      urls.length > 0
+        ? urls.find((u) =>
+            /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
+              u
+            )
+          ) ?? urls[0]
+        : undefined;
+    const codeMatch = fullContent.match(/\b(\d{6})\b/);
+    const verificationCode = codeMatch?.[1];
+    if (verificationUrl || verificationCode) {
+      return {
+        isVerification: true,
+        verificationUrl,
+        verificationCode: verificationUrl ? undefined : verificationCode,
+      };
+    }
+  }
+
+  const content =
+    fullContent.length > 8000
+      ? fullContent.slice(0, 8000) + "\n\n[... truncated for token limit ...]"
+      : fullContent;
 
   const response = await retryWithBackoff(() =>
     client.messages.create({
@@ -180,11 +212,16 @@ export async function parseVerificationEmail(
         ? parsed.verificationCode
         : undefined;
 
-    // Fallback: extract URL or code from content when LLM detects verification but didn't extract
-    if (Boolean(parsed.isVerification) && !verificationUrl && !verificationCode) {
+    // Fallback: extract URL or code from content when LLM detects verification but didn't extract both
+    // Always try URL first when missing — LLM may wrongly return only verificationCode for link-based emails
+    if (Boolean(parsed.isVerification) && !verificationUrl) {
       const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-      const urlMatches = [...content.matchAll(hrefRegex)];
-      const urls = urlMatches.map((m) => m[1]);
+      let urls = [...fullContent.matchAll(hrefRegex)].map((m) => m[1]);
+      if (urls.length === 0) {
+        urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
+          u.replace(/[.,;:!?)]+$/, "")
+        );
+      }
       if (urls.length > 0) {
         verificationUrl =
           urls.find(
@@ -194,24 +231,41 @@ export async function parseVerificationEmail(
               )
           ) ?? urls[0];
       }
-      if (!verificationUrl) {
-        const codeMatch = content.match(/\b(\d{6})\b/);
+      if (!verificationUrl && !verificationCode) {
+        const codeMatch = fullContent.match(/\b(\d{6})\b/);
         if (codeMatch) verificationCode = codeMatch[1];
       }
     }
 
     let isVerification = Boolean(parsed.isVerification);
 
-    // Fallback: LLM may return false for code-based verification. If subject/content strongly suggest verification + we found a code, treat as verification.
-    if (
-      !isVerification &&
-      (verificationCode || /verify|confirm|activation/i.test(subject ?? "")) &&
-      content.match(/\b\d{6}\b/)
-    ) {
-      const codeMatch = content.match(/\b(\d{6})\b/);
-      if (codeMatch) {
-        isVerification = true;
-        verificationCode = verificationCode ?? codeMatch[1];
+    // Fallback: LLM may return false for verification emails. When subject suggests verification, try URL extraction first, then code.
+    if (!isVerification && /verify|confirm|activation/i.test(subject ?? "")) {
+      if (!verificationUrl) {
+        const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+        let urlMatches = [...fullContent.matchAll(hrefRegex)];
+        let urls = urlMatches.map((m) => m[1]);
+        if (urls.length === 0) {
+          urls = fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? [];
+          urls = urls.map((u) => u.replace(/[.,;:!?)]+$/, ""));
+        }
+        if (urls.length > 0) {
+          verificationUrl =
+            urls.find(
+              (u) =>
+                /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
+                  u
+                )
+            ) ?? urls[0];
+          isVerification = true;
+        }
+      }
+      if (!isVerification && fullContent.match(/\b\d{6}\b/)) {
+        const codeMatch = fullContent.match(/\b(\d{6})\b/);
+        if (codeMatch) {
+          isVerification = true;
+          verificationCode = verificationCode ?? codeMatch[1];
+        }
       }
     }
 
@@ -246,6 +300,7 @@ export async function ingestAgent(
     if (verification.verificationUrl) {
       await sendMessage(
         `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
+        { parse_mode: false }
       );
     } else if (verification.verificationCode) {
       await sendMessage(
