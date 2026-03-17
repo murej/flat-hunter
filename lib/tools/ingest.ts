@@ -3,7 +3,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
 import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
-import { EMAIL_PARSER_SYSTEM, EMAIL_VERIFICATION_DETECTOR_SYSTEM } from "@/lib/prompts";
+import {
+  EMAIL_PARSER_SYSTEM,
+  EMAIL_VERIFICATION_DETECTOR_SYSTEM,
+} from "@/lib/prompts";
 import {
   runEvaluationPipeline,
   type EvaluationPipelineResult,
@@ -52,6 +55,27 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   const content = extractTextAndUrlsFromHtml(html);
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "5b8663",
+    },
+    body: JSON.stringify({
+      sessionId: "5b8663",
+      location: "ingest.ts:parseEmailHtml-input",
+      message: "Content passed to Claude",
+      data: {
+        contentLen: content?.length,
+        contentSample: content?.slice(0, 400),
+        hasZooplaInContent: /\bzoopla\b/i.test(content ?? ""),
+      },
+      hypothesisId: "H3",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
@@ -70,6 +94,27 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
     response.content[0].type === "text" ? response.content[0].text : "[]";
 
   const jsonMatch = text.match(/\[[\s\S]*\]/);
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "5b8663",
+    },
+    body: JSON.stringify({
+      sessionId: "5b8663",
+      location: "ingest.ts:parseEmailHtml-output",
+      message: "Claude parse result",
+      data: {
+        hasJsonMatch: !!jsonMatch,
+        textLen: text?.length,
+        textSample: text?.slice(0, 500),
+      },
+      hypothesisId: "H4",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   if (!jsonMatch) return [];
 
   try {
@@ -140,7 +185,7 @@ export async function deduplicateAndStore(
 export async function parseVerificationEmail(
   html: string,
   subject?: string,
-  plain?: string
+  plain?: string,
 ): Promise<{
   isVerification: boolean;
   verificationUrl?: string;
@@ -148,7 +193,10 @@ export async function parseVerificationEmail(
 }> {
   const parts: string[] = [];
   if (subject) parts.push(`Subject: ${subject}\n`);
-  if (html) parts.push(`Email content (text and URLs):\n\n${extractTextAndUrlsFromHtml(html)}`);
+  if (html)
+    parts.push(
+      `Email content (text and URLs):\n\n${extractTextAndUrlsFromHtml(html)}`,
+    );
   if (plain && plain !== html) parts.push(`\nPlain text:\n\n${plain}`);
   const fullContent = parts.join("\n") || "(empty email)";
 
@@ -157,20 +205,45 @@ export async function parseVerificationEmail(
     let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
     if (urls.length === 0) {
       urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
-        u.replace(/[.,;:!?)]+$/, "")
+        u.replace(/[.,;:!?)]+$/, ""),
       );
     }
     const verificationUrl =
       urls.length > 0
-        ? urls.find((u) =>
+        ? (urls.find((u) =>
             /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
-              u
-            )
-          ) ?? urls[0]
+              u,
+            ),
+          ) ?? urls[0])
         : undefined;
     const codeMatch = fullContent.match(/\b(\d{6})\b/);
     const verificationCode = codeMatch?.[1];
     if (verificationUrl || verificationCode) {
+      // #region agent log
+      fetch(
+        "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "5b8663",
+          },
+          body: JSON.stringify({
+            sessionId: "5b8663",
+            location: "ingest.ts:parseVerificationEmail-subject-fast-path",
+            message: "Verification: subject-based fast path",
+            data: {
+              subject: subject?.slice(0, 60),
+              verificationUrl: verificationUrl?.slice(0, 80),
+              hasVerificationCode: !!verificationCode,
+              urlsCount: urls.length,
+            },
+            hypothesisId: "H2",
+            timestamp: Date.now(),
+          }),
+        },
+      ).catch(() => {});
+      // #endregion
       return {
         isVerification: true,
         verificationUrl,
@@ -221,16 +294,15 @@ export async function parseVerificationEmail(
       let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
       if (urls.length === 0) {
         urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
-          u.replace(/[.,;:!?)]+$/, "")
+          u.replace(/[.,;:!?)]+$/, ""),
         );
       }
       if (urls.length > 0) {
         verificationUrl =
-          urls.find(
-            (u) =>
-              /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
-                u
-              )
+          urls.find((u) =>
+            /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
+              u,
+            ),
           ) ?? urls[0];
       }
       if (!verificationUrl && !verificationCode) {
@@ -252,11 +324,10 @@ export async function parseVerificationEmail(
         }
         if (urls.length > 0) {
           verificationUrl =
-            urls.find(
-              (u) =>
-                /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
-                  u
-                )
+            urls.find((u) =>
+              /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
+                u,
+              ),
             ) ?? urls[0];
           isVerification = true;
         }
@@ -281,27 +352,67 @@ export async function parseVerificationEmail(
   }
 }
 
-export type IngestResult =
-  | { done: true }
-  | { done: false; newIds: string[] };
+export type IngestResult = { done: true } | { done: false; newIds: string[] };
 
 export async function ingestAgent(
   html: string,
   subject?: string,
-  plain?: string
+  plain?: string,
 ): Promise<IngestResult> {
   const key = computeIdempotencyKey(html, subject);
-  if (!(await claimIdempotencyKey(key))) {
+  const claimed = await claimIdempotencyKey(key);
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "5b8663",
+    },
+    body: JSON.stringify({
+      sessionId: "5b8663",
+      location: "ingest.ts:ingestAgent-idempotency",
+      message: "Idempotency check",
+      data: {
+        claimed,
+        htmlLen: html?.length,
+        subjectSample: subject?.slice(0, 60),
+      },
+      hypothesisId: "H5",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+  if (!claimed) {
     return { done: true };
   }
 
   // Check verification first (saves listing-parse call for verification emails)
   const verification = await parseVerificationEmail(html, subject, plain);
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "5b8663",
+    },
+    body: JSON.stringify({
+      sessionId: "5b8663",
+      location: "ingest.ts:ingestAgent-verification",
+      message: "Verification check",
+      data: {
+        isVerification: verification.isVerification,
+        hasZooplaInSubject: /\bzoopla\b/i.test(subject ?? ""),
+      },
+      hypothesisId: "H2",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   if (verification.isVerification) {
     if (verification.verificationUrl) {
       await sendMessage(
         `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
-        { parse_mode: false }
+        { parse_mode: false },
       );
     } else if (verification.verificationCode) {
       await sendMessage(
@@ -317,6 +428,27 @@ export async function ingestAgent(
 
   const listings = await parseEmailHtml(html);
 
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "5b8663",
+    },
+    body: JSON.stringify({
+      sessionId: "5b8663",
+      location: "ingest.ts:ingestAgent-listings",
+      message: "parseEmailHtml result",
+      data: {
+        listingsCount: listings.length,
+        firstListingTitle: listings[0]?.title?.slice(0, 60),
+      },
+      hypothesisId: "H4",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   if (listings.length === 0) {
     await sendMessage(
       "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
@@ -325,6 +457,24 @@ export async function ingestAgent(
   }
 
   const newIds = await deduplicateAndStore(listings);
+
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "5b8663",
+    },
+    body: JSON.stringify({
+      sessionId: "5b8663",
+      location: "ingest.ts:ingestAgent-dedup",
+      message: "Deduplication result",
+      data: { listingsCount: listings.length, newIdsCount: newIds.length },
+      hypothesisId: "H5",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   if (newIds.length === 0) {
     await sendMessage(
@@ -336,9 +486,24 @@ export async function ingestAgent(
   return { done: false, newIds };
 }
 
-export async function runEvaluationsAndNotify(
-  newIds: string[]
-): Promise<void> {
+export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "bd5a5d",
+    },
+    body: JSON.stringify({
+      sessionId: "bd5a5d",
+      location: "ingest.ts:runEvaluationsAndNotify-entry",
+      message: "runEvaluationsAndNotify called",
+      data: { newIdsCount: newIds.length, newIds: newIds.slice(0, 3) },
+      hypothesisId: "H_ingest",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   const preferences = await getPreferences();
 
   if (!preferences) {
@@ -364,6 +529,35 @@ export async function runEvaluationsAndNotify(
   const results = evalResults.filter(
     (r): r is EvaluationPipelineResult => r !== null && typeof r === "object",
   );
+
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "bd5a5d",
+    },
+    body: JSON.stringify({
+      sessionId: "bd5a5d",
+      location: "ingest.ts:runEvaluationsAndNotify-afterEval",
+      message: "Evaluation results",
+      data: {
+        newIdsCount: newIds.length,
+        resultsCount: results.length,
+        evalFailedCount: evalResults.filter((r) => r === null).length,
+        toSendCount: results.filter((r) => r.sent).length,
+        scores: results.map((r) => ({
+          title: r.listing.title?.slice(0, 30),
+          overall_score: r.overall_score,
+          sent: r.sent,
+          shouldSendNoScore: r.shouldSendNoScore,
+        })),
+      },
+      hypothesisId: "H_ingest",
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   const toSend = results
     .filter((r) => r.sent)
@@ -398,7 +592,10 @@ export async function runEvaluationsAndNotify(
   const rejectedDetails =
     rejected.length > 0
       ? rejected
-          .map((r) => `${r.listing.title} (${r.overall_score}/10)`)
+          .map(
+            (r) =>
+              `[${r.listing.title}](${r.listing.url}) (${r.overall_score}/10)`,
+          )
           .join(", ")
       : "";
 
@@ -406,5 +603,6 @@ export async function runEvaluationsAndNotify(
     suppressedCount > 0
       ? `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 7/10 or below: ${rejectedDetails}.`
       : `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}.`,
+    suppressedCount > 0 ? { link_preview_options: { is_disabled: true } } : {},
   );
 }
