@@ -97,6 +97,7 @@ export interface Conversation {
 export interface TelegramMessage {
   text: string;
   messageId: string;
+  callbackQueryId?: string;
 }
 
 export interface PropertyEvalResult {

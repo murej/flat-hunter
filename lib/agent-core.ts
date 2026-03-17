@@ -13,7 +13,7 @@ export type AgentButton = {
 export type DirectToolResult = {
   type: "direct";
   message: string;
-  buttons?: AgentButton[];
+  buttons?: AgentButton[][];
   metadata?: AgentMetadata;
 };
 
@@ -38,7 +38,7 @@ export type GenericAgentInput = {
 
 export type MessageOutput = {
   message: string;
-  buttons?: AgentButton[];
+  buttons?: AgentButton[][];
   metadata?: AgentMetadata;
 };
 

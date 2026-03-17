@@ -1,4 +1,5 @@
 import { TelegramMessage } from "@/types";
+import type { AgentButton } from "@/lib/agent-core";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID!;
@@ -32,11 +33,11 @@ export async function sendMessage(
 
 export async function sendWithButtons(
   text: string,
-  buttons: Array<{ text: string; callback_data: string }>
+  buttons: AgentButton[][]
 ): Promise<void> {
   await sendMessage(text, {
     reply_markup: {
-      inline_keyboard: [buttons],
+      inline_keyboard: buttons,
     },
   });
 }
@@ -50,6 +51,9 @@ export function parseInbound(
 
   if (!message) return null;
 
+  const callbackQuery = body.callback_query as Record<string, unknown> | undefined;
+  const callbackQueryId = callbackQuery?.id as string | undefined;
+
   const text =
     (message.text as string | undefined) ||
     (message.data as string | undefined) ||
@@ -61,5 +65,20 @@ export function parseInbound(
       ""
   );
 
-  return { text, messageId };
+  return { text, messageId, callbackQueryId };
+}
+
+export async function answerCallbackQuery(
+  callbackQueryId: string
+): Promise<void> {
+  const res = await fetch(`${BASE_URL}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ callback_query_id: callbackQueryId }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Telegram answerCallbackQuery failed: ${body}`);
+  }
 }

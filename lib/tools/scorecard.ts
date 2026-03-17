@@ -59,10 +59,12 @@ export async function composeScorecard(
   });
 
   await sendWithButtons(scorecardText, [
-    { text: "👁 View", callback_data: `view:${listing.id}` },
-    { text: "💾 Save", callback_data: `save:${listing.id}` },
-    { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
-    { text: "❓ Why?", callback_data: `why:${listing.id}` },
+    [
+      { text: "👁 View", callback_data: `view:${listing.id}` },
+      { text: "💾 Save", callback_data: `save:${listing.id}` },
+      { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
+      { text: "❓ Why?", callback_data: `why:${listing.id}` },
+    ],
   ]);
   await updateListingStatus(listing.id, "evaluated");
 }
@@ -92,10 +94,12 @@ No score
   });
 
   await sendWithButtons(scorecardText, [
-    { text: "👁 View", callback_data: `view:${listing.id}` },
-    { text: "💾 Save", callback_data: `save:${listing.id}` },
-    { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
-    { text: "❓ Why?", callback_data: `why:${listing.id}` },
+    [
+      { text: "👁 View", callback_data: `view:${listing.id}` },
+      { text: "💾 Save", callback_data: `save:${listing.id}` },
+      { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
+      { text: "❓ Why?", callback_data: `why:${listing.id}` },
+    ],
   ]);
   await updateListingStatus(listing.id, "evaluated");
 }

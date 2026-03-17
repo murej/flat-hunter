@@ -179,6 +179,8 @@ type InternalDirectResult = {
   listingId?: string | null;
   intent?: string | null;
   scorecard?: boolean;
+  saved?: boolean;
+  savedListings?: Array<{ id: string }>;
 };
 
 type InternalDataResult = {
@@ -234,13 +236,23 @@ async function executeToolInternal(
             "Which property would you like to see? Tap a scorecard button or mention the property.",
         };
       }
-      const { data: evaluation } = await supabaseAdmin
-        .from("evaluations")
-        .select("scorecard_text")
-        .eq("listing_id", listingId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
+      const [
+        { data: evaluation },
+        { data: listing },
+      ] = await Promise.all([
+        supabaseAdmin
+          .from("evaluations")
+          .select("scorecard_text")
+          .eq("listing_id", listingId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single(),
+        supabaseAdmin
+          .from("listings")
+          .select("status")
+          .eq("id", listingId)
+          .single(),
+      ]);
       if (!evaluation?.scorecard_text) {
         return {
           type: "direct",
@@ -254,6 +266,7 @@ async function executeToolInternal(
         listingId,
         intent: "other",
         scorecard: true,
+        saved: listing?.status === "saved",
       };
     }
 
@@ -279,6 +292,7 @@ async function executeToolInternal(
         type: "direct",
         message: `⭐️ *Your saved properties:*\n\n${list}`,
         intent: "other",
+        savedListings: listings.map((l: { id: string }) => ({ id: l.id })),
       };
     }
 
@@ -497,15 +511,23 @@ function createExecuteTool(
       messageId
     );
     if (result.type === "direct") {
-      const buttons: AgentButton[] | undefined =
-        result.scorecard && result.listingId
-          ? [
-              { text: "👁 View", callback_data: `view:${result.listingId}` },
-              { text: "💾 Save", callback_data: `save:${result.listingId}` },
-              { text: "⏭ Skip", callback_data: `skip:${result.listingId}` },
-              { text: "❓ Why?", callback_data: `why:${result.listingId}` },
-            ]
-          : undefined;
+      let buttons: AgentButton[][] | undefined;
+      if (result.scorecard && result.listingId) {
+        const saveButton = result.saved
+          ? { text: "🗑 Unsave", callback_data: `unsave:${result.listingId}` }
+          : { text: "💾 Save", callback_data: `save:${result.listingId}` };
+        const scorecardButtons = [
+          { text: "👁 View", callback_data: `view:${result.listingId}` },
+          saveButton,
+          ...(result.saved ? [] : [{ text: "⏭ Skip", callback_data: `skip:${result.listingId}` }]),
+          { text: "❓ Why?", callback_data: `why:${result.listingId}` },
+        ];
+        buttons = [scorecardButtons];
+      } else if (result.savedListings && result.savedListings.length > 0) {
+        buttons = result.savedListings.map((l, i) => [
+          { text: `📋 ${i + 1}`, callback_data: `scorecard:${l.id}` },
+        ]);
+      }
       return {
         type: "direct",
         message: result.message,
@@ -533,6 +555,25 @@ export async function conversationAgent(
     const preferences = await getPreferences();
     if (!preferences) {
       await collectPreferences(text, messageId);
+      return;
+    }
+
+    // Direct path for "show saved properties" — guarantees Remove buttons
+    if (isShowSavedIntent(text)) {
+      const executeTool = createExecuteTool(null, preferences, text, messageId);
+      const result = await executeTool("show_saved_properties", {});
+      if (result.type === "direct") {
+        await logConversation({
+          direction: "outbound",
+          message: result.message,
+          intent: "other",
+        });
+        if (result.buttons && result.buttons.length > 0) {
+          await sendWithButtons(result.message, result.buttons);
+        } else {
+          await sendMessage(result.message);
+        }
+      }
       return;
     }
 
@@ -611,6 +652,18 @@ function extractListingId(text: string): string | null {
     /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
   );
   return match ? match[0] : null;
+}
+
+function isShowSavedIntent(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  const patterns = [
+    /saved\s*(properties|list|ones?)?/,
+    /(show|see|list|view)\s*(my\s*)?saved/,
+    /(my\s*)?shortlist/,
+    /what\s*(have|did)\s*i\s*save/,
+    /saved\s*properties/,
+  ];
+  return patterns.some((p) => p.test(normalized));
 }
 
 export { conversationAgent as default };
