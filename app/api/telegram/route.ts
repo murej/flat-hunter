@@ -150,6 +150,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Telegram webhook error:", error);
+    try {
+      await sendMessage("Something went wrong. Please try again.");
+    } catch (_) {}
     return NextResponse.json({ ok: true });
   }
 }

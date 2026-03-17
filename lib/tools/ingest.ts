@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import pLimit from "p-limit";
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
@@ -16,6 +17,9 @@ import { sleep } from "@/lib/utils/retry";
 import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+const MAX_LISTINGS_PER_EMAIL = 100;
+const MAX_EMAIL_CONTENT_BYTES = 50 * 1024; // 50KB
 
 interface RawListing {
   portal_id: string;
@@ -54,7 +58,15 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
 }
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
-  const content = extractTextAndUrlsFromHtml(html);
+  let content = extractTextAndUrlsFromHtml(html);
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(content);
+  if (bytes.length > MAX_EMAIL_CONTENT_BYTES) {
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    content =
+      decoder.decode(bytes.subarray(0, MAX_EMAIL_CONTENT_BYTES)) +
+      "\n\n[... truncated for token limit ...]";
+  }
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
@@ -349,16 +361,28 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     return;
   }
 
-  await sendMessage(
-    "I have new listings, will get back to you if there's anything worth checking out.",
-  );
+  const idsToProcess = newIds.slice(0, MAX_LISTINGS_PER_EMAIL);
+  const truncated = newIds.length > MAX_LISTINGS_PER_EMAIL;
 
+  if (truncated) {
+    await sendMessage(
+      `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`,
+    );
+  } else {
+    await sendMessage(
+      "I have new listings, will get back to you if there's anything worth checking out.",
+    );
+  }
+
+  const limit = pLimit(5);
   const evalResults = await Promise.all(
-    newIds.map((id) =>
-      runEvaluationPipeline(id, { sendImmediately: false }).catch((e) => {
-        console.error(`Evaluation failed for ${id}:`, e);
-        return null;
-      }),
+    idsToProcess.map((id) =>
+      limit(() =>
+        runEvaluationPipeline(id, { sendImmediately: false }).catch((e) => {
+          console.error(`Evaluation failed for ${id}:`, e);
+          return null;
+        }),
+      ),
     ),
   );
 
@@ -406,10 +430,11 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
           .join(", ")
       : "";
 
+  const processedCount = idsToProcess.length;
   await sendMessage(
     suppressedCount > 0
-      ? `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 7/10 or below: ${rejectedDetails}.`
-      : `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}.`,
+      ? `📬 Email alert processed: *${processedCount}* new ${processedCount === 1 ? "property" : "properties"}${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 7/10 or below: ${rejectedDetails}.`
+      : `📬 Email alert processed: *${processedCount}* new ${processedCount === 1 ? "property" : "properties"}${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}.`,
     suppressedCount > 0 ? { link_preview_options: { is_disabled: true } } : {},
   );
 }

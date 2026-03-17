@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:tunnel": "bash scripts/dev-tunnel.sh",
+    "set-commands": "tsx scripts/set-telegram-commands.ts",
     "use:prod": "bash scripts/use-prod.sh",
     "build": "next build",
     "start": "npm run use:prod && next start",
@@ -18,6 +19,7 @@
     "ai": "^3",
     "html-to-text": "^9.0.5",
     "next": "14.2.29",
+    "p-limit": "^4.0.0",
     "react": "^18",
     "react-dom": "^18",
     "resend": "^3"
@@ -32,6 +34,7 @@
     "eslint-config-next": "14.2.29",
     "postcss": "^8",
     "tailwindcss": "^3",
+    "tsx": "^4",
     "typescript": "^5",
     "vercel": "^50"
   }
