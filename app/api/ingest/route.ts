@@ -1,5 +1,8 @@
+import { waitUntil } from "@vercel/functions";
 import { NextRequest, NextResponse } from "next/server";
-import { ingestAgent } from "@/lib/tools/ingest";
+import { ingestAgent, runEvaluationsAndNotify } from "@/lib/tools/ingest";
+
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,8 +20,13 @@ export async function POST(req: NextRequest) {
 
     const html = body.html || body.plain || "";
     const subject = body.subject as string | undefined;
-    await ingestAgent(html, subject);
+    const result = await ingestAgent(html, subject);
 
+    if (result.done) {
+      return NextResponse.json({ ok: true });
+    }
+
+    waitUntil(runEvaluationsAndNotify(result.newIds));
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Ingest webhook error:", error);

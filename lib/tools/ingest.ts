@@ -142,10 +142,14 @@ export async function parseVerificationEmail(
   }
 }
 
+export type IngestResult =
+  | { done: true }
+  | { done: false; newIds: string[] };
+
 export async function ingestAgent(
   html: string,
   subject?: string
-): Promise<void> {
+): Promise<IngestResult> {
   const listings = await parseEmailHtml(html);
 
   if (listings.length === 0) {
@@ -154,9 +158,9 @@ export async function ingestAgent(
       await sendMessage(
         `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
       );
-      return;
+      return { done: true };
     }
-    return;
+    return { done: true };
   }
 
   const newIds = await deduplicateAndStore(listings);
@@ -165,9 +169,15 @@ export async function ingestAgent(
     await sendMessage(
       "📬 Email alert processed — no new properties (all were duplicates).",
     );
-    return;
+    return { done: true };
   }
 
+  return { done: false, newIds };
+}
+
+export async function runEvaluationsAndNotify(
+  newIds: string[]
+): Promise<void> {
   await sendMessage(
     "I have new listings, will get back to you if there's anything worth checking out.",
   );
