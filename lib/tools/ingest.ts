@@ -7,6 +7,7 @@ import {
   type EvaluationPipelineResult,
 } from "./evaluator";
 import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
+import { sleep } from "@/lib/utils/retry";
 import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -227,7 +228,13 @@ export async function runEvaluationsAndNotify(
     .filter((r) => r.sent)
     .sort((a, b) => b.overall_score - a.overall_score);
 
-  for (const r of toSend) {
+  const SCORECARD_DELAY_MS = parseInt(
+    process.env.SCORECARD_DELAY_MS ?? "500",
+    10,
+  );
+
+  for (let i = 0; i < toSend.length; i++) {
+    const r = toSend[i];
     if (r.shouldSendNoScore) {
       await composeNoScoreScorecard(r.evaluation, r.listing);
     } else {
@@ -238,6 +245,9 @@ export async function runEvaluationsAndNotify(
         r.commute_minutes,
         r.unknownScores,
       );
+    }
+    if (i < toSend.length - 1) {
+      await sleep(SCORECARD_DELAY_MS);
     }
   }
 
