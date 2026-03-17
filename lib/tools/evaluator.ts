@@ -115,6 +115,13 @@ export async function runEvaluationPipeline(
     }),
   ]);
 
+  const componentKeys = [
+    ...(combinedResult.property_unknown
+      ? []
+      : (["price", "size", "fit"] as const)),
+    ...(combinedResult.area_unknown ? [] : (["area"] as const)),
+    ...(commuteResult.commute_unknown ? [] : (["commute"] as const)),
+  ];
   const scoreComponents = [
     ...(combinedResult.property_unknown
       ? []
@@ -126,9 +133,28 @@ export async function runEvaluationPipeline(
     ...(combinedResult.area_unknown ? [] : [combinedResult.area_score]),
     ...(commuteResult.commute_unknown ? [] : [commuteResult.commute_score]),
   ];
+
+  const weightsConfig = preferences.raw_json?.score_weights as
+    | Record<string, number>
+    | undefined;
+  const getWeight = (key: string) =>
+    (weightsConfig && typeof weightsConfig[key] === "number"
+      ? weightsConfig[key]
+      : 1) as number;
+
   const overall_score =
     scoreComponents.length > 0
-      ? scoreComponents.reduce((a, b) => a + b, 0) / scoreComponents.length
+      ? (() => {
+          const weightedSum = scoreComponents.reduce(
+            (sum, score, i) => sum + score * getWeight(componentKeys[i]),
+            0,
+          );
+          const totalWeight = componentKeys.reduce(
+            (sum, key) => sum + getWeight(key),
+            0,
+          );
+          return totalWeight > 0 ? weightedSum / totalWeight : 0;
+        })()
       : 0;
 
   const raw = combinedResult.raw as Record<string, unknown> | undefined;

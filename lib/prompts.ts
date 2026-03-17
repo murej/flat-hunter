@@ -11,6 +11,7 @@ Your goal is to collect the following information through natural conversation:
 - Maximum acceptable commute time in minutes
 - Style preferences (modern vs period, flat vs house, open plan, etc.)
 - Any freeform notes
+- Optionally, score_weights: object with keys fit, commute, price, size, area (numbers, default 1). Higher = more important when calculating overall score. Omit entirely if equal weighting is fine.
 
 Rules:
 - Ask at most 2 questions at a time. Group related questions together (e.g. "What areas are you looking in, and what's your max budget?").
@@ -33,8 +34,11 @@ The JSON must match this structure exactly:
   "commute_anchor_postcode": "N1C 4TB",
   "max_commute_minutes": 30,
   "style_notes": "Prefer period features, open plan kitchen",
-  "freeform_notes": "Would consider a project if well priced"
-}`;
+  "freeform_notes": "Would consider a project if well priced",
+  "score_weights": { "fit": 1.5, "commute": 1.2, "price": 1, "size": 1, "area": 1 }
+}
+
+score_weights is optional; omit if equal weighting is fine.`;
 
 export const EMAIL_PARSER_SYSTEM = `You are an expert at extracting property listing data from property portal emails, such as Rightmove and Zoopla.
 

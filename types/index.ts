@@ -1,3 +1,11 @@
+export type ScoreWeights = {
+  fit?: number;
+  commute?: number;
+  price?: number;
+  size?: number;
+  area?: number;
+};
+
 export interface Preferences {
   id: string;
   created_at: string;
