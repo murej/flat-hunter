@@ -21,6 +21,7 @@ export interface PostcodeContext {
   admin_ward: string | null;
   admin_county: string | null;
   region: string | null;
+  country: string | null;
   parish: string | null;
   ruc11: string | null;
   bua: string | null;
@@ -232,6 +233,7 @@ export async function fetchAreaContext(
           admin_ward: r.admin_ward ?? null,
           admin_county: r.admin_county ?? null,
           region: r.region ?? null,
+          country: r.country ?? null,
           parish: r.parish ?? null,
           ruc11: r.ruc11 ?? null,
           bua: r.bua ?? null,
@@ -263,7 +265,7 @@ export async function fetchAreaContext(
     }
   }
 
-  if (postcodeContext?.lsoa_code && postcodeContext?.region === "England") {
+  if (postcodeContext?.lsoa_code && postcodeContext?.country === "England") {
     try {
       imd = await fetchImdData(postcodeContext.lsoa_code);
     } catch (e) {
@@ -334,6 +336,7 @@ export async function evaluateAreaProfile(areaName: string): Promise<AreaProfile
           admin_ward: r.admin_ward ?? null,
           admin_county: r.admin_county ?? null,
           region: r.region ?? null,
+          country: r.country ?? null,
           parish: r.parish ?? null,
           ruc11: r.ruc11 ?? null,
           bua: r.bua ?? null,

@@ -55,27 +55,6 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   const content = extractTextAndUrlsFromHtml(html);
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "5b8663",
-    },
-    body: JSON.stringify({
-      sessionId: "5b8663",
-      location: "ingest.ts:parseEmailHtml-input",
-      message: "Content passed to Claude",
-      data: {
-        contentLen: content?.length,
-        contentSample: content?.slice(0, 400),
-        hasZooplaInContent: /\bzoopla\b/i.test(content ?? ""),
-      },
-      hypothesisId: "H3",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
@@ -94,27 +73,6 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
     response.content[0].type === "text" ? response.content[0].text : "[]";
 
   const jsonMatch = text.match(/\[[\s\S]*\]/);
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "5b8663",
-    },
-    body: JSON.stringify({
-      sessionId: "5b8663",
-      location: "ingest.ts:parseEmailHtml-output",
-      message: "Claude parse result",
-      data: {
-        hasJsonMatch: !!jsonMatch,
-        textLen: text?.length,
-        textSample: text?.slice(0, 500),
-      },
-      hypothesisId: "H4",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!jsonMatch) return [];
 
   try {
@@ -219,31 +177,6 @@ export async function parseVerificationEmail(
     const codeMatch = fullContent.match(/\b(\d{6})\b/);
     const verificationCode = codeMatch?.[1];
     if (verificationUrl || verificationCode) {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Debug-Session-Id": "5b8663",
-          },
-          body: JSON.stringify({
-            sessionId: "5b8663",
-            location: "ingest.ts:parseVerificationEmail-subject-fast-path",
-            message: "Verification: subject-based fast path",
-            data: {
-              subject: subject?.slice(0, 60),
-              verificationUrl: verificationUrl?.slice(0, 80),
-              hasVerificationCode: !!verificationCode,
-              urlsCount: urls.length,
-            },
-            hypothesisId: "H2",
-            timestamp: Date.now(),
-          }),
-        },
-      ).catch(() => {});
-      // #endregion
       return {
         isVerification: true,
         verificationUrl,
@@ -361,53 +294,12 @@ export async function ingestAgent(
 ): Promise<IngestResult> {
   const key = computeIdempotencyKey(html, subject);
   const claimed = await claimIdempotencyKey(key);
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "5b8663",
-    },
-    body: JSON.stringify({
-      sessionId: "5b8663",
-      location: "ingest.ts:ingestAgent-idempotency",
-      message: "Idempotency check",
-      data: {
-        claimed,
-        htmlLen: html?.length,
-        subjectSample: subject?.slice(0, 60),
-      },
-      hypothesisId: "H5",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!claimed) {
     return { done: true };
   }
 
   // Check verification first (saves listing-parse call for verification emails)
   const verification = await parseVerificationEmail(html, subject, plain);
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "5b8663",
-    },
-    body: JSON.stringify({
-      sessionId: "5b8663",
-      location: "ingest.ts:ingestAgent-verification",
-      message: "Verification check",
-      data: {
-        isVerification: verification.isVerification,
-        hasZooplaInSubject: /\bzoopla\b/i.test(subject ?? ""),
-      },
-      hypothesisId: "H2",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (verification.isVerification) {
     if (verification.verificationUrl) {
       await sendMessage(
@@ -428,27 +320,6 @@ export async function ingestAgent(
 
   const listings = await parseEmailHtml(html);
 
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "5b8663",
-    },
-    body: JSON.stringify({
-      sessionId: "5b8663",
-      location: "ingest.ts:ingestAgent-listings",
-      message: "parseEmailHtml result",
-      data: {
-        listingsCount: listings.length,
-        firstListingTitle: listings[0]?.title?.slice(0, 60),
-      },
-      hypothesisId: "H4",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
   if (listings.length === 0) {
     await sendMessage(
       "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
@@ -457,24 +328,6 @@ export async function ingestAgent(
   }
 
   const newIds = await deduplicateAndStore(listings);
-
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "5b8663",
-    },
-    body: JSON.stringify({
-      sessionId: "5b8663",
-      location: "ingest.ts:ingestAgent-dedup",
-      message: "Deduplication result",
-      data: { listingsCount: listings.length, newIdsCount: newIds.length },
-      hypothesisId: "H5",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   if (newIds.length === 0) {
     await sendMessage(
@@ -487,23 +340,6 @@ export async function ingestAgent(
 }
 
 export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "bd5a5d",
-    },
-    body: JSON.stringify({
-      sessionId: "bd5a5d",
-      location: "ingest.ts:runEvaluationsAndNotify-entry",
-      message: "runEvaluationsAndNotify called",
-      data: { newIdsCount: newIds.length, newIds: newIds.slice(0, 3) },
-      hypothesisId: "H_ingest",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   const preferences = await getPreferences();
 
   if (!preferences) {
@@ -529,35 +365,6 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
   const results = evalResults.filter(
     (r): r is EvaluationPipelineResult => r !== null && typeof r === "object",
   );
-
-  // #region agent log
-  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "bd5a5d",
-    },
-    body: JSON.stringify({
-      sessionId: "bd5a5d",
-      location: "ingest.ts:runEvaluationsAndNotify-afterEval",
-      message: "Evaluation results",
-      data: {
-        newIdsCount: newIds.length,
-        resultsCount: results.length,
-        evalFailedCount: evalResults.filter((r) => r === null).length,
-        toSendCount: results.filter((r) => r.sent).length,
-        scores: results.map((r) => ({
-          title: r.listing.title?.slice(0, 30),
-          overall_score: r.overall_score,
-          sent: r.sent,
-          shouldSendNoScore: r.shouldSendNoScore,
-        })),
-      },
-      hypothesisId: "H_ingest",
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   const toSend = results
     .filter((r) => r.sent)

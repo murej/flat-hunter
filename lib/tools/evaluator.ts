@@ -10,7 +10,7 @@ import type { CombinedEvalResult, Evaluation, Listing } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SCORE_THRESHOLD = 6;
+const SCORE_THRESHOLD = 1;
 
 export async function combinedEvaluator(
   listingId: string,
@@ -25,8 +25,9 @@ export async function combinedEvaluator(
   );
 
   const areaProfiles =
-    (preferences.raw_json?.area_profiles as Record<string, unknown> | undefined) ??
-    {};
+    (preferences.raw_json?.area_profiles as
+      | Record<string, unknown>
+      | undefined) ?? {};
 
   const areaContextBlock =
     areaContext.postcode ||
