@@ -21,6 +21,7 @@ export interface Preferences {
   style_notes: string;
   freeform_notes: string;
   deposit: number;
+  area_preferences?: string[];
   raw_json: Record<string, unknown>;
 }
 

@@ -16,6 +16,7 @@ create table preferences (
   style_notes text,
   freeform_notes text,
   deposit integer,
+  area_preferences text[] default '{}',
   raw_json jsonb
 );
 

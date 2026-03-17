@@ -72,6 +72,7 @@ export async function collectPreferences(
         max_commute_minutes: parsed.max_commute_minutes !== undefined ? parsed.max_commute_minutes : (existing?.max_commute_minutes ?? 60),
         style_notes: parsed.style_notes !== undefined ? parsed.style_notes : (existing?.style_notes ?? ""),
         freeform_notes: parsed.freeform_notes !== undefined ? parsed.freeform_notes : (existing?.freeform_notes ?? ""),
+        area_preferences: parsed.area_preferences !== undefined ? parsed.area_preferences : (existing?.area_preferences ?? []),
       };
 
       const existingRaw = (existing?.raw_json as Record<string, unknown>) ?? {};

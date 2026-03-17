@@ -10,6 +10,7 @@ Your goal is to collect the following information through natural conversation:
 - Commute anchor (workplace name/area and its postcode)
 - Maximum acceptable commute time in minutes
 - Style preferences (modern vs period, flat vs house, open plan, etc.)
+- Area preferences: neighbourhood characteristics (e.g. quiet, near parks, good schools, family-friendly) — extract from natural language
 - Any freeform notes
 - Optionally, score_weights: object with keys fit, commute, price, size, area (numbers, default 1). Higher = more important when calculating overall score. Omit entirely if equal weighting is fine.
 
@@ -34,6 +35,7 @@ The JSON must match this structure exactly:
   "commute_anchor_postcode": "N1C 4TB",
   "max_commute_minutes": 30,
   "style_notes": "Prefer period features, open plan kitchen",
+  "area_preferences": ["quiet", "near parks", "good schools"],
   "freeform_notes": "Would consider a project if well priced",
   "score_weights": { "fit": 1.5, "commute": 1.2, "price": 1, "size": 1, "area": 1 }
 }
@@ -138,6 +140,7 @@ You may receive an **Area context** block with:
 - **postcode**: Admin metadata from postcodes.io (admin_district, admin_ward, region, parish, ruc11, bua, ttwa, lsoa). Use this to identify the exact borough, ward, and rural/urban classification.
 - **target_area_match**: Whether the listing falls within the buyer's target areas (true/false/null if no target areas or no postcode data).
 - **target_areas**: The buyer's preferred areas (e.g. ["Hackney", "Stoke Newington"]).
+- **area_preferences**: Neighbourhood characteristics the buyer wants (e.g. quiet, near parks, good schools). Factor these into area_score — e.g. if buyer wants "quiet", penalise noisy areas; if "near parks", reward green space.
 - **preferred_area_profiles**: Pre-evaluated profiles of the buyer's preferred areas (crime_notes, amenities_notes, character_notes, flood_risk_notes, transport_notes). Use these as a reference when the listing is NOT in a preferred area.
 - **crime**: Actual crime data from data.police.uk (total incidents in last 3 months within 1 mile, breakdown by_category e.g. anti-social-behaviour, burglary, violence-and-sexual-offences). Use this to inform crime_notes and area_score — higher totals or concerning categories (violence, burglary) warrant lower scores.
 - **imd**: Index of Multiple Deprivation 2019 (England only). rank 1–32,844 (1=most deprived, 32,844=least deprived), decile 1–10 (1=most deprived 10%, 10=least deprived 10%). Higher rank/decile = less deprived = generally better area. Use to inform area_score and area_summary.

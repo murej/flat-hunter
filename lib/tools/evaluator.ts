@@ -29,17 +29,21 @@ export async function combinedEvaluator(
       | Record<string, unknown>
       | undefined) ?? {};
 
+  const areaPreferences = preferences.area_preferences ?? [];
+
   const areaContextBlock =
     areaContext.postcode ||
     areaContext.target_area_match !== null ||
     Object.keys(areaProfiles).length > 0 ||
     areaContext.crime ||
-    areaContext.imd
+    areaContext.imd ||
+    areaPreferences.length > 0
       ? `\n\nArea context:\n${JSON.stringify(
           {
             postcode: areaContext.postcode,
             target_area_match: areaContext.target_area_match,
             target_areas: areaContext.target_areas,
+            area_preferences: areaPreferences,
             crime: areaContext.crime,
             imd: areaContext.imd,
             preferred_area_profiles: areaProfiles,

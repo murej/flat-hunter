@@ -308,6 +308,7 @@ async function executeToolInternal(
         must_haves?: string[];
         deal_breakers?: string[];
         style_notes?: string;
+        area_preferences?: string[];
       };
       const msg = [
         `📋 *Your current preferences:*`,
@@ -319,6 +320,7 @@ async function executeToolInternal(
         `🚇 *Commute to:* ${p.commute_anchor_postcode || p.commute_anchor || "Not set"} (max ${p.max_commute_minutes} min)`,
         `✅ *Must-haves:* ${p.must_haves?.join(", ") || "None specified"}`,
         `❌ *Deal-breakers:* ${p.deal_breakers?.join(", ") || "None specified"}`,
+        `🏘 *Area preferences:* ${p.area_preferences?.join(", ") || "None specified"}`,
         `🏠 *Style:* ${p.style_notes || "Not set"}`,
         ``,
         `_Say "update preferences" to change any of these._`,
