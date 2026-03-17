@@ -42,7 +42,9 @@ A Telegram bot that helps you find and evaluate properties. It parses Rightmove/
 | `TFL_APP_ID` / `TFL_APP_KEY` | Optional. TfL credentials for commute. |
 | `NEXT_PUBLIC_APP_URL` | App URL. Set by Vercel or dev tunnel. |
 
-3. **Database:** Create a Supabase project. See [PLAN.md](PLAN.md) Phase 1 for the schema. Run `supabase/migrations/` for the idempotency table.
+3. **Database:** Create a [Supabase](https://supabase.com) project. Then either:
+   - **Simple:** Open SQL Editor, paste the contents of `supabase/schema.sql`, and run it.
+   - **Shortcut:** Add the Supabase MCP to Cursor, link your project, and ask the AI to create the schema from that file.
 4. **Run locally:**
    - `npm run dev` — web only
    - `npm run dev:tunnel` — full bot (needs [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/))
