@@ -65,3 +65,35 @@ export async function composeScorecard(
     { text: "❓ Why?", callback_data: `why:${listing.id}` },
   ]);
 }
+
+export async function composeNoScoreScorecard(
+  evaluation: Evaluation,
+  listing: Listing,
+): Promise<void> {
+  const scorecardText = `🏠 ${listing.title}
+💰 £${listing.price?.toLocaleString()}
+
+No score
+  This property couldn't be evaluated — not enough data to score it against your preferences.
+
+[🔗 View listing](${listing.url})`;
+
+  await supabaseAdmin
+    .from("evaluations")
+    .update({ scorecard_text: scorecardText })
+    .eq("id", evaluation.id);
+
+  await logConversation({
+    direction: "outbound",
+    message: scorecardText,
+    listing_id: listing.id,
+    intent: null,
+  });
+
+  await sendWithButtons(scorecardText, [
+    { text: "👁 View", callback_data: `view:${listing.id}` },
+    { text: "💾 Save", callback_data: `save:${listing.id}` },
+    { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
+    { text: "❓ Why?", callback_data: `why:${listing.id}` },
+  ]);
+}

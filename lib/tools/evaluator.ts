@@ -3,7 +3,7 @@ import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";
-import { composeScorecard } from "./scorecard";
+import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
 import type { CombinedEvalResult } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -150,6 +150,11 @@ export async function runEvaluationPipeline(
     .from("listings")
     .update({ status: "evaluated" })
     .eq("id", listingId);
+
+  if (scoreComponents.length === 0) {
+    await composeNoScoreScorecard(evaluation, listing);
+    return true;
+  }
 
   if (overall_score > SCORE_THRESHOLD) {
     await composeScorecard(
