@@ -610,6 +610,18 @@ export async function conversationAgent(
     const listingIdFromText = extractListingId(text);
     const activeListingId = listingIdFromText ?? (await getActiveListingId(10));
 
+    if (!listingIdFromText && !activeListingId) {
+      const msg =
+        "Which property do you mean? Reply with the title, address, or tap a scorecard button so I can be sure I'm talking about the right one.";
+      await sendMessage(msg);
+      await logConversation({
+        direction: "outbound",
+        message: msg,
+        intent: "other",
+      });
+      return;
+    }
+
     const systemPrompt = activeListingId
       ? `${CONVERSATION_AGENT_SYSTEM}\n\n[Active listing ID: ${activeListingId}]`
       : CONVERSATION_AGENT_SYSTEM;

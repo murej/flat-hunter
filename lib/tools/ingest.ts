@@ -25,12 +25,12 @@ interface RawListing {
   portal_id: string;
   url: string;
   title: string;
-  price: number;
+  price: number | null;
   address: string;
   postcode: string;
-  bedrooms: number;
-  bathrooms: number;
-  sqft: number;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  sqft: number | null;
   description: string;
   image_urls: string[];
   floorplan_url: string;
@@ -106,13 +106,24 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       portal_id: String(l.portal_id),
       url: String(l.url),
       title: String(l.title ?? ""),
-      price: typeof l.price === "number" && l.price > 0 ? l.price : 0,
+      price:
+        typeof l.price === "number" && l.price > 0
+          ? l.price
+          : null,
       address: String(l.address ?? ""),
       postcode: String(l.postcode ?? ""),
-      bedrooms: typeof l.bedrooms === "number" && l.bedrooms >= 0 ? l.bedrooms : 0,
+      bedrooms:
+        typeof l.bedrooms === "number" && l.bedrooms >= 0
+          ? l.bedrooms
+          : null,
       bathrooms:
-        typeof l.bathrooms === "number" && l.bathrooms >= 0 ? l.bathrooms : 0,
-      sqft: typeof l.sqft === "number" && l.sqft >= 0 ? l.sqft : 0,
+        typeof l.bathrooms === "number" && l.bathrooms >= 0
+          ? l.bathrooms
+          : null,
+      sqft:
+        typeof l.sqft === "number" && l.sqft >= 0
+          ? l.sqft
+          : null,
       description: String(l.description ?? ""),
       image_urls: Array.isArray(l.image_urls)
         ? l.image_urls.map((u) => String(u))
@@ -147,10 +158,22 @@ export async function deduplicateAndStore(
   );
 
   const seenInBatch = new Set<string>();
+  const urlAddressKey = (l: RawListing) =>
+    `${l.url}::${l.address}`.toLowerCase();
+  const seenUrlAddress = new Set<string>();
+
   const toInsert = listings.filter((l) => {
-    if (existingPortalIds.has(l.portal_id) || seenInBatch.has(l.portal_id))
+    const alreadySeenId =
+      existingPortalIds.has(l.portal_id) || seenInBatch.has(l.portal_id);
+    const key = urlAddressKey(l);
+    const alreadySeenUrlAddress = seenUrlAddress.has(key);
+
+    if (alreadySeenId || alreadySeenUrlAddress) {
       return false;
+    }
+
     seenInBatch.add(l.portal_id);
+    seenUrlAddress.add(key);
     return true;
   });
   if (toInsert.length === 0) return [];

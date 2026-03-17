@@ -59,6 +59,15 @@ export async function evaluateCommute(
   maxCommuteMinutes: number,
   address?: string
 ): Promise<CommuteEvalResult> {
+  if (!Number.isFinite(maxCommuteMinutes) || maxCommuteMinutes <= 0) {
+    return {
+      commute_minutes: 0,
+      commute_route: "Commute time limit misconfigured",
+      commute_score: 0,
+      commute_unknown: true,
+    };
+  }
+
   if (!fromPostcode || !toPostcode) {
     return {
       commute_minutes: 0,
@@ -111,10 +120,17 @@ export async function evaluateCommute(
     };
   }
 
-  const fastest = journeys[0];
+  const fastest = journeys.reduce((best, j) => {
+    if (!best) return j;
+    if (typeof j.duration !== "number" || !Number.isFinite(j.duration)) {
+      return best;
+    }
+    return j.duration < best.duration ? j : best;
+  }, journeys[0]);
+
   const commuteMinutes = fastest.duration;
 
-  const routeSummary = fastest.legs
+  const routeSummary = (fastest.legs ?? [])
     .map((leg) => leg.instruction?.summary || "")
     .filter(Boolean)
     .join(" → ");

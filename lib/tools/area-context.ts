@@ -50,6 +50,9 @@ export interface AreaContext {
   target_areas: string[];
   crime: CrimeContext | null;
   imd: IMDContext | null;
+  postcode_resolved: boolean;
+  crime_available: boolean;
+  imd_available: boolean;
 }
 
 async function resolveToFullPostcode(
@@ -215,6 +218,7 @@ export async function fetchAreaContext(
 ): Promise<AreaContext> {
   const fullPostcode = await resolveToFullPostcode(postcode, address);
   let postcodeContext: PostcodeContext | null = null;
+  let postcode_resolved = false;
 
   if (fullPostcode) {
     try {
@@ -243,6 +247,7 @@ export async function fetchAreaContext(
           latitude: typeof r.latitude === "number" ? r.latitude : null,
           longitude: typeof r.longitude === "number" ? r.longitude : null,
         };
+        postcode_resolved = true;
       }
     } catch {
       // Fall through with null context
@@ -251,6 +256,8 @@ export async function fetchAreaContext(
 
   let crime: CrimeContext | null = null;
   let imd: IMDContext | null = null;
+  let crime_available = false;
+  let imd_available = false;
   if (
     postcodeContext?.latitude != null &&
     postcodeContext?.longitude != null
@@ -260,6 +267,9 @@ export async function fetchAreaContext(
         postcodeContext.latitude,
         postcodeContext.longitude,
       );
+      if (crime && crime.total >= 0 && crime.months_covered >= 0) {
+        crime_available = true;
+      }
     } catch (e) {
       console.error("Failed to fetch crime data:", e);
     }
@@ -268,6 +278,9 @@ export async function fetchAreaContext(
   if (postcodeContext?.lsoa_code && postcodeContext?.country === "England") {
     try {
       imd = await fetchImdData(postcodeContext.lsoa_code);
+      if (imd && imd.decile >= 1 && imd.decile <= 10) {
+        imd_available = true;
+      }
     } catch (e) {
       console.error("Failed to fetch IMD data:", e);
     }
@@ -281,6 +294,9 @@ export async function fetchAreaContext(
     target_areas: targetAreas,
     crime,
     imd,
+    postcode_resolved,
+    crime_available,
+    imd_available,
   };
 }
 

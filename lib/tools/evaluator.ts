@@ -12,6 +12,24 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SCORE_THRESHOLD = 1;
 
+function clampScore(score: unknown, fallback: number): number {
+  if (typeof score !== "number" || !Number.isFinite(score)) return fallback;
+  if (score < 1) return 1;
+  if (score > 10) return 10;
+  return score;
+}
+
+function extractJsonObject(text: string): unknown {
+  // Prefer the last JSON-looking object in the text – models sometimes
+  // include reasoning before the final JSON.
+  const matches = text.match(/\{[\s\S]*\}/g);
+  if (!matches || matches.length === 0) {
+    throw new Error("No JSON in combined evaluator response");
+  }
+  const candidate = matches[matches.length - 1];
+  return JSON.parse(candidate);
+}
+
 export async function combinedEvaluator(
   listingId: string,
   preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>,
@@ -79,28 +97,48 @@ export async function combinedEvaluator(
     throw new Error("Combined evaluator response missing text content");
   }
 
-  const jsonMatch = firstBlock.text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error("No JSON in combined evaluator response");
-  }
-
   let parsed: any;
   try {
-    parsed = JSON.parse(jsonMatch[0]) as unknown;
+    parsed = extractJsonObject(firstBlock.text) as any;
   } catch (err) {
     console.error("Failed to parse combined evaluator JSON:", err);
     throw new Error("Invalid JSON in combined evaluator response");
   }
 
+  const price_score = clampScore(parsed.price_score, 5);
+  const size_score = clampScore(parsed.size_score, 5);
+  const fit_score = clampScore(parsed.fit_score, 5);
+  const area_score = clampScore(parsed.area_score, 5);
+
+  const hasProperty =
+    typeof parsed.price_score === "number" ||
+    typeof parsed.size_score === "number" ||
+    typeof parsed.fit_score === "number";
+  const hasArea = typeof parsed.area_score === "number";
+
+  const property_unknown =
+    parsed.property_unknown === true || !hasProperty ? true : false;
+  const area_unknown = parsed.area_unknown === true || !hasArea ? true : false;
+
   return {
-    price_score: parsed.price_score ?? 5,
-    size_score: parsed.size_score ?? 5,
-    fit_score: parsed.fit_score ?? 5,
-    deal_breaker_flags: parsed.deal_breaker_flags ?? [],
-    property_summary: parsed.property_summary ?? "",
-    area_score: parsed.area_score ?? 5,
-    area_summary: parsed.area_summary ?? "",
-    notable_flags: parsed.notable_flags ?? [],
+    price_score,
+    size_score,
+    fit_score,
+    deal_breaker_flags: Array.isArray(parsed.deal_breaker_flags)
+      ? parsed.deal_breaker_flags
+      : [],
+    property_summary: typeof parsed.property_summary === "string"
+      ? parsed.property_summary
+      : "",
+    area_score,
+    area_summary: typeof parsed.area_summary === "string"
+      ? parsed.area_summary
+      : "",
+    notable_flags: Array.isArray(parsed.notable_flags)
+      ? parsed.notable_flags
+      : [],
+    property_unknown,
+    area_unknown,
     raw: parsed,
   };
 }
@@ -132,13 +170,13 @@ export async function runEvaluationPipeline(
     combinedEvaluator(listingId, preferences).catch((e) => {
       console.error("Combined evaluator failed:", e);
       return {
-        price_score: 0,
-        size_score: 0,
-        fit_score: 0,
+        price_score: 5,
+        size_score: 5,
+        fit_score: 5,
         property_unknown: true as const,
         deal_breaker_flags: [],
         property_summary: "",
-        area_score: 0,
+        area_score: 5,
         area_summary: "Evaluation unavailable",
         area_unknown: true as const,
         notable_flags: [],
@@ -171,45 +209,57 @@ export async function runEvaluationPipeline(
     }),
   ]);
 
-  const componentKeys = [
-    ...(combinedResult.property_unknown
-      ? []
-      : (["price", "size", "fit"] as const)),
-    ...(combinedResult.area_unknown ? [] : (["area"] as const)),
-    ...(commuteResult.commute_unknown ? [] : (["commute"] as const)),
-  ];
-  const scoreComponents = [
-    ...(combinedResult.property_unknown
-      ? []
-      : [
-          combinedResult.price_score,
-          combinedResult.size_score,
-          combinedResult.fit_score,
-        ]),
-    ...(combinedResult.area_unknown ? [] : [combinedResult.area_score]),
-    ...(commuteResult.commute_unknown ? [] : [commuteResult.commute_score]),
-  ];
-
   const weightsConfig = preferences.raw_json?.score_weights as
     | Record<string, number>
     | undefined;
-  const getWeight = (key: string) =>
-    (weightsConfig && typeof weightsConfig[key] === "number"
-      ? weightsConfig[key]
-      : 1) as number;
+
+  const components: Array<{ key: "price" | "size" | "fit" | "area" | "commute"; score: number }> =
+    [];
+
+  if (!combinedResult.property_unknown) {
+    components.push(
+      { key: "price", score: combinedResult.price_score },
+      { key: "size", score: combinedResult.size_score },
+      { key: "fit", score: combinedResult.fit_score },
+    );
+  }
+  if (!combinedResult.area_unknown) {
+    components.push({ key: "area", score: combinedResult.area_score });
+  }
+  if (!commuteResult.commute_unknown) {
+    components.push({ key: "commute", score: commuteResult.commute_score });
+  }
+
+  const rawWeights: Record<string, number> = {};
+  if (weightsConfig && typeof weightsConfig === "object") {
+    for (const [key, value] of Object.entries(weightsConfig)) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        rawWeights[key] = value;
+      }
+    }
+  }
+
+  const getWeight = (key: string): number => {
+    const raw = rawWeights[key];
+    if (typeof raw !== "number" || !Number.isFinite(raw)) return 1;
+    const clamped = Math.max(0, Math.min(raw, 5));
+    return clamped;
+  };
 
   const overall_score =
-    scoreComponents.length > 0
+    components.length > 0
       ? (() => {
-          const weightedSum = scoreComponents.reduce(
-            (sum, score, i) => sum + score * getWeight(componentKeys[i]),
+          const weightedSum = components.reduce(
+            (sum, { key, score }) => sum + score * getWeight(key),
             0,
           );
-          const totalWeight = componentKeys.reduce(
-            (sum, key) => sum + getWeight(key),
+          const totalWeight = components.reduce(
+            (sum, { key }) => sum + getWeight(key),
             0,
           );
-          return totalWeight > 0 ? weightedSum / totalWeight : 0;
+          if (totalWeight <= 0) return 0;
+          const avg = weightedSum / totalWeight;
+          return Math.max(1, Math.min(10, avg));
         })()
       : 0;
 
@@ -261,14 +311,14 @@ export async function runEvaluationPipeline(
   };
 
   const result: EvaluationPipelineResult = {
-    sent: scoreComponents.length === 0 || overall_score > SCORE_THRESHOLD,
+    sent: components.length === 0 || overall_score > SCORE_THRESHOLD,
     evaluation,
     listing,
     overall_score,
     notable_flags: combinedResult.notable_flags,
     commute_minutes: commuteResult.commute_minutes,
     unknownScores,
-    shouldSendNoScore: scoreComponents.length === 0,
+    shouldSendNoScore: components.length === 0,
   };
 
   if (sendImmediately) {

@@ -1,20 +1,54 @@
 import type { FinanceEvalResult } from "@/types";
 
+function getMortgageRate(): number {
+  const raw = process.env.MORTGAGE_RATE ?? "4.5";
+  const parsed = parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 15) {
+    console.error(
+      `Invalid MORTGAGE_RATE "${raw}", falling back to default 4.5%`,
+    );
+    return 4.5;
+  }
+  return parsed;
+}
+
 export function calculateFinance(
   price: number,
-  deposit: number
+  deposit: number,
 ): Promise<FinanceEvalResult> {
-  const mortgageRate =
-    parseFloat(process.env.MORTGAGE_RATE ?? "4.5") / 100 / 12;
+  const rate = getMortgageRate();
+  const mortgageRate = rate / 100 / 12;
   const loanAmount = price - deposit;
   const termMonths = 25 * 12;
+
+  const validInputs =
+    Number.isFinite(price) && price >= 0 && Number.isFinite(deposit) && deposit >= 0;
+
+  if (!validInputs) {
+    const raw = {
+      price,
+      deposit,
+      loan_amount: loanAmount,
+      rate_used: rate,
+      term_years: 25,
+      reason: "invalid_inputs",
+    };
+
+    return Promise.resolve({
+      monthly_mortgage: 0,
+      monthly_interest_only: 0,
+      stamp_duty: 0,
+      estimated_monthly_total: 0,
+      raw,
+    });
+  }
 
   if (loanAmount <= 0) {
     const raw = {
       price,
       deposit,
       loan_amount: loanAmount,
-      rate_used: parseFloat(process.env.MORTGAGE_RATE ?? "4.5"),
+      rate_used: rate,
       term_years: 25,
       reason: "no borrowing required",
     };
@@ -34,7 +68,7 @@ export function calculateFinance(
     (Math.pow(1 + mortgageRate, termMonths) - 1);
 
   // Interest-only monthly payment
-  const annualRate = parseFloat(process.env.MORTGAGE_RATE ?? "4.5") / 100;
+  const annualRate = rate / 100;
   const monthly_interest_only = (loanAmount * annualRate) / 12;
 
   // Stamp Duty Land Tax (SDLT) — first-time buyer relief
@@ -47,7 +81,7 @@ export function calculateFinance(
     price,
     deposit,
     loan_amount: loanAmount,
-    rate_used: parseFloat(process.env.MORTGAGE_RATE ?? "4.5"),
+      rate_used: rate,
     term_years: 25,
   };
 
