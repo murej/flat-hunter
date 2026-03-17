@@ -114,7 +114,14 @@ Write a **property_summary** of 2–3 sentences covering what makes this propert
 
 **PART 2 — Area evaluation**
 
-Evaluate the neighbourhood using your knowledge of UK areas. Consider:
+You may receive an **Area context** block with:
+- **postcode**: Admin metadata from postcodes.io (admin_district, admin_ward, region, parish, ruc11, bua, ttwa, lsoa). Use this to identify the exact borough, ward, and rural/urban classification.
+- **target_area_match**: Whether the listing falls within the buyer's target areas (true/false/null if no target areas or no postcode data).
+- **target_areas**: The buyer's preferred areas (e.g. ["Hackney", "Stoke Newington"]).
+
+When scoring, factor in target_area_match: listings in the buyer's target areas should score higher; listings outside may still be good neighbourhoods but the buyer explicitly searched elsewhere — note this in area_summary if relevant.
+
+Evaluate the neighbourhood using area context, your knowledge of UK areas, and:
 1. Crime: relative crime rates for the postcode/area versus the borough or city average
 2. Flood risk: known flood zones or Environment Agency designations
 3. Noise/transport: nearby railway lines, flight paths, or major roads

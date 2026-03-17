@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
 import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
+import { fetchAreaContext } from "./area-context";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";
 import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
@@ -17,6 +18,25 @@ export async function combinedEvaluator(
 ): Promise<CombinedEvalResult> {
   const listing = await getListing(listingId);
 
+  const areaContext = await fetchAreaContext(
+    listing.postcode ?? "",
+    preferences.areas ?? [],
+    listing.address,
+  );
+
+  const areaContextBlock =
+    areaContext.postcode || areaContext.target_area_match !== null
+      ? `\n\nArea context:\n${JSON.stringify(
+          {
+            postcode: areaContext.postcode,
+            target_area_match: areaContext.target_area_match,
+            target_areas: areaContext.target_areas,
+          },
+          null,
+          2,
+        )}`
+      : "";
+
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
@@ -25,7 +45,7 @@ export async function combinedEvaluator(
       messages: [
         {
           role: "user",
-          content: `Property:\n${JSON.stringify(listing, null, 2)}\n\nPreferences:\n${JSON.stringify(preferences, null, 2)}`,
+          content: `Property:\n${JSON.stringify(listing, null, 2)}\n\nPreferences:\n${JSON.stringify(preferences, null, 2)}${areaContextBlock}`,
         },
       ],
     }),
