@@ -167,6 +167,9 @@ export async function ingestAgent(
       );
       return { done: true };
     }
+    await sendMessage(
+      "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
+    );
     return { done: true };
   }
 
