@@ -8,8 +8,10 @@ cd "$(dirname "$0")/.."
 [[ -f .env.local ]] || { echo ".env.local not found"; exit 1; }
 
 trim() {
-  # trim leading/trailing whitespace, \r, \n, and strip control chars from edges
-  printf '%s' "$1" | sed 's/^[[:space:]\r\n]*//;s/[[:space:]\r\n]*$//' | tr -d '\0'
+  local v="$1"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  printf '%s' "$v"
 }
 
 while IFS= read -r line; do
