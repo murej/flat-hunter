@@ -9,7 +9,7 @@ import type { CombinedEvalResult, Evaluation, Listing } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SCORE_THRESHOLD = 5;
+const SCORE_THRESHOLD = 7;
 
 export async function combinedEvaluator(
   listingId: string,

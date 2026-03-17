@@ -394,10 +394,17 @@ export async function runEvaluationsAndNotify(
 
   const sentCount = toSend.length;
   const suppressedCount = results.length - sentCount;
+  const rejected = results.filter((r) => !r.sent);
+  const rejectedDetails =
+    rejected.length > 0
+      ? rejected
+          .map((r) => `${r.listing.title} (${r.overall_score}/10)`)
+          .join(", ")
+      : "";
 
   await sendMessage(
     suppressedCount > 0
-      ? `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 5/10 or below.`
+      ? `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 7/10 or below: ${rejectedDetails}.`
       : `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}.`,
   );
 }
