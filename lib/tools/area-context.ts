@@ -26,6 +26,7 @@ export interface PostcodeContext {
   bua: string | null;
   ttwa: string | null;
   lsoa: string | null;
+  lsoa_code: string | null;
   latitude: number | null;
   longitude: number | null;
 }
@@ -36,11 +37,18 @@ export interface CrimeContext {
   by_category: Record<string, number>;
 }
 
+export interface IMDContext {
+  rank: number;
+  total_lsoas: number;
+  decile: number;
+}
+
 export interface AreaContext {
   postcode: PostcodeContext | null;
   target_area_match: boolean | null;
   target_areas: string[];
   crime: CrimeContext | null;
+  imd: IMDContext | null;
 }
 
 async function resolveToFullPostcode(
@@ -82,6 +90,9 @@ function normalizeForMatch(s: string): string {
 }
 
 const CRIME_API = "https://data.police.uk/api/crimes-street/all-crime";
+const IMD_TOTAL_LSOAS = 32_844;
+const IMD_ARCGIS =
+  "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/Index_of_Multiple_Deprivation_Dec_2019_Lookup_in_England_2022/FeatureServer/0/query";
 
 function getLastMonths(count: number): string[] {
   const months: string[] = [];
@@ -133,6 +144,38 @@ async function fetchCrimeData(
     months_covered: results.filter((r) => r.length > 0).length,
     by_category: byCategory,
   };
+}
+
+async function fetchImdData(lsoaCode: string): Promise<IMDContext | null> {
+  if (!lsoaCode || lsoaCode.length < 9) return null;
+
+  try {
+    const url = new URL(IMD_ARCGIS);
+    url.searchParams.set("where", `LSOA11CD='${lsoaCode.replace(/'/g, "''")}'`);
+    url.searchParams.set("outFields", "IMD19");
+    url.searchParams.set("returnGeometry", "false");
+    url.searchParams.set("f", "json");
+
+    const res = await retryWithBackoff(async () => {
+      const r = await fetch(url.toString());
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r;
+    });
+    const data = await res.json();
+    const feature = data?.features?.[0];
+    const rank = feature?.attributes?.IMD19;
+    if (typeof rank !== "number" || rank < 1 || rank > IMD_TOTAL_LSOAS)
+      return null;
+
+    const decile = Math.ceil((rank / IMD_TOTAL_LSOAS) * 10);
+    return {
+      rank,
+      total_lsoas: IMD_TOTAL_LSOAS,
+      decile: Math.min(decile, 10),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function computeTargetAreaMatch(
@@ -194,6 +237,7 @@ export async function fetchAreaContext(
           bua: r.bua ?? null,
           ttwa: r.ttwa ?? null,
           lsoa: r.lsoa ?? null,
+          lsoa_code: r.codes?.lsoa ?? null,
           latitude: typeof r.latitude === "number" ? r.latitude : null,
           longitude: typeof r.longitude === "number" ? r.longitude : null,
         };
@@ -204,6 +248,7 @@ export async function fetchAreaContext(
   }
 
   let crime: CrimeContext | null = null;
+  let imd: IMDContext | null = null;
   if (
     postcodeContext?.latitude != null &&
     postcodeContext?.longitude != null
@@ -218,6 +263,14 @@ export async function fetchAreaContext(
     }
   }
 
+  if (postcodeContext?.lsoa_code && postcodeContext?.region === "England") {
+    try {
+      imd = await fetchImdData(postcodeContext.lsoa_code);
+    } catch (e) {
+      console.error("Failed to fetch IMD data:", e);
+    }
+  }
+
   const target_area_match = computeTargetAreaMatch(postcodeContext, targetAreas);
 
   return {
@@ -225,6 +278,7 @@ export async function fetchAreaContext(
     target_area_match,
     target_areas: targetAreas,
     crime,
+    imd,
   };
 }
 
@@ -285,6 +339,7 @@ export async function evaluateAreaProfile(areaName: string): Promise<AreaProfile
           bua: r.bua ?? null,
           ttwa: r.ttwa ?? null,
           lsoa: r.lsoa ?? null,
+          lsoa_code: r.codes?.lsoa ?? null,
           latitude: typeof r.latitude === "number" ? r.latitude : null,
           longitude: typeof r.longitude === "number" ? r.longitude : null,
         };
