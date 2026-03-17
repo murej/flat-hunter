@@ -161,6 +161,13 @@ export async function ingestAgent(
 
   const newIds = await deduplicateAndStore(listings);
 
+  if (newIds.length === 0) {
+    await sendMessage(
+      "📬 Email alert processed — no new properties (all were duplicates).",
+    );
+    return;
+  }
+
   await sendMessage(
     "I have new listings, will get back to you if there's anything worth checking out.",
   );
@@ -177,9 +184,9 @@ export async function ingestAgent(
   const sentCount = evalResults.filter(Boolean).length;
   const suppressedCount = evalResults.length - sentCount;
 
-  if (suppressedCount > 0) {
-    await sendMessage(
-      `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 5/10 or below.`,
-    );
-  }
+  await sendMessage(
+    suppressedCount > 0
+      ? `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 5/10 or below.`
+      : `📬 Email alert processed: *${newIds.length}* new ${newIds.length === 1 ? "property" : "properties"} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}.`,
+  );
 }
