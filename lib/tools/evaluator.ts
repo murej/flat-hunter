@@ -9,7 +9,7 @@ import type { CombinedEvalResult, Evaluation, Listing } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SCORE_THRESHOLD = 7;
+const SCORE_THRESHOLD = 6;
 
 export async function combinedEvaluator(
   listingId: string,
@@ -185,7 +185,8 @@ export async function runEvaluationPipeline(
         price_score: raw?.price_score,
         size_score: raw?.size_score,
         fit_score: raw?.fit_score,
-        deal_breaker_flags: (raw?.deal_breaker_flags as string[] | undefined) ?? [],
+        deal_breaker_flags:
+          (raw?.deal_breaker_flags as string[] | undefined) ?? [],
         property_summary: raw?.property_summary,
       },
       raw_area_eval: {
