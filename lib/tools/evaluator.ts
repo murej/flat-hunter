@@ -4,7 +4,7 @@ import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";
 import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
-import type { CombinedEvalResult } from "@/types";
+import type { CombinedEvalResult, Evaluation, Listing } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -49,9 +49,22 @@ export async function combinedEvaluator(
   };
 }
 
+export type EvaluationPipelineResult = {
+  sent: boolean;
+  evaluation: Evaluation;
+  listing: Listing;
+  overall_score: number;
+  notable_flags: string[];
+  commute_minutes: number;
+  unknownScores: { property?: boolean; area?: boolean; commute?: boolean };
+  shouldSendNoScore: boolean;
+};
+
 export async function runEvaluationPipeline(
   listingId: string,
-): Promise<boolean> {
+  options?: { sendImmediately?: boolean },
+): Promise<boolean | EvaluationPipelineResult> {
+  const sendImmediately = options?.sendImmediately !== false;
   const listing = await getListing(listingId);
   const preferences = await getPreferences();
 
@@ -163,25 +176,40 @@ export async function runEvaluationPipeline(
     .update({ status: "evaluated" })
     .eq("id", listingId);
 
-  if (scoreComponents.length === 0) {
-    await composeNoScoreScorecard(evaluation, listing);
-    return true;
+  const unknownScores = {
+    property: combinedResult.property_unknown,
+    area: combinedResult.area_unknown,
+    commute: commuteResult.commute_unknown,
+  };
+
+  const result: EvaluationPipelineResult = {
+    sent: scoreComponents.length === 0 || overall_score > SCORE_THRESHOLD,
+    evaluation,
+    listing,
+    overall_score,
+    notable_flags: combinedResult.notable_flags,
+    commute_minutes: commuteResult.commute_minutes,
+    unknownScores,
+    shouldSendNoScore: scoreComponents.length === 0,
+  };
+
+  if (sendImmediately) {
+    if (result.shouldSendNoScore) {
+      await composeNoScoreScorecard(evaluation, listing);
+      return true;
+    }
+    if (overall_score > SCORE_THRESHOLD) {
+      await composeScorecard(
+        evaluation,
+        listing,
+        combinedResult.notable_flags,
+        commuteResult.commute_minutes,
+        unknownScores,
+      );
+      return true;
+    }
+    return false;
   }
 
-  if (overall_score > SCORE_THRESHOLD) {
-    await composeScorecard(
-      evaluation,
-      listing,
-      combinedResult.notable_flags,
-      commuteResult.commute_minutes,
-      {
-        property: combinedResult.property_unknown,
-        area: combinedResult.area_unknown,
-        commute: commuteResult.commute_unknown,
-      },
-    );
-    return true;
-  }
-
-  return false;
+  return result;
 }

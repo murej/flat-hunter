@@ -1,7 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { EMAIL_PARSER_SYSTEM, EMAIL_VERIFICATION_DETECTOR_SYSTEM } from "@/lib/prompts";
-import { runEvaluationPipeline } from "./evaluator";
+import {
+  runEvaluationPipeline,
+  type EvaluationPipelineResult,
+} from "./evaluator";
+import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
 import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -203,15 +207,37 @@ export async function runEvaluationsAndNotify(
 
   const evalResults = await Promise.all(
     newIds.map((id) =>
-      runEvaluationPipeline(id).catch((e) => {
+      runEvaluationPipeline(id, { sendImmediately: false }).catch((e) => {
         console.error(`Evaluation failed for ${id}:`, e);
-        return false;
+        return null;
       }),
     ),
   );
 
-  const sentCount = evalResults.filter(Boolean).length;
-  const suppressedCount = evalResults.length - sentCount;
+  const results = evalResults.filter(
+    (r): r is EvaluationPipelineResult => r !== null && typeof r === "object",
+  );
+
+  const toSend = results
+    .filter((r) => r.sent)
+    .sort((a, b) => b.overall_score - a.overall_score);
+
+  for (const r of toSend) {
+    if (r.shouldSendNoScore) {
+      await composeNoScoreScorecard(r.evaluation, r.listing);
+    } else {
+      await composeScorecard(
+        r.evaluation,
+        r.listing,
+        r.notable_flags,
+        r.commute_minutes,
+        r.unknownScores,
+      );
+    }
+  }
+
+  const sentCount = toSend.length;
+  const suppressedCount = results.length - sentCount;
 
   await sendMessage(
     suppressedCount > 0
