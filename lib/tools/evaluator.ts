@@ -24,13 +24,20 @@ export async function combinedEvaluator(
     listing.address,
   );
 
+  const areaProfiles =
+    (preferences.raw_json?.area_profiles as Record<string, unknown> | undefined) ??
+    {};
+
   const areaContextBlock =
-    areaContext.postcode || areaContext.target_area_match !== null
+    areaContext.postcode ||
+    areaContext.target_area_match !== null ||
+    Object.keys(areaProfiles).length > 0
       ? `\n\nArea context:\n${JSON.stringify(
           {
             postcode: areaContext.postcode,
             target_area_match: areaContext.target_area_match,
             target_areas: areaContext.target_areas,
+            preferred_area_profiles: areaProfiles,
           },
           null,
           2,

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
 import { sendMessage } from "@/lib/telegram";
 import { PREFERENCE_COLLECTOR_SYSTEM } from "@/lib/prompts";
+import { evaluatePreferredAreas } from "./area-context";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -73,9 +74,42 @@ export async function collectPreferences(
         freeform_notes: parsed.freeform_notes !== undefined ? parsed.freeform_notes : (existing?.freeform_notes ?? ""),
       };
 
+      const existingRaw = (existing?.raw_json as Record<string, unknown>) ?? {};
+      const areasChanged =
+        JSON.stringify(merged.areas ?? []) !==
+        JSON.stringify(existing?.areas ?? []);
+      const existingProfiles = existingRaw.area_profiles as
+        | Record<string, unknown>
+        | undefined;
+      const needsAreaProfiles =
+        merged.areas?.length > 0 &&
+        (areasChanged ||
+          !existingProfiles ||
+          Object.keys(existingProfiles).length === 0);
+      let area_profiles: Record<string, unknown> | undefined;
+      if (needsAreaProfiles) {
+        try {
+          area_profiles = (await evaluatePreferredAreas(
+            merged.areas,
+          )) as Record<string, unknown>;
+        } catch (e) {
+          console.error("Failed to evaluate preferred areas:", e);
+        }
+      }
+
       const payload: Record<string, unknown> = {
         ...merged,
-        raw_json: { ...merged, score_weights: parsed.score_weights ?? (existing?.raw_json as Record<string, unknown>)?.score_weights },
+        raw_json: {
+          ...merged,
+          score_weights: parsed.score_weights ?? existingRaw.score_weights,
+          area_profiles:
+            merged.areas?.length === 0
+              ? {}
+              : area_profiles && Object.keys(area_profiles).length > 0
+                ? area_profiles
+                : (existingRaw.area_profiles as Record<string, unknown> | undefined) ??
+                  {},
+        },
         updated_at: new Date().toISOString(),
       };
       if (existing?.id) {

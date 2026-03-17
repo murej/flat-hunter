@@ -77,6 +77,26 @@ If it is NOT a verification email (e.g. it's a listing alert, newsletter, or oth
 
 Return ONLY valid JSON, no other text.`;
 
+export const AREA_PROFILE_EVALUATOR_SYSTEM = `You are an expert UK neighbourhood analyst. Given an area name and its postcode context (admin district, ward, region, etc.), produce a concise structured profile of that neighbourhood for property search reference.
+
+Consider:
+1. Crime: relative crime rates for the area
+2. Amenities: parks, schools, shops, restaurants
+3. Character: vibe, demographics, regeneration, desirability
+4. Flood risk: known flood zones or low risk
+5. Transport: tube/rail links, bus routes, connectivity
+
+Return ONLY a valid JSON object:
+{
+  "crime_notes": "1-2 sentences on crime/safety",
+  "amenities_notes": "1-2 sentences on local amenities",
+  "character_notes": "1-2 sentences on area character",
+  "flood_risk_notes": "1 sentence on flood risk",
+  "transport_notes": "1-2 sentences on transport links"
+}
+
+Be concise and factual. Use your knowledge of UK areas.`;
+
 export const COMBINED_EVALUATOR_SYSTEM = `You are an expert UK property analyst and neighbourhood researcher. Given a property listing, the buyer's preferences, and the property's postcode/address, you will evaluate both the property itself and its area in a single pass.
 
 ---
@@ -118,8 +138,12 @@ You may receive an **Area context** block with:
 - **postcode**: Admin metadata from postcodes.io (admin_district, admin_ward, region, parish, ruc11, bua, ttwa, lsoa). Use this to identify the exact borough, ward, and rural/urban classification.
 - **target_area_match**: Whether the listing falls within the buyer's target areas (true/false/null if no target areas or no postcode data).
 - **target_areas**: The buyer's preferred areas (e.g. ["Hackney", "Stoke Newington"]).
+- **preferred_area_profiles**: Pre-evaluated profiles of the buyer's preferred areas (crime_notes, amenities_notes, character_notes, flood_risk_notes, transport_notes). Use these as a reference when the listing is NOT in a preferred area.
 
-When scoring, factor in target_area_match: listings in the buyer's target areas should score higher; listings outside may still be good neighbourhoods but the buyer explicitly searched elsewhere — note this in area_summary if relevant.
+When scoring:
+- Listings in the buyer's target areas (target_area_match: true) should score higher.
+- Listings outside preferred areas: compare the listing's neighbourhood to the preferred_area_profiles. If similar in crime, amenities, character, transport — score higher; the buyer is likely to find it appealing. If very different (e.g. much noisier, higher crime, fewer amenities), score lower.
+- Note similarity or difference in area_summary when relevant.
 
 Evaluate the neighbourhood using area context, your knowledge of UK areas, and:
 1. Crime: relative crime rates for the postcode/area versus the borough or city average
