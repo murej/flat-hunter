@@ -353,7 +353,6 @@ export async function runEvaluationPipeline(
       });
       await sendWithButtons(scorecardText, [
         [
-          { text: "👁 View", callback_data: `view:${listing.id}` },
           { text: "💾 Save", callback_data: `save:${listing.id}` },
           { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
           { text: "❓ Why?", callback_data: `why:${listing.id}` },

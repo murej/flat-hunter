@@ -11,12 +11,10 @@ import {
 import { buildScorecardText } from "@/lib/tools/scorecard";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { collectPreferences } from "./tools/preference";
-import { requestViewing } from "./tools/viewing";
 import {
   CONVERSATION_AGENT_SYSTEM,
   WHY_EXPLANATION_SYSTEM,
   COMPARISON_SYSTEM,
-  VIEWING_EMAIL_SYSTEM,
 } from "@/lib/prompts";
 import {
   runGenericAgent,
@@ -136,34 +134,6 @@ const TOOLS: Anthropic.Tool[] = [
         listing_id_b: { type: "string", description: "Second listing UUID" },
       },
       required: ["listing_id_a", "listing_id_b"],
-    },
-  },
-  {
-    name: "get_listing_for_viewing",
-    description:
-      "Fetch listing details so you can draft a viewing request email for the user to review.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id: { type: "string", description: "UUID of the listing" },
-      },
-      required: ["listing_id"],
-    },
-  },
-  {
-    name: "send_viewing_email",
-    description:
-      "Send a viewing request email to the estate agent. Provide the complete email body exactly as it should be sent.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id: { type: "string", description: "UUID of the listing" },
-        email_body: {
-          type: "string",
-          description: "Complete email body text to send to the agent",
-        },
-      },
-      required: ["listing_id", "email_body"],
     },
   },
   {
@@ -433,61 +403,6 @@ async function executeToolInternal(
       return { type: "data", data, toolName };
     }
 
-    case "get_listing_for_viewing": {
-      if (!listingId) {
-        return {
-          type: "data",
-          data: "No listing ID found. Ask the user which property they'd like to view.",
-          toolName,
-        };
-      }
-      const listing = await getListing(listingId);
-      return {
-        type: "data",
-        data: JSON.stringify({
-          listing_id: listingId,
-          title: listing.title,
-          address: listing.address,
-          agent_name: listing.agent_name,
-          agent_email: listing.agent_email,
-          url: listing.url,
-          price: listing.price,
-        }),
-        toolName,
-      };
-    }
-
-    case "send_viewing_email": {
-      if (!listingId || !toolInput.email_body) {
-        return {
-          type: "direct",
-          message:
-            "I'm not sure which property's email to send. Please tap the View button on a scorecard first.",
-        };
-      }
-      try {
-        await requestViewing.sendEmailBody(listingId, toolInput.email_body);
-        return {
-          type: "direct",
-          message: "✅ Viewing request sent! I'll let you know if we hear back.",
-          listingId,
-          intent: "view",
-        };
-      } catch (e) {
-        const err = e as Error;
-        if (err.message.includes("No agent email")) {
-          const listing = await getListing(listingId);
-          return {
-            type: "direct",
-            message: `⚠️ I don't have the agent's email address for this property. Contact them directly: [🔗 View listing](${listing.url})`,
-            listingId,
-            intent: "view",
-          };
-        }
-        throw e;
-      }
-    }
-
     case "update_preferences": {
       // collectPreferences manages its own LLM call and sends the response itself
       await collectPreferences(userMessage, messageId);
@@ -508,10 +423,6 @@ const EXPLANATION_AGENTS: Record<
     intent: "why",
   },
   get_comparison_data: { systemPrompt: COMPARISON_SYSTEM, intent: "compare" },
-  get_listing_for_viewing: {
-    systemPrompt: VIEWING_EMAIL_SYSTEM,
-    intent: "view",
-  },
 };
 
 function createExecuteTool(
@@ -542,7 +453,6 @@ function createExecuteTool(
           ? { text: "🗑 Unsave", callback_data: `unsave:${result.listingId}` }
           : { text: "💾 Save", callback_data: `save:${result.listingId}` };
         const scorecardButtons = [
-          { text: "👁 View", callback_data: `view:${result.listingId}` },
           saveButton,
           ...(result.saved ? [] : [{ text: "⏭ Skip", callback_data: `skip:${result.listingId}` }]),
           { text: "❓ Why?", callback_data: `why:${result.listingId}` },

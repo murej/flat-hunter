@@ -30,18 +30,20 @@ export function buildScorecardText(
   const title = listing.title || "Untitled property";
   const urlLine = listing.url
     ? `[🔗 View listing](${listing.url})`
-    : "Listing URL unavailable";
+    : "🔗 No link";
 
   const scorecardText = `🏠 **${title}**
-💰 £${listing.price?.toLocaleString()} · £${evaluation.monthly_mortgage}/mo
+  --------------------------------------
+  £${listing.price?.toLocaleString()} · £${evaluation.monthly_mortgage}/mo
 
-✅ Score: ${s(evaluation.overall_score)}
-  -----------------------------------
-  Property fit:           ${s(evaluation.fit_score, unknownScores.property)}
-  Size:                   ${s(evaluation.size_score, unknownScores.property)}
-  Area:                   ${s(evaluation.area_score, unknownScores.area)}
-  Commute:                ${commuteLabel}
-  Value:                  ${s(evaluation.price_score, unknownScores.property)}  
+✅ Score:                         ${s(evaluation.overall_score)}
+  --------------------------------------
+  Property fit:                       ${s(evaluation.fit_score, unknownScores.property)}
+  Size:                                   ${s(evaluation.size_score, unknownScores.property)}
+  Area:                                  ${s(evaluation.area_score, unknownScores.area)}
+  Commute:                         ${commuteLabel}
+  Value:                                 ${s(evaluation.price_score, unknownScores.property)}  
+  --------------------------------------
 
 ⚠️ Watch outs
   ${watchOuts}

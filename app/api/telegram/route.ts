@@ -91,7 +91,6 @@ export async function POST(req: NextRequest) {
               ? { text: "🗑 Unsave", callback_data: `unsave:${listingId}` }
               : { text: "💾 Save", callback_data: `save:${listingId}` };
             const scorecardButtons = [
-              { text: "👁 View", callback_data: `view:${listingId}` },
               saveButton,
               ...(saved ? [] : [{ text: "⏭ Skip", callback_data: `skip:${listingId}` }]),
               { text: "❓ Why?", callback_data: `why:${listingId}` },
