@@ -12,6 +12,7 @@ import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import { fetchAreaContext } from "./area-context";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";
+import { getLatestMortgageRate } from "./mortgage-rate";
 import {
   buildNoScoreScorecardText,
   buildScorecardText,
@@ -208,16 +209,18 @@ export async function runEvaluationPipeline(
         commute_unknown: true as const,
       };
     }),
-    calculateFinance(listing.price, preferences?.deposit ?? 0).catch((e) => {
-      console.error("Finance agent failed:", e);
-      return {
-        monthly_mortgage: 0,
-        monthly_interest_only: 0,
-        stamp_duty: 0,
-        estimated_monthly_total: 0,
-        raw: {},
-      };
-    }),
+    getLatestMortgageRate()
+      .then((rate) => calculateFinance(listing.price, preferences?.deposit ?? 0, rate))
+      .catch((e) => {
+        console.error("Finance agent failed:", e);
+        return {
+          monthly_mortgage: 0,
+          monthly_interest_only: 0,
+          stamp_duty: 0,
+          estimated_monthly_total: 0,
+          raw: {},
+        };
+      }),
   ]);
 
   const weightsConfig = preferences.raw_json?.score_weights as

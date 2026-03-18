@@ -14,7 +14,7 @@ import {
 } from "./evaluator";
 import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
 import { sleep } from "@/lib/utils/retry";
-import { sendMessage, sendTextAsDocument } from "@/lib/telegram";
+import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -50,8 +50,13 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
     .from("ingest_idempotency")
     .insert({ idempotency_key: key });
 
-  if (!error) return true;
-  if ((error as { code?: string }).code === "23505") return false;
+  if (!error) {
+    return true;
+  }
+
+  if ((error as { code?: string }).code === "23505") {
+    return false;
+  }
 
   console.error("Failed to claim ingest idempotency key:", error);
   throw error;
@@ -77,44 +82,127 @@ export function buildClaudeEmailParseInput(html: string): string {
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   const claudeInput = buildClaudeEmailParseInput(html);
+
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
       system: EMAIL_PARSER_SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: claudeInput,
-        },
-      ],
+      messages: [{ role: "user", content: claudeInput }],
     }),
   );
 
   const text =
     response.content[0].type === "text" ? response.content[0].text : "[]";
 
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) return [];
+  function extractFirstValidJsonArrayCandidate(
+    input: string,
+    startIndices: number[],
+  ): string | null {
+    for (const start of startIndices) {
+      let depth = 0;
+      let inString = false;
+
+      for (let i = start; i < input.length; i++) {
+        const ch = input[i];
+
+        if (inString) {
+          if (ch === "\\") {
+            i++; // skip escaped char
+            continue;
+          }
+          if (ch === '"') inString = false;
+          continue;
+        }
+
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+
+        if (ch === "[") depth++;
+        if (ch === "]") {
+          depth--;
+          if (depth === 0) {
+            const candidate = input.slice(start, i + 1);
+
+            try {
+              const parsed = JSON.parse(candidate);
+              if (Array.isArray(parsed)) return candidate;
+            } catch {
+              // fall through to sanitization
+            }
+
+            const sanitized = candidate
+              .replace(/,\s*]/g, "]")
+              .replace(/,\s*}/g, "}");
+            try {
+              const parsed = JSON.parse(sanitized);
+              if (Array.isArray(parsed)) return sanitized;
+            } catch {
+              // try next start index
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  const jsonStartIndices: number[] = [];
+  for (let i = 0; i < text.length && jsonStartIndices.length < 8; i++) {
+    if (text[i] === "[") jsonStartIndices.push(i);
+  }
+
+  const jsonArrayCandidate = extractFirstValidJsonArrayCandidate(
+    text,
+    jsonStartIndices,
+  );
+  if (!jsonArrayCandidate) return [];
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonMatch[0]);
+    parsed = JSON.parse(jsonArrayCandidate);
   } catch (e) {
-    console.error("Failed to parse listings JSON from Claude response:", e);
-    return [];
+    const sanitized = jsonArrayCandidate
+      .replace(/,\s*]/g, "]")
+      .replace(/,\s*}/g, "}");
+    try {
+      parsed = JSON.parse(sanitized);
+    } catch {
+      console.error(
+        "Failed to parse listings JSON from Claude response (even after sanitization):",
+        e,
+      );
+      return [];
+    }
   }
 
   if (!Array.isArray(parsed)) return [];
 
+  function derivePortalIdFromUrl(url: string): string {
+    const detailsMatch = url.match(/\/for-sale\/details\/(\d+)/i);
+    if (detailsMatch?.[1]) return `zoopla:${detailsMatch[1]}`;
+    return `generated:${createHash("sha256").update(url).digest("hex")}`;
+  }
+
   const listings: RawListing[] = [];
+
   for (const item of parsed) {
     if (!item || typeof item !== "object") continue;
     const l = item as Partial<RawListing>;
-    if (!l.portal_id || !l.url) continue;
+    if (!l.url) continue;
+
+    const url = String(l.url);
+    const portalId = l.portal_id
+      ? String(l.portal_id)
+      : derivePortalIdFromUrl(url);
+
     listings.push({
-      portal_id: String(l.portal_id),
-      url: String(l.url),
+      portal_id: portalId,
+      url,
       title: String(l.title ?? ""),
       price: typeof l.price === "number" && l.price > 0 ? l.price : null,
       address: String(l.address ?? ""),
@@ -138,6 +226,87 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
           ? l.listed_date
           : new Date().toISOString().slice(0, 10),
     });
+  }
+
+  // Zoopla alert emails often provide only tracking links (e.g. /ls/click?upn=...),
+  // and Claude may fail to return usable listing objects. As a fallback, resolve
+  // those tracking links by following redirects to the real /for-sale/details/<id> URL.
+  if (listings.length === 0) {
+    try {
+      const extracted = buildEmailParseExtractedContent(html);
+      const priceCandidates = Array.from(
+        extracted.matchAll(/£\s*([0-9]{1,3}(?:,[0-9]{3})*)/g),
+      )
+        .map((m) => {
+          const raw = m[1] ?? "";
+          const cleaned = raw.replace(/,/g, "");
+          const n = parseInt(cleaned, 10);
+          return Number.isFinite(n) ? n : null;
+        })
+        .filter((n): n is number => n !== null);
+
+      const trackingUrls = Array.from(
+        extracted.matchAll(
+          /https?:\/\/[^\s<>"']+\/ls\/click\?[^ \n\r\t<>"']+/gi,
+        ),
+      ).map((m) => m[0]);
+
+      const uniqueTrackingUrls = Array.from(new Set(trackingUrls));
+      const toResolve = uniqueTrackingUrls.slice(0, 8);
+
+      const resolveRedirect = async (u: string): Promise<string | null> => {
+        try {
+          const res = await fetch(u, {
+            method: "GET",
+            redirect: "follow",
+            headers: { "user-agent": "flat-hunter/ingest" },
+          });
+          return res.url ?? null;
+        } catch {
+          return null;
+        }
+      };
+
+      const resolved = await Promise.all(
+        toResolve.map((u) => resolveRedirect(u)),
+      );
+      const detailUrls = resolved
+        .map((finalUrl) => finalUrl ?? "")
+        .filter(Boolean)
+        .filter((finalUrl) => /\/for-sale\/details\//i.test(finalUrl));
+
+      const derivedListings: RawListing[] = detailUrls.map((detailUrl, idx) => {
+        const m = detailUrl.match(/\/for-sale\/details\/(\d+)/i);
+        const id = m?.[1];
+        const portal_id = id
+          ? `zoopla:${id}`
+          : `generated:${createHash("sha256").update(detailUrl).digest("hex")}`;
+
+        const price = priceCandidates[idx] ?? null;
+
+        return {
+          portal_id,
+          url: detailUrl,
+          title: "",
+          price,
+          address: "",
+          postcode: "",
+          bedrooms: null,
+          bathrooms: null,
+          sqft: null,
+          description: "",
+          image_urls: [],
+          floorplan_url: "",
+          agent_name: "",
+          agent_email: "",
+          listed_date: new Date().toISOString().slice(0, 10),
+        };
+      });
+
+      if (derivedListings.length > 0) listings.push(...derivedListings);
+    } catch (e) {
+      console.error("Zoopla tracking fallback failed:", e);
+    }
   }
 
   return listings;
@@ -400,18 +569,7 @@ export async function ingestAgent(
     await sendMessage(
       "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
     );
-    try {
-      const claudeInput = buildClaudeEmailParseInput(html);
-      const safeSubject =
-        typeof subject === "string" && subject.trim() ? subject.trim() : "(none)";
-      const caption = `Ingest parse failed\n\nSubject: ${safeSubject}\nIdempotency: ${key}`;
-      await sendTextAsDocument(`ingest-parse-failed-${key}.txt`, claudeInput, {
-        caption,
-        parse_mode: false,
-      });
-    } catch (e) {
-      console.error("Failed to send ingest debug attachment:", e);
-    }
+
     return { done: true };
   }
 
@@ -428,89 +586,104 @@ export async function ingestAgent(
 }
 
 export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
-  const preferences = await getPreferences();
+  try {
+    const preferences = await getPreferences();
 
-  if (!preferences) {
-    await sendMessage(
-      `I have *${newIds.length}* new ${newIds.length === 1 ? "listing" : "listings"} — set your preferences via Telegram to get scorecards.`,
-    );
-    return;
-  }
+    if (!preferences) {
+      await sendMessage(
+        `I have *${newIds.length}* new ${newIds.length === 1 ? "listing" : "listings"} — set your preferences via Telegram to get scorecards.`,
+      );
+      return;
+    }
 
-  const idsToProcess = newIds.slice(0, MAX_LISTINGS_PER_EMAIL);
-  const truncated = newIds.length > MAX_LISTINGS_PER_EMAIL;
+    const idsToProcess = newIds.slice(0, MAX_LISTINGS_PER_EMAIL);
+    const truncated = newIds.length > MAX_LISTINGS_PER_EMAIL;
 
-  if (truncated) {
-    await sendMessage(
-      `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`,
-    );
-  } else {
-    await sendMessage(
-      "I have new listings, will get back to you if there's anything worth checking out.",
-    );
-  }
-
-  const limit = pLimit(5);
-  const evalResults = await Promise.all(
-    idsToProcess.map((id) =>
-      limit(() =>
-        runEvaluationPipeline(id, { sendImmediately: false }).catch((e) => {
-          console.error(`Evaluation failed for ${id}:`, e);
-          return null;
-        }),
-      ),
-    ),
-  );
-
-  const results = evalResults.filter(
-    (r): r is EvaluationPipelineResult => r !== null && typeof r === "object",
-  );
-
-  const toSend = results
-    .filter((r) => r.sent)
-    .sort((a, b) => b.overall_score - a.overall_score);
-
-  const SCORECARD_DELAY_MS = parseInt(
-    process.env.SCORECARD_DELAY_MS ?? "500",
-    10,
-  );
-
-  for (let i = 0; i < toSend.length; i++) {
-    const r = toSend[i];
-    if (r.shouldSendNoScore) {
-      await composeNoScoreScorecard(r.evaluation, r.listing);
+    if (truncated) {
+      await sendMessage(
+        `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`,
+      );
     } else {
-      await composeScorecard(
-        r.evaluation,
-        r.listing,
-        r.notable_flags,
-        r.commute_minutes,
-        r.unknownScores,
+      await sendMessage(
+        "I have new listings, will get back to you if there's anything worth checking out.",
       );
     }
-    if (i < toSend.length - 1) {
-      await sleep(SCORECARD_DELAY_MS);
+
+    const limit = pLimit(5);
+    const evalResults = await Promise.all(
+      idsToProcess.map((id) =>
+        limit(() =>
+          runEvaluationPipeline(id, { sendImmediately: false }).catch((e) => {
+            console.error(`Evaluation failed for ${id}:`, e);
+            return null;
+          }),
+        ),
+      ),
+    );
+
+    const results = evalResults.filter(
+      (r): r is EvaluationPipelineResult =>
+        r !== null && typeof r === "object",
+    );
+
+    const toSend = results
+      .filter((r) => r.sent)
+      .sort((a, b) => b.overall_score - a.overall_score);
+
+    const SCORECARD_DELAY_MS = parseInt(
+      process.env.SCORECARD_DELAY_MS ?? "500",
+      10,
+    );
+
+    for (let i = 0; i < toSend.length; i++) {
+      const r = toSend[i];
+      if (r.shouldSendNoScore) {
+        await composeNoScoreScorecard(r.evaluation, r.listing);
+      } else {
+        await composeScorecard(
+          r.evaluation,
+          r.listing,
+          r.notable_flags,
+          r.commute_minutes,
+          r.unknownScores,
+        );
+      }
+      if (i < toSend.length - 1) {
+        await sleep(SCORECARD_DELAY_MS);
+      }
     }
+
+    const sentCount = toSend.length;
+    const suppressedCount = results.length - sentCount;
+    const rejected = results.filter((r) => !r.sent);
+    const rejectedDetails =
+      rejected.length > 0
+        ? rejected
+            .map(
+              (r) =>
+                `[${r.listing.title}](${r.listing.url}) (${r.overall_score}/10)`,
+            )
+            .join(", ")
+        : "";
+
+    const processedCount = idsToProcess.length;
+    await sendMessage(
+      suppressedCount > 0
+        ? `📬 Email alert processed: *${processedCount}* new ${
+            processedCount === 1 ? "property" : "properties"
+          }${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${
+            sentCount === 1 ? "" : "s"
+          }, plus *${suppressedCount}* more that scored 7/10 or below: ${rejectedDetails}.`
+        : `📬 Email alert processed: *${processedCount}* new ${
+            processedCount === 1 ? "property" : "properties"
+          }${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${
+            sentCount === 1 ? "" : "s"
+          }.`,
+      suppressedCount > 0
+        ? { link_preview_options: { is_disabled: true } }
+        : {},
+    );
+  } catch (e) {
+    throw e;
   }
-
-  const sentCount = toSend.length;
-  const suppressedCount = results.length - sentCount;
-  const rejected = results.filter((r) => !r.sent);
-  const rejectedDetails =
-    rejected.length > 0
-      ? rejected
-          .map(
-            (r) =>
-              `[${r.listing.title}](${r.listing.url}) (${r.overall_score}/10)`,
-          )
-          .join(", ")
-      : "";
-
-  const processedCount = idsToProcess.length;
-  await sendMessage(
-    suppressedCount > 0
-      ? `📬 Email alert processed: *${processedCount}* new ${processedCount === 1 ? "property" : "properties"}${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}, plus *${suppressedCount}* more that scored 7/10 or below: ${rejectedDetails}.`
-      : `📬 Email alert processed: *${processedCount}* new ${processedCount === 1 ? "property" : "properties"}${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${sentCount === 1 ? "" : "s"}.`,
-    suppressedCount > 0 ? { link_preview_options: { is_disabled: true } } : {},
-  );
 }

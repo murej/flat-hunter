@@ -1,7 +1,12 @@
 import type { FinanceEvalResult } from "@/types";
 import type { MortgageRate } from "@/lib/tools/mortgage-rate";
 
-const ENV_MORTGAGE_RATE = Number(process.env.MORTGAGE_RATE ?? "");
+const ENV_MORTGAGE_RATE_RAW = process.env.MORTGAGE_RATE?.trim();
+// Important: `Number("")` is `0`, which would incorrectly override the default.
+// Treat empty/whitespace as "unset" so we fall back to DEFAULT_MORTGAGE_RATE.
+const ENV_MORTGAGE_RATE = ENV_MORTGAGE_RATE_RAW
+  ? Number(ENV_MORTGAGE_RATE_RAW)
+  : NaN;
 const DEFAULT_MORTGAGE_RATE = Number.isFinite(ENV_MORTGAGE_RATE)
   ? ENV_MORTGAGE_RATE
   : 4.5;

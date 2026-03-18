@@ -16,8 +16,11 @@ export interface MortgageRate {
   series_name?: string;
 }
 
-const ENV_MORTGAGE_RATE_RAW = process.env.MORTGAGE_RATE ?? "";
-const ENV_MORTGAGE_RATE = Number(ENV_MORTGAGE_RATE_RAW);
+const ENV_MORTGAGE_RATE_RAW = process.env.MORTGAGE_RATE?.trim();
+// Treat empty/whitespace as "unset" so it does not incorrectly become 0.
+const ENV_MORTGAGE_RATE = ENV_MORTGAGE_RATE_RAW
+  ? Number(ENV_MORTGAGE_RATE_RAW)
+  : NaN;
 
 export async function getLatestMortgageRate(): Promise<MortgageRate> {
   // If MORTGAGE_RATE is set and numeric, it always wins
