@@ -18,7 +18,7 @@ echo "Pointing Telegram webhook at: ${NEXT_PUBLIC_APP_URL}/api/telegram"
 
 curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
-  -d "{\"url\": \"${PROD_URL}/api/telegram\"}"
+  -d "{\"url\": \"${NEXT_PUBLIC_APP_URL}/api/telegram\"}"
 
 echo ""
 echo "Done. Bot is now live on Vercel."
