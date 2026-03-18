@@ -32,6 +32,35 @@ export async function sendMessage(
   }
 }
 
+export async function sendTextAsDocument(
+  filename: string,
+  text: string,
+  options: { caption?: string; parse_mode?: string | null | false } = {},
+): Promise<void> {
+  const form = new FormData();
+  form.set("chat_id", CHAT_ID);
+  form.set(
+    "document",
+    new Blob([text], { type: "text/plain; charset=utf-8" }),
+    filename,
+  );
+  if (options.caption) form.set("caption", options.caption);
+  if (options.parse_mode !== null && options.parse_mode !== false) {
+    form.set("parse_mode", (options.parse_mode ?? "Markdown") as string);
+  }
+
+  const res = await fetch(`${BASE_URL}/sendDocument`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.error("Telegram sendDocument failed:", body);
+    throw new Error(`Telegram sendDocument failed: ${body}`);
+  }
+}
+
 export async function sendWithButtons(
   text: string,
   buttons: AgentButton[][],

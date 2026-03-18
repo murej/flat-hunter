@@ -14,7 +14,7 @@ import {
 } from "./evaluator";
 import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
 import { sleep } from "@/lib/utils/retry";
-import { sendMessage } from "@/lib/telegram";
+import { sendMessage, sendTextAsDocument } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -57,7 +57,7 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
   throw error;
 }
 
-export async function parseEmailHtml(html: string): Promise<RawListing[]> {
+export function buildEmailParseExtractedContent(html: string): string {
   let content = extractTextAndUrlsFromHtml(html);
   const encoder = new TextEncoder();
   const bytes = encoder.encode(content);
@@ -67,6 +67,16 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       decoder.decode(bytes.subarray(0, MAX_EMAIL_CONTENT_BYTES)) +
       "\n\n[... truncated for token limit ...]";
   }
+  return content;
+}
+
+export function buildClaudeEmailParseInput(html: string): string {
+  const content = buildEmailParseExtractedContent(html);
+  return `Parse the following property alert email (text and URLs extracted from HTML) and extract all listings:\n\n${content}`;
+}
+
+export async function parseEmailHtml(html: string): Promise<RawListing[]> {
+  const claudeInput = buildClaudeEmailParseInput(html);
   const response = await retryWithBackoff(() =>
     client.messages.create({
       model: "claude-sonnet-4-6",
@@ -75,7 +85,7 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       messages: [
         {
           role: "user",
-          content: `Parse the following property alert email (text and URLs extracted from HTML) and extract all listings:\n\n${content}`,
+          content: claudeInput,
         },
       ],
     }),
@@ -390,6 +400,18 @@ export async function ingestAgent(
     await sendMessage(
       "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
     );
+    try {
+      const claudeInput = buildClaudeEmailParseInput(html);
+      const safeSubject =
+        typeof subject === "string" && subject.trim() ? subject.trim() : "(none)";
+      const caption = `Ingest parse failed\n\nSubject: ${safeSubject}\nIdempotency: ${key}`;
+      await sendTextAsDocument(`ingest-parse-failed-${key}.txt`, claudeInput, {
+        caption,
+        parse_mode: false,
+      });
+    } catch (e) {
+      console.error("Failed to send ingest debug attachment:", e);
+    }
     return { done: true };
   }
 
