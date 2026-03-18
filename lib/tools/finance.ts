@@ -1,28 +1,54 @@
 import type { FinanceEvalResult } from "@/types";
 
-function getMortgageRate(): number {
-  const raw = process.env.MORTGAGE_RATE ?? "4.5";
+const DEFAULT_MORTGAGE_RATE = 4.5;
+const MIN_MORTGAGE_RATE = 0.5;
+const MAX_MORTGAGE_RATE = 15;
+const DEFAULT_TERM_YEARS = 25;
+const DEFAULT_MONTHLY_SERVICE_CHARGE = 200;
+
+type RateSource = "env" | "default" | "clamped" | "invalid";
+
+function getMortgageRate(): { rate: number; source: RateSource; raw: string } {
+  const raw = process.env.MORTGAGE_RATE ?? String(DEFAULT_MORTGAGE_RATE);
   const parsed = parseFloat(raw);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 15) {
+
+  if (!Number.isFinite(parsed)) {
     console.error(
-      `Invalid MORTGAGE_RATE "${raw}", falling back to default 4.5%`,
+      `Invalid MORTGAGE_RATE "${raw}", falling back to default ${DEFAULT_MORTGAGE_RATE}%`,
     );
-    return 4.5;
+    return { rate: DEFAULT_MORTGAGE_RATE, source: "invalid", raw };
   }
-  return parsed;
+
+  if (parsed < MIN_MORTGAGE_RATE || parsed > MAX_MORTGAGE_RATE) {
+    const clamped = Math.min(Math.max(parsed, MIN_MORTGAGE_RATE), MAX_MORTGAGE_RATE);
+    console.warn(
+      `MORTGAGE_RATE "${raw}" out of bounds, clamped to ${clamped}% (allowed range ${MIN_MORTGAGE_RATE}-${MAX_MORTGAGE_RATE}%)`,
+    );
+    return { rate: clamped, source: "clamped", raw };
+  }
+
+  if (raw === String(DEFAULT_MORTGAGE_RATE)) {
+    return { rate: parsed, source: "default", raw };
+  }
+
+  return { rate: parsed, source: "env", raw };
 }
 
 export function calculateFinance(
   price: number,
   deposit: number,
 ): Promise<FinanceEvalResult> {
-  const rate = getMortgageRate();
+  const { rate, source: rateSource, raw: rawRate } = getMortgageRate();
   const mortgageRate = rate / 100 / 12;
   const loanAmount = price - deposit;
-  const termMonths = 25 * 12;
+  const termYears = DEFAULT_TERM_YEARS;
+  const termMonths = termYears * 12;
 
   const validInputs =
-    Number.isFinite(price) && price >= 0 && Number.isFinite(deposit) && deposit >= 0;
+    Number.isFinite(price) &&
+    Number.isFinite(deposit) &&
+    price >= 0 &&
+    deposit >= 0;
 
   if (!validInputs) {
     const raw = {
@@ -30,7 +56,9 @@ export function calculateFinance(
       deposit,
       loan_amount: loanAmount,
       rate_used: rate,
-      term_years: 25,
+      rate_source: rateSource,
+      raw_rate_input: rawRate,
+      term_years: termYears,
       reason: "invalid_inputs",
     };
 
@@ -44,20 +72,27 @@ export function calculateFinance(
   }
 
   if (loanAmount <= 0) {
+    const reason =
+      loanAmount === 0
+        ? "no_borrowing_required"
+        : "deposit_exceeds_price";
+
     const raw = {
       price,
       deposit,
       loan_amount: loanAmount,
       rate_used: rate,
-      term_years: 25,
-      reason: "no borrowing required",
+      rate_source: rateSource,
+      raw_rate_input: rawRate,
+      term_years: termYears,
+      reason,
     };
 
     return Promise.resolve({
       monthly_mortgage: 0,
       monthly_interest_only: 0,
       stamp_duty: calculateSDLT(price, true),
-      estimated_monthly_total: 200,
+      estimated_monthly_total: DEFAULT_MONTHLY_SERVICE_CHARGE,
       raw,
     });
   }
@@ -75,14 +110,39 @@ export function calculateFinance(
   const stamp_duty = calculateSDLT(price, true);
 
   // Estimated monthly total (mortgage + service charge estimate £200/mo)
-  const estimated_monthly_total = monthly_mortgage + 200;
+  const estimated_monthly_total = monthly_mortgage + DEFAULT_MONTHLY_SERVICE_CHARGE;
+
+  const ltv = price > 0 ? loanAmount / price : 0;
+
+  const stressRate = Math.min(rate + 2, MAX_MORTGAGE_RATE);
+  const stressMonthlyRate = stressRate / 100 / 12;
+  const stress_monthly_mortgage =
+    (loanAmount *
+      stressMonthlyRate *
+      Math.pow(1 + stressMonthlyRate, termMonths)) /
+    (Math.pow(1 + stressMonthlyRate, termMonths) - 1);
+
+  const warnings: string[] = [];
+  if (ltv > 0.9) {
+    warnings.push("high_ltv");
+  }
+  if (rate >= 7) {
+    warnings.push("high_rate");
+  }
 
   const raw = {
     price,
     deposit,
     loan_amount: loanAmount,
-      rate_used: rate,
-    term_years: 25,
+    rate_used: rate,
+    rate_source: rateSource,
+    raw_rate_input: rawRate,
+    term_years: termYears,
+    ltv,
+    sdlt: stamp_duty,
+    stress_rate_used: stressRate,
+    stress_monthly_mortgage,
+    warnings,
   };
 
   return Promise.resolve({
@@ -94,20 +154,39 @@ export function calculateFinance(
   });
 }
 
+const SDLT_FTB_ZERO_THRESHOLD = 425000;
+const SDLT_FTB_UPPER_THRESHOLD = 625000;
+
+const SDLT_STANDARD_BANDS = [
+  { threshold: 1500000, rate: 0.12 },
+  { threshold: 925000, rate: 0.1 },
+  { threshold: 250000, rate: 0.05 },
+];
+
+function calculateStandardSDLT(price: number): number {
+  if (price <= 0) return 0;
+
+  let tax = 0;
+  for (const band of SDLT_STANDARD_BANDS) {
+    if (price > band.threshold) {
+      tax += (price - band.threshold) * band.rate;
+      price = band.threshold;
+    }
+  }
+  return tax;
+}
+
 function calculateSDLT(price: number, firstTimeBuyer: boolean): number {
+  if (price <= 0) return 0;
+
   if (firstTimeBuyer) {
     // First-time buyer relief: 0% up to £425k, 5% on £425k-£625k, standard above £625k
-    if (price <= 425000) return 0;
-    if (price <= 625000) return (price - 425000) * 0.05;
+    if (price <= SDLT_FTB_ZERO_THRESHOLD) return 0;
+    if (price <= SDLT_FTB_UPPER_THRESHOLD) {
+      return (price - SDLT_FTB_ZERO_THRESHOLD) * 0.05;
+    }
     // Above £625k threshold, FTB relief does not apply — use standard rates
   }
 
-  // Standard SDLT rates
-  let tax = 0;
-  if (price > 1500000) tax += (price - 1500000) * 0.12;
-  if (price > 925000) tax += (Math.min(price, 1500000) - 925000) * 0.1;
-  if (price > 250000) tax += (Math.min(price, 925000) - 250000) * 0.05;
-  // 0% on first £250k (standard threshold from Sept 2022)
-
-  return tax;
+  return calculateStandardSDLT(price);
 }
