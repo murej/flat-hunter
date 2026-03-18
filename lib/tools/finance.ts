@@ -1,44 +1,92 @@
 import type { FinanceEvalResult } from "@/types";
+import type { MortgageRate } from "@/lib/tools/mortgage-rate";
 
-const DEFAULT_MORTGAGE_RATE = 4.5;
+const ENV_MORTGAGE_RATE = Number(process.env.MORTGAGE_RATE ?? "");
+const DEFAULT_MORTGAGE_RATE = Number.isFinite(ENV_MORTGAGE_RATE)
+  ? ENV_MORTGAGE_RATE
+  : 4.5;
 const MIN_MORTGAGE_RATE = 0.5;
 const MAX_MORTGAGE_RATE = 15;
 const DEFAULT_TERM_YEARS = 25;
 const DEFAULT_MONTHLY_SERVICE_CHARGE = 200;
 
-type RateSource = "env" | "default" | "clamped" | "invalid";
+function normalizeMortgageRate(input: MortgageRate | null): {
+  rate: number;
+  source: string;
+  raw: string;
+  effective_date?: string;
+  series_code?: string;
+  series_name?: string;
+} {
+  // If env is set and numeric, it always overrides
+  if (Number.isFinite(ENV_MORTGAGE_RATE)) {
+    return {
+      rate: ENV_MORTGAGE_RATE,
+      source: "env",
+      raw: String(ENV_MORTGAGE_RATE),
+      effective_date: input?.effective_date,
+      series_code: input?.series_code,
+      series_name: input?.series_name,
+    };
+  }
 
-function getMortgageRate(): { rate: number; source: RateSource; raw: string } {
-  const raw = process.env.MORTGAGE_RATE ?? String(DEFAULT_MORTGAGE_RATE);
-  const parsed = parseFloat(raw);
+  if (!input) {
+    return {
+      rate: DEFAULT_MORTGAGE_RATE,
+      source: "default",
+      raw: String(DEFAULT_MORTGAGE_RATE),
+    };
+  }
 
-  if (!Number.isFinite(parsed)) {
+  const raw = input.raw_input ?? String(input.rate);
+  let rate = input.rate;
+  let source = input.source;
+
+  if (!Number.isFinite(rate)) {
     console.error(
-      `Invalid MORTGAGE_RATE "${raw}", falling back to default ${DEFAULT_MORTGAGE_RATE}%`,
+      `Invalid mortgage rate "${raw}", falling back to default ${DEFAULT_MORTGAGE_RATE}%`,
     );
-    return { rate: DEFAULT_MORTGAGE_RATE, source: "invalid", raw };
+    rate = DEFAULT_MORTGAGE_RATE;
+    source = "invalid";
   }
 
-  if (parsed < MIN_MORTGAGE_RATE || parsed > MAX_MORTGAGE_RATE) {
-    const clamped = Math.min(Math.max(parsed, MIN_MORTGAGE_RATE), MAX_MORTGAGE_RATE);
+  if (rate < MIN_MORTGAGE_RATE || rate > MAX_MORTGAGE_RATE) {
+    const clamped = Math.min(
+      Math.max(rate, MIN_MORTGAGE_RATE),
+      MAX_MORTGAGE_RATE,
+    );
     console.warn(
-      `MORTGAGE_RATE "${raw}" out of bounds, clamped to ${clamped}% (allowed range ${MIN_MORTGAGE_RATE}-${MAX_MORTGAGE_RATE}%)`,
+      `Mortgage rate "${rate}" out of bounds, clamped to ${clamped}% (allowed range ${MIN_MORTGAGE_RATE}-${MAX_MORTGAGE_RATE}%)`,
     );
-    return { rate: clamped, source: "clamped", raw };
+    rate = clamped;
+    if (source !== "supabase") {
+      source = "clamped";
+    }
   }
 
-  if (raw === String(DEFAULT_MORTGAGE_RATE)) {
-    return { rate: parsed, source: "default", raw };
-  }
-
-  return { rate: parsed, source: "env", raw };
+  return {
+    rate,
+    source,
+    raw,
+    effective_date: input.effective_date,
+    series_code: input.series_code,
+    series_name: input.series_name,
+  };
 }
 
 export function calculateFinance(
   price: number,
   deposit: number,
+  rateInput?: MortgageRate | null,
 ): Promise<FinanceEvalResult> {
-  const { rate, source: rateSource, raw: rawRate } = getMortgageRate();
+  const {
+    rate,
+    source: rateSource,
+    raw: rawRate,
+    effective_date: rateEffectiveDate,
+    series_code: rateSeriesCode,
+    series_name: rateSeriesName,
+  } = normalizeMortgageRate(rateInput ?? null);
   const mortgageRate = rate / 100 / 12;
   const loanAmount = price - deposit;
   const termYears = DEFAULT_TERM_YEARS;
@@ -58,6 +106,9 @@ export function calculateFinance(
       rate_used: rate,
       rate_source: rateSource,
       raw_rate_input: rawRate,
+      rate_effective_date: rateEffectiveDate,
+      rate_series_code: rateSeriesCode,
+      rate_series_name: rateSeriesName,
       term_years: termYears,
       reason: "invalid_inputs",
     };
@@ -73,9 +124,7 @@ export function calculateFinance(
 
   if (loanAmount <= 0) {
     const reason =
-      loanAmount === 0
-        ? "no_borrowing_required"
-        : "deposit_exceeds_price";
+      loanAmount === 0 ? "no_borrowing_required" : "deposit_exceeds_price";
 
     const raw = {
       price,
@@ -84,6 +133,9 @@ export function calculateFinance(
       rate_used: rate,
       rate_source: rateSource,
       raw_rate_input: rawRate,
+      rate_effective_date: rateEffectiveDate,
+      rate_series_code: rateSeriesCode,
+      rate_series_name: rateSeriesName,
       term_years: termYears,
       reason,
     };
@@ -110,7 +162,8 @@ export function calculateFinance(
   const stamp_duty = calculateSDLT(price, true);
 
   // Estimated monthly total (mortgage + service charge estimate £200/mo)
-  const estimated_monthly_total = monthly_mortgage + DEFAULT_MONTHLY_SERVICE_CHARGE;
+  const estimated_monthly_total =
+    monthly_mortgage + DEFAULT_MONTHLY_SERVICE_CHARGE;
 
   const ltv = price > 0 ? loanAmount / price : 0;
 
@@ -137,6 +190,9 @@ export function calculateFinance(
     rate_used: rate,
     rate_source: rateSource,
     raw_rate_input: rawRate,
+    rate_effective_date: rateEffectiveDate,
+    rate_series_code: rateSeriesCode,
+    rate_series_name: rateSeriesName,
     term_years: termYears,
     ltv,
     sdlt: stamp_duty,
