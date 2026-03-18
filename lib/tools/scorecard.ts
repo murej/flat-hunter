@@ -1,4 +1,5 @@
 import type { Evaluation, Listing } from "@/types";
+import { sendMessage } from "@/lib/telegram";
 
 type UnknownScores = {
   property?: boolean;
@@ -69,4 +70,29 @@ No score
 
 ${urlLine}`;
   return scorecardText;
+}
+
+export async function composeScorecard(
+  evaluation: Evaluation,
+  listing: Listing,
+  notableFlags: string[],
+  commuteMinutes: number,
+  unknownScores: UnknownScores = {},
+): Promise<void> {
+  const text = buildScorecardText(
+    evaluation,
+    listing,
+    notableFlags,
+    commuteMinutes,
+    unknownScores,
+  );
+  await sendMessage(text);
+}
+
+export async function composeNoScoreScorecard(
+  evaluation: Evaluation,
+  listing: Listing,
+): Promise<void> {
+  const text = buildNoScoreScorecardText(evaluation, listing);
+  await sendMessage(text);
 }

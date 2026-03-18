@@ -106,24 +106,16 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       portal_id: String(l.portal_id),
       url: String(l.url),
       title: String(l.title ?? ""),
-      price:
-        typeof l.price === "number" && l.price > 0
-          ? l.price
-          : null,
+      price: typeof l.price === "number" && l.price > 0 ? l.price : null,
       address: String(l.address ?? ""),
       postcode: String(l.postcode ?? ""),
       bedrooms:
-        typeof l.bedrooms === "number" && l.bedrooms >= 0
-          ? l.bedrooms
-          : null,
+        typeof l.bedrooms === "number" && l.bedrooms >= 0 ? l.bedrooms : null,
       bathrooms:
         typeof l.bathrooms === "number" && l.bathrooms >= 0
           ? l.bathrooms
           : null,
-      sqft:
-        typeof l.sqft === "number" && l.sqft >= 0
-          ? l.sqft
-          : null,
+      sqft: typeof l.sqft === "number" && l.sqft >= 0 ? l.sqft : null,
       description: String(l.description ?? ""),
       image_urls: Array.isArray(l.image_urls)
         ? l.image_urls.map((u) => String(u))
