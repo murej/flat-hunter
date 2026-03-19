@@ -9,7 +9,7 @@ import {
   getFormattedPreferences,
   getFormattedSavedList,
   getComparisonData,
-} from "@/lib/tools/listing-tools";
+} from "@/lib/tools/listing";
 import { buildScorecardButtons } from "@/lib/tools/scorecard";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
 import { buildTools, executeCallAgent } from "@/lib/core/tools";
@@ -33,7 +33,8 @@ export const CONVERSATION_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: "save_listing",
-    description: "Save or favourite a property listing for later consideration.",
+    description:
+      "Save or favourite a property listing for later consideration.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -193,7 +194,9 @@ async function executeToolInternal(
       data,
       filters,
     );
-    const outData = result.ok ? JSON.stringify(result.data ?? "ok") : result.error;
+    const outData = result.ok
+      ? JSON.stringify(result.data ?? "ok")
+      : result.error;
     return { type: "data", data: outData, toolName };
   }
 
