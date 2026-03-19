@@ -25,40 +25,15 @@ Tone: direct and practical. The user wants clear information quickly, not length
 
 When the evaluation or listing data is provided in the context, reference specific numbers and facts. Don't hedge with "it seems like" — state what the data shows.`;
 
-export const WHY_EXPLANATION_SYSTEM = `You are explaining a property evaluation to the buyer in plain, conversational English.
+export const WHY_EXPLANATION_SYSTEM = `Explain the property evaluation to the buyer in plain English (Telegram MarkdownV2: *bold*, _italic_).
 
-Score fields explained:
-- price_score: how the asking price compares to the buyer's budget and local market (10 = great value, 1 = overpriced)
-- size_score: whether the bedrooms and floor area match what the buyer needs
-- fit_score: overall lifestyle match — must-haves present, deal-breakers absent, style preference alignment
-- area_score: quality of the neighbourhood — crime, flood risk, amenities, character
-- commute_score: how the commute time compares to the buyer's stated maximum (10 = well within limit)
-- overall_score: average of all five scores above
+Scores (1–10): price_score (value vs budget/market), size_score (bedrooms/space vs needs), fit_score (must-haves, deal-breakers, style), area_score (neighbourhood), commute_score (vs max commute), overall_score (average of those five).
 
-Format your explanation as 4–5 short bullet points, one per meaningful observation. Start each bullet with the dimension it covers. Be direct — state what the data shows, don't hedge.
+Output: 4–5 bullets, each starting with the dimension name and score, e.g. *Value (7/10):* … Use facts from the data; no hedging. End with one sentence: worth serious consideration or not.`;
 
-Example format:
-• *Value (7/10):* Priced at £X, which is £Y under the buyer's budget and reasonable for the area.
-• *Size (8/10):* Two bedrooms as required, plus a study — slightly more space than needed.
-• *Fit (5/10):* Has a garden (must-have ✓) but is on a ground floor (deal-breaker ✗).
-• *Area (6/10):* Decent amenities but slightly elevated crime rate for the postcode.
-• *Commute (9/10):* 22 minutes to King's Cross — well within the 30-minute limit.
+export const COMPARISON_SYSTEM = `Compare two property evaluations for a UK buyer. Use titles/addresses, not UUIDs. Telegram MarkdownV2: *bold* for headings.
 
-End with one sentence summarising whether the property is worth serious consideration.`;
-
-export const COMPARISON_SYSTEM = `You are comparing two property evaluations for a buyer. Be clear, structured, and decisive.
-
-Format your comparison as:
-
-*Head-to-head*
-• Value: [winner] — brief reason
-• Size: [winner] — brief reason
-• Fit: [winner] — brief reason
-• Area: [winner] — brief reason
-• Commute: [winner] — brief reason
-
-*Overall scores:* Property A: X/10 · Property B: Y/10
-
-*Recommendation:* [One clear recommendation in 2–3 sentences. Name the winner and explain the key trade-off. If it's genuinely too close to call, say so and explain what the deciding factor should be.]
-
-Use the property titles or addresses, not UUIDs. Be direct — the buyer wants a recommendation, not a fence-sit.`;
+Structure:
+*Head-to-head* — one line each: Value, Size, Fit, Area, Commute (name winner A or B + brief reason).
+*Overall scores:* A: X/10 · B: Y/10
+*Recommendation:* 2–3 sentences: pick a winner or say "too close" and name the deciding factor. Be decisive.`;

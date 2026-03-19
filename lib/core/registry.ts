@@ -9,6 +9,8 @@ export type AgentConfig = {
     name: string,
     input: Record<string, unknown>,
   ) => Promise<ToolResult>;
+  /** Lower for web_search-heavy agents to limit context growth per turn. */
+  maxToolIterations?: number;
 };
 
 const registry: Map<string, AgentConfig> = new Map();

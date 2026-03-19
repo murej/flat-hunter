@@ -1,5 +1,6 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
 import type { ToolResult } from "../agent";
+import { truncateForToolResult } from "@/lib/utils/tool-result";
 import { dbRead, dbWrite } from "./db";
 import { executeCallAgent } from "./call-agent";
 import { CALL_AGENT_TOOL } from "./call-agent";
@@ -23,9 +24,10 @@ export function createExecuteTool(tools: ToolSet[]): (
         input.filters as Record<string, unknown> | undefined,
         (input.limit as number) ?? 100,
       );
-      const data = result.ok
+      const raw = result.ok
         ? JSON.stringify(result.data)
         : result.error;
+      const data = truncateForToolResult(raw);
       return { type: "data", data, toolName: "db_read" };
     }
 
@@ -36,9 +38,10 @@ export function createExecuteTool(tools: ToolSet[]): (
         input.data as Record<string, unknown>,
         input.filters as Record<string, unknown> | undefined,
       );
-      const data = result.ok
+      const raw = result.ok
         ? JSON.stringify(result.data ?? "ok")
         : result.error;
+      const data = truncateForToolResult(raw);
       return { type: "data", data, toolName: "db_write" };
     }
 

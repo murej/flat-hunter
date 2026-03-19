@@ -1,5 +1,7 @@
 import { runAgent } from "@/lib/core/agent";
 import { AREA_EXPERT_SYSTEM } from "./prompts";
+import { slimAreaContextForExpert } from "./context";
+import { truncatePriorFindings } from "@/lib/utils/tool-result";
 import {
   buildAreaExpertTools,
   createAreaExpertExecuteTool,
@@ -10,11 +12,14 @@ import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
 
 const executeTool = createAreaExpertExecuteTool();
 
+const WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS = 3;
+
 registerAgent("area_expert", {
   systemPrompt: AREA_EXPERT_SYSTEM,
   tools: buildAreaExpertTools(),
   model: "claude-sonnet-4-6",
   executeTool,
+  maxToolIterations: WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS,
 });
 
 export type { AreaProfile } from "@/lib/tools/area";
@@ -30,7 +35,9 @@ export async function runAreaExpert(
   areaContext: Record<string, unknown>,
   priorFindings?: string,
 ): Promise<AreaExpertResult> {
-  const prompt = `Area context:\n${JSON.stringify(areaContext, null, 2)}${priorFindings ? `\n\nPrior findings:\n${priorFindings}` : ""}`;
+  const slim = slimAreaContextForExpert(areaContext);
+  const prior = truncatePriorFindings(priorFindings);
+  const prompt = `Area context:\n${JSON.stringify(slim)}${prior ? `\n\nPrior findings:\n${prior}` : ""}`;
 
   const result = await runAgent({
     systemPrompt: AREA_EXPERT_SYSTEM,
@@ -38,6 +45,7 @@ export async function runAreaExpert(
     tools: buildAreaExpertTools(),
     model: "claude-sonnet-4-6",
     executeTool,
+    maxToolIterations: WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS,
   });
 
   const text = "message" in result ? result.message : "";

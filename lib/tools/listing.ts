@@ -11,6 +11,14 @@ import {
 } from "@/lib/tools/scorecard";
 import type { Evaluation, Listing } from "@/types";
 
+/** Columns needed for LLM explanations; excludes raw_* jsonb blobs. */
+const EVALUATION_CONTEXT_COLUMNS =
+  "id, listing_id, created_at, price_score, size_score, fit_score, area_score, commute_score, overall_score, deal_breaker_flags, commute_minutes, commute_route, monthly_mortgage, monthly_interest_only, stamp_duty, estimated_monthly_total, property_summary, area_summary, property_scores_unknown, area_score_unknown, commute_score_unknown";
+
+function compactJson(value: unknown): string {
+  return JSON.stringify(value);
+}
+
 export async function saveListing(listingId: string): Promise<void> {
   await updateListingStatus(listingId, "saved");
 }
@@ -106,7 +114,7 @@ export async function getWhyContext(
       .single(),
     supabaseAdmin
       .from("evaluations")
-      .select("*")
+      .select(EVALUATION_CONTEXT_COLUMNS)
       .eq("listing_id", listingId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -118,8 +126,8 @@ export async function getWhyContext(
   }
 
   const context = listing
-    ? `Property: ${listing.title} at ${listing.address} (£${(listing.price as number)?.toLocaleString()})\n\nEvaluation:\n${JSON.stringify(evaluation, null, 2)}`
-    : `Evaluation:\n${JSON.stringify(evaluation, null, 2)}`;
+    ? `Property: ${listing.title} at ${listing.address} (£${(listing.price as number)?.toLocaleString()})\n\nEvaluation: ${compactJson(evaluation)}`
+    : `Evaluation: ${compactJson(evaluation)}`;
 
   return {
     ok: true,
@@ -222,14 +230,14 @@ export async function getComparisonData(
   ] = await Promise.all([
     supabaseAdmin
       .from("evaluations")
-      .select("*")
+      .select(EVALUATION_CONTEXT_COLUMNS)
       .eq("listing_id", listingIdA)
       .order("created_at", { ascending: false })
       .limit(1)
       .single(),
     supabaseAdmin
       .from("evaluations")
-      .select("*")
+      .select(EVALUATION_CONTEXT_COLUMNS)
       .eq("listing_id", listingIdB)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -257,7 +265,7 @@ export async function getComparisonData(
     return { ok: false, message: "Could not find evaluations for both properties." };
   }
 
-  const data = `Property A — ${labelA}:\n${JSON.stringify(evalA, null, 2)}\n\nProperty B — ${labelB}:\n${JSON.stringify(evalB, null, 2)}`;
+  const data = `Property A — ${labelA}:\n${compactJson(evalA)}\n\nProperty B — ${labelB}:\n${compactJson(evalB)}`;
   return { ok: true, data };
 }
 

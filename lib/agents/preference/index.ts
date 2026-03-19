@@ -4,8 +4,12 @@ import { evaluatePreferredAreas } from "@/lib/agents/area-expert";
 import { runAgent } from "@/lib/core/agent";
 import { registerAgent } from "@/lib/core/registry";
 import { buildPreferenceTools, createPreferenceExecuteTool } from "./tools";
+import { truncateForToolResult } from "@/lib/utils/tool-result";
 
 const preferenceExecuteTool = createPreferenceExecuteTool();
+
+const PREFERENCE_HISTORY_MSG_MAX = 1000;
+const PREFERENCE_HISTORY_KEEP_RECENT = 8;
 
 registerAgent("preference", {
   systemPrompt: PREFERENCE_COLLECTOR_SYSTEM,
@@ -30,14 +34,17 @@ export async function collectPreferences(
     .select("direction, message")
     .eq("intent", "preferences")
     .order("created_at", { ascending: false })
-    .limit(60);
+    .limit(16);
 
   const history = (historyDesc || []).reverse();
   const messages = history.map((row) => ({
     role: (row.direction === "inbound" ? "user" : "assistant") as
       | "user"
       | "assistant",
-    content: row.message as string,
+    content: truncateForToolResult(
+      String(row.message ?? ""),
+      PREFERENCE_HISTORY_MSG_MAX,
+    ),
   }));
 
   if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
@@ -47,12 +54,24 @@ export async function collectPreferences(
   const lastUserContent =
     messages.filter((m) => m.role === "user").pop()?.content ?? userMessage;
 
+  let priorMessages = messages.slice(0, -1);
+  if (priorMessages.length > PREFERENCE_HISTORY_KEEP_RECENT) {
+    const omitted = priorMessages.length - PREFERENCE_HISTORY_KEEP_RECENT;
+    priorMessages = [
+      {
+        role: "user" as const,
+        content: `[${omitted} older preference messages omitted.]`,
+      },
+      ...priorMessages.slice(-PREFERENCE_HISTORY_KEEP_RECENT),
+    ];
+  }
+
   const result = await runAgent({
     systemPrompt: PREFERENCE_COLLECTOR_SYSTEM,
     prompt: lastUserContent,
     tools: buildPreferenceTools(),
     model: "claude-haiku-4-5",
-    messages: messages.slice(0, -1),
+    messages: priorMessages,
     executeTool: preferenceExecuteTool,
   });
 

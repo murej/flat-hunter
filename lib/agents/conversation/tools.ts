@@ -13,19 +13,18 @@ import {
 import { buildScorecardButtons } from "@/lib/tools/scorecard";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
 import { buildTools, executeCallAgent } from "@/lib/core/tools";
-import { dbRead, dbWrite } from "@/lib/core/tools/db";
 import type { ToolResult } from "@/lib/core/agent";
 
 export const CONVERSATION_TOOL_SCHEMAS: Anthropic.Tool[] = [
   {
     name: "skip_listing",
-    description: "Dismiss a property listing the user does not want to pursue.",
+    description: "Dismiss listing.",
     input_schema: {
       type: "object" as const,
       properties: {
         listing_id: {
           type: "string",
-          description: "UUID of the listing to dismiss",
+          description: "Listing UUID",
         },
       },
       required: ["listing_id"],
@@ -33,14 +32,13 @@ export const CONVERSATION_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: "save_listing",
-    description:
-      "Save or favourite a property listing for later consideration.",
+    description: "Save listing to shortlist.",
     input_schema: {
       type: "object" as const,
       properties: {
         listing_id: {
           type: "string",
-          description: "UUID of the listing to save",
+          description: "Listing UUID",
         },
       },
       required: ["listing_id"],
@@ -48,26 +46,24 @@ export const CONVERSATION_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: "show_property_scorecard",
-    description:
-      "Re-display a property's evaluation scorecard with action buttons.",
+    description: "Show scorecard + buttons for a listing.",
     input_schema: {
       type: "object" as const,
       properties: {
-        listing_id: { type: "string", description: "UUID of the listing" },
+        listing_id: { type: "string", description: "Listing UUID" },
       },
       required: ["listing_id"],
     },
   },
   {
     name: "evaluate_listing",
-    description:
-      "Re-run the full evaluation pipeline for a listing (property, area, commute, finance). Use when the user asks to re-evaluate or refresh scores.",
+    description: "Re-run full evaluation (property, area, commute, finance).",
     input_schema: {
       type: "object" as const,
       properties: {
         listing_id: {
           type: "string",
-          description: "UUID of the listing to re-evaluate",
+          description: "Listing UUID",
         },
       },
       required: ["listing_id"],
@@ -75,49 +71,46 @@ export const CONVERSATION_TOOL_SCHEMAS: Anthropic.Tool[] = [
   },
   {
     name: "show_saved_properties",
-    description: "List all properties the user has saved or shortlisted.",
+    description: "List saved properties.",
     input_schema: { type: "object" as const, properties: {} },
   },
   {
     name: "show_preferences",
-    description: "Display the user's current search preferences.",
+    description: "Show current search preferences.",
     input_schema: { type: "object" as const, properties: {} },
   },
   {
     name: "get_property_evaluation",
-    description:
-      "Fetch a property's full evaluation data so you can explain the scores to the user.",
+    description: "Load evaluation JSON for “why” explanations.",
     input_schema: {
       type: "object" as const,
       properties: {
-        listing_id: { type: "string", description: "UUID of the listing" },
+        listing_id: { type: "string", description: "Listing UUID" },
       },
       required: ["listing_id"],
     },
   },
   {
     name: "get_comparison_data",
-    description:
-      "Fetch evaluation data for two properties so you can produce a head-to-head comparison.",
+    description: "Load two listings’ evaluations for comparison.",
     input_schema: {
       type: "object" as const,
       properties: {
-        listing_id_a: { type: "string", description: "First listing UUID" },
-        listing_id_b: { type: "string", description: "Second listing UUID" },
+        listing_id_a: { type: "string", description: "Listing UUID" },
+        listing_id_b: { type: "string", description: "Listing UUID" },
       },
       required: ["listing_id_a", "listing_id_b"],
     },
   },
   {
     name: "update_preferences",
-    description:
-      "Trigger the preference update flow when the user wants to change their search criteria.",
+    description: "Start preference update flow.",
     input_schema: { type: "object" as const, properties: {} },
   },
 ];
 
 export function buildConversationTools(): Anthropic.Tool[] {
-  return [...buildTools(["call_agent", "db"]), ...CONVERSATION_TOOL_SCHEMAS];
+  return [...buildTools(["call_agent"]), ...CONVERSATION_TOOL_SCHEMAS];
 }
 
 type InternalDirectResult = {
@@ -159,45 +152,6 @@ async function executeToolInternal(
       String(toolInput.prompt),
     );
     return { type: "data", data, toolName };
-  }
-
-  if (toolName === "db_read") {
-    const filters =
-      typeof toolInput.filters === "object"
-        ? (toolInput.filters as Record<string, unknown>)
-        : toolInput.filters
-          ? JSON.parse(String(toolInput.filters))
-          : undefined;
-    const result = await dbRead(
-      String(toolInput.table),
-      filters,
-      toolInput.limit ? Number(toolInput.limit) : 100,
-    );
-    const data = result.ok ? JSON.stringify(result.data) : result.error;
-    return { type: "data", data, toolName };
-  }
-
-  if (toolName === "db_write") {
-    const data =
-      typeof toolInput.data === "object"
-        ? (toolInput.data as Record<string, unknown>)
-        : JSON.parse(String(toolInput.data));
-    const filters =
-      typeof toolInput.filters === "object"
-        ? (toolInput.filters as Record<string, unknown>)
-        : toolInput.filters
-          ? JSON.parse(String(toolInput.filters))
-          : undefined;
-    const result = await dbWrite(
-      String(toolInput.table),
-      toolInput.operation as "insert" | "upsert" | "update",
-      data,
-      filters,
-    );
-    const outData = result.ok
-      ? JSON.stringify(result.data ?? "ok")
-      : result.error;
-    return { type: "data", data: outData, toolName };
   }
 
   switch (toolName) {

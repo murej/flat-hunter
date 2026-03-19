@@ -4,11 +4,12 @@ import {
   getAgentConfig,
   getRegisteredAgents,
 } from "@/lib/core/registry";
+import { truncateForToolResult } from "@/lib/utils/tool-result";
 
 export const CALL_AGENT_TOOL: Anthropic.Tool = {
   name: "call_agent",
   description:
-    "Invoke another agent with a prompt. Use for delegation (e.g. preference, evaluator, property_expert).",
+    "Delegate to registered agent: preference, property_expert, area_expert.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -40,11 +41,13 @@ export async function executeCallAgent(
     tools: config.tools,
     model: config.model,
     executeTool: config.executeTool,
+    maxToolIterations: config.maxToolIterations,
   });
 
   if ("type" in result && result.type === "data") {
-    return result.data;
+    return truncateForToolResult(result.data);
   }
 
-  return "message" in result ? result.message : "";
+  const msg = "message" in result ? result.message : "";
+  return truncateForToolResult(msg);
 }

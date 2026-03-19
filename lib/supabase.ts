@@ -82,13 +82,33 @@ export async function getActiveListingId(
   return data?.[0]?.listing_id ?? null;
 }
 
+const DEFAULT_AGENT_HISTORY_CHARS = 1600;
+
+function truncateMessageForAgent(
+  text: string,
+  maxChars: number | null,
+): string {
+  if (maxChars === null || text.length <= maxChars) return text;
+  const ellipsis = "… [truncated]";
+  const take = Math.max(0, maxChars - ellipsis.length);
+  return `${text.slice(0, take)}${ellipsis}`;
+}
+
 /**
  * Returns the last `limit` conversation rows formatted as Claude message pairs
  * (inbound → "user", outbound → "assistant"), in chronological order.
+ * By default truncates long messages (e.g. scorecards) for LLM context; pass
+ * `{ maxCharsPerMessage: null }` to keep full text.
  */
 export async function getConversationHistory(
-  limit = 8
+  limit = 8,
+  options?: { maxCharsPerMessage?: number | null },
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
+  const maxChars =
+    options?.maxCharsPerMessage === undefined
+      ? DEFAULT_AGENT_HISTORY_CHARS
+      : options.maxCharsPerMessage;
+
   const { data } = await supabaseAdmin
     .from("conversations")
     .select("direction, message")
@@ -101,6 +121,6 @@ export async function getConversationHistory(
       role: (row.direction === "inbound" ? "user" : "assistant") as
         | "user"
         | "assistant",
-      content: row.message as string,
+      content: truncateMessageForAgent(row.message as string, maxChars),
     }));
 }

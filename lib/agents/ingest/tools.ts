@@ -22,7 +22,7 @@ import { consumePendingNotifications } from "@/lib/agents/notifications";
 
 export const MAX_LISTINGS_PER_EMAIL = 100;
 
-const MAX_EMAIL_CONTENT_BYTES = 50 * 1024; // 50KB
+const MAX_EMAIL_CONTENT_BYTES = 40 * 1024; // 40KB — balance parse quality vs context
 
 export interface RawListing {
   portal_id: string;
