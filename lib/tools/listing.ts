@@ -33,7 +33,7 @@ export async function getScorecard(
     supabaseAdmin
       .from("evaluations")
       .select(
-        "price_score, size_score, fit_score, area_score, commute_score, overall_score, deal_breaker_flags, commute_minutes, monthly_mortgage, property_summary, area_summary",
+        "price_score, size_score, fit_score, area_score, commute_score, overall_score, deal_breaker_flags, commute_minutes, monthly_mortgage, property_summary, area_summary, property_scores_unknown, area_score_unknown, commute_score_unknown",
       )
       .eq("listing_id", listingId)
       .order("created_at", { ascending: false })
@@ -55,24 +55,27 @@ export async function getScorecard(
   }
 
   const unknownScores = {
-    property: false,
-    area: false,
-    commute: false,
+    property: !!(evaluation as { property_scores_unknown?: boolean }).property_scores_unknown,
+    area: !!(evaluation as { area_score_unknown?: boolean }).area_score_unknown,
+    commute: !!(evaluation as { commute_score_unknown?: boolean }).commute_score_unknown,
   };
 
+  const allUnknown =
+    unknownScores.property && unknownScores.area && unknownScores.commute;
   const hasScores =
+    !allUnknown &&
     typeof evaluation.overall_score === "number" &&
     typeof evaluation.price_score === "number";
   const scorecardText = hasScores
     ? buildScorecardText(
-        evaluation as Evaluation,
+        evaluation as unknown as Evaluation,
         listing as Listing,
         [],
         evaluation.commute_minutes ?? 0,
         unknownScores,
       )
     : buildNoScoreScorecardText(
-        evaluation as Evaluation,
+        evaluation as unknown as Evaluation,
         listing as Listing,
       );
   const buttons = buildScorecardButtons(

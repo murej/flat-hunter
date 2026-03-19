@@ -63,7 +63,10 @@ create table evaluations (
   area_summary text,
   raw_property_eval jsonb,
   raw_area_eval jsonb,
-  raw_finance_eval jsonb
+  raw_finance_eval jsonb,
+  property_scores_unknown boolean default false,
+  area_score_unknown boolean default false,
+  commute_score_unknown boolean default false
 );
 
 create table conversations (

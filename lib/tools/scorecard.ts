@@ -53,6 +53,13 @@ export function buildScorecardText(
     ? "N/A  "
     : `${evaluation.commute_score}/10 (${commuteMinutes} min)`;
 
+  const hasUnknown = !!(
+    unknownScores.property ||
+    unknownScores.area ||
+    unknownScores.commute
+  );
+  const overallLabel = `${evaluation.overall_score}/10${hasUnknown ? "*" : ""}`;
+
   const title = listing.title || "Untitled property";
   const urlLine = listing.url
     ? `[🔗 View listing](${listing.url})`
@@ -62,7 +69,7 @@ export function buildScorecardText(
   --------------------------------------
   £${listing.price?.toLocaleString()} · £${evaluation.monthly_mortgage}/mo
 
-✅ Score:                         ${s(evaluation.overall_score)}
+✅ Score:                         ${overallLabel}
   --------------------------------------
   Property fit:                       ${s(evaluation.fit_score, unknownScores.property)}
   Size:                                   ${s(evaluation.size_score, unknownScores.property)}
