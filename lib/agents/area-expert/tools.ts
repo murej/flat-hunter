@@ -4,9 +4,9 @@ import {
   type ToolSet,
 } from "@/lib/core/tools";
 import { runAgent } from "@/lib/core/agent";
-import { AREA_PROFILE_EVALUATOR_SYSTEM } from "@/lib/prompts/area-context";
-import { getPostcodeContextForArea } from "@/lib/tools/area-context";
-import type { AreaProfile } from "@/lib/tools/area-context";
+import { AREA_PROFILE_EVALUATOR_SYSTEM } from "@/lib/prompts/area";
+import { getPostcodeContextForArea } from "@/lib/tools/area";
+import type { AreaProfile } from "@/lib/tools/area";
 import { retryWithBackoff } from "@/lib/utils/retry";
 
 export const AREA_EXPERT_TOOL_SETS: ToolSet[] = ["db", "web_search"];

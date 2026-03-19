@@ -1,6 +1,6 @@
 import pLimit from "p-limit";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
-import { fetchAreaContext } from "@/lib/tools/area-context";
+import { fetchAreaContext } from "@/lib/tools/area";
 import { buildNoScoreScorecardText, buildScorecardText } from "@/lib/tools/scorecard";
 import type { Evaluation, Listing } from "@/types";
 import { runPropertyExpert } from "@/lib/agents/property-expert";

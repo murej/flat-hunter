@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { handleIngestWebhook } from "@/lib/agents/ingest";
+import { handleIngestWebhook } from "@/lib/agents/ingest/handler";
 
 export const maxDuration = 60;
 

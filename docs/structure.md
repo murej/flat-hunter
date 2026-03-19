@@ -48,7 +48,7 @@ flowchart TB
       end
     end
     subgraph prompts [prompts/]
-      areaContext[area-context.ts]
+      area[area.ts]
     end
     subgraph sharedTools [tools/]
       shared[shared-tool.ts]
@@ -62,5 +62,5 @@ flowchart TB
 | -------------------- | ------------------------------------------------------------------------------------------------------- |
 | `lib/core/`          | Generic agent runtime and built-in tools. No domain logic.                                              |
 | `lib/agents/{name}/` | One folder per agent. Each has `index.ts`, `prompts.ts`, `tools.ts` (optional), `handler.ts` (optional) |
-| `lib/prompts/`       | Shared prompts used by lib/tools (e.g. area-context).                                                   |
+| `lib/prompts/`       | Shared prompts used by lib/tools (e.g. area).                                                            |
 | `lib/tools/`         | Shared domain tools. Plain functions imported by agents.                                                |

@@ -17,7 +17,7 @@ registerAgent("area_expert", {
   executeTool,
 });
 
-export type { AreaProfile } from "@/lib/tools/area-context";
+export type { AreaProfile } from "@/lib/tools/area";
 export { evaluatePreferredAreas } from "./tools";
 
 export type AreaExpertResult = {
