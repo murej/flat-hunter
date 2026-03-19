@@ -25,7 +25,7 @@ import {
   runGenericAgent,
   type ToolResult,
   type AgentButton,
-} from "./agent";
+} from "./core";
 
 const ANTHROPIC_OUT_OF_CREDITS_MSG =
   "No more credits, feed Claude. I don't know what to say 😢";

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseInbound } from "@/lib/openclaw/telegram";
-import { sendError } from "@/lib/openclaw/sendError";
-import { handleTelegramUpdate } from "@/lib/openclaw/agent";
+import { parseInbound } from "@/lib/agent/telegram";
+import { sendError } from "@/lib/agent/sendError";
+import { handleTelegramUpdate } from "@/lib/agent/core";
 
 export async function POST(req: NextRequest) {
   try {

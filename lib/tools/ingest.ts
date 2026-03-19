@@ -14,7 +14,7 @@ import {
   type EvaluationPipelineResult,
 } from "./evaluator";
 import { buildScorecardText, buildNoScoreScorecardText, buildScorecardButtons } from "./scorecard";
-import { consumePendingNotifications } from "@/lib/openclaw/notifications";
+import { consumePendingNotifications } from "@/lib/agent/notifications";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

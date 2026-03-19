@@ -30,7 +30,7 @@ scorecardComposer.ts
 conversationAgent.ts
 viewingAgent.ts
 /supabase.ts ← Supabase client
-openclaw/telegram.ts ← Telegram send/receive helpers
+agent/telegram.ts ← Telegram send/receive helpers
 /prompts.ts ← all Claude system prompts in one place
 /types
 index.ts ← shared TypeScript types
@@ -118,7 +118,7 @@ Confirm schema is created before proceeding.
 
 ## Phase 2: Telegram bot setup
 
-In /lib/openclaw/telegram.ts, implement:
+In /lib/agent/telegram.ts, implement:
 
 - sendMessage(text, options) — sends a message to the hardcoded chat ID (stored in env)
 - sendWithButtons(text, buttons) — sends inline keyboard buttons
@@ -164,7 +164,7 @@ In /lib/agents/ingest.ts, implement:
 
 - parseEmailHtml(html) — uses Claude to extract listings from Rightmove/Zoopla alert email HTML. Returns array of raw listing objects.
 - deduplicateAndStore(listings[]) — checks portal_id against existing listings, inserts new ones with status pending_evaluation
-- After storing, calls /api/evaluate for each new listing_id
+- After storing, calls runEvaluationsAndNotify (which runs the evaluation pipeline and sends notifications)
 
 In /app/api/ingest/route.ts:
 
@@ -218,13 +218,7 @@ Build each evaluator in sequence. After each one, verify its output in Supabase 
 - Calculates: monthlyMortgage, monthlyInterestOnly, stampDuty, estimatedMonthlyTotal
 - SDLT calculation should handle first-time buyer relief correctly
 
-In /app/api/evaluate/route.ts:
-
-- Takes listing_id
-- Loads listing + preferences from Supabase
-- Runs 5a, then 5b + 5c + 5d in parallel (Promise.all)
-- Writes all results to evaluations table
-- Triggers scorecardComposer
+Evaluation runs inside runEvaluationsAndNotify (called by ingest): loads listing + preferences, runs evaluators, writes to evaluations table, sends scorecards via pending_notifications.
 
 ---
 
