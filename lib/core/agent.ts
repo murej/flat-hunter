@@ -1,12 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { sendMessage } from "@/lib/telegram";
 
-export async function sendError(
-  message: string = "Something went wrong. Please try again.",
-): Promise<void> {
-  await sendMessage(message);
-}
-
 export type AgentMetadata = {
   listingId?: string | null;
   intent?: string | null;
@@ -104,8 +98,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
       const toolInput = toolBlock.input as Record<string, unknown>;
       const result = await executeTool(toolBlock.name, toolInput);
 
-      const content =
-        result.type === "data" ? result.data : result.message;
+      const content = result.type === "data" ? result.data : result.message;
 
       toolResultContents.push({
         type: "tool_result" as const,
@@ -136,4 +129,10 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
   return {
     message: "Max tool iterations reached. Please try again.",
   };
+}
+
+export async function sendError(
+  message: string = "Something went wrong. Please try again.",
+): Promise<void> {
+  await sendMessage(message);
 }
