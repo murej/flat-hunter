@@ -4,7 +4,7 @@ import {
   sendMessage,
   sendWithButtons,
   sendWithReplyKeyboard,
-} from "@/lib/telegram";
+} from "./telegram";
 import { getPreferences } from "@/lib/supabase";
 import { logConversation } from "@/lib/supabase";
 import { collectPreferences } from "@/lib/tools/preference";
@@ -19,7 +19,9 @@ import { runGenericAgent } from "@/lib/agent-core";
 import { WHY_EXPLANATION_SYSTEM } from "@/lib/prompts";
 import { conversationAgent } from "./conversation";
 
-export async function handleTelegramUpdate(parsed: TelegramMessage): Promise<void> {
+export async function handleTelegramUpdate(
+  parsed: TelegramMessage,
+): Promise<void> {
   const { text, messageId, callbackQueryId } = parsed;
 
   const answerCallback = async () => {
@@ -39,10 +41,11 @@ export async function handleTelegramUpdate(parsed: TelegramMessage): Promise<voi
         ],
       );
     } else {
-      await collectPreferences(
+      const result = await collectPreferences(
         "I'd like to set up my property search preferences.",
         messageId,
       );
+      if (result.message) await sendMessage(result.message);
     }
     return;
   }
@@ -153,9 +156,11 @@ export async function handleTelegramUpdate(parsed: TelegramMessage): Promise<voi
       deal_breakers: "I want to update my deal-breakers",
       other: "I want to update my preferences",
     };
-    const naturalMessage = messageMap[part] ?? "I want to update my preferences";
+    const naturalMessage =
+      messageMap[part] ?? "I want to update my preferences";
     const dedupId = callbackQueryId ?? messageId;
-    await collectPreferences(naturalMessage, dedupId);
+    const result = await collectPreferences(naturalMessage, dedupId);
+    if (result.message) await sendMessage(result.message);
     return;
   }
 

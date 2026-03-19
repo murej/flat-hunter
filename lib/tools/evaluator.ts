@@ -3,9 +3,7 @@ import {
   supabaseAdmin,
   getListing,
   getPreferences,
-  logConversation,
 } from "@/lib/supabase";
-import { sendWithButtons } from "@/lib/telegram";
 import { retryWithBackoff } from "@/lib/utils/retry";
 import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
 import { fetchAreaContext } from "./area-context";
@@ -164,9 +162,7 @@ export type EvaluationPipelineResult = {
 
 export async function runEvaluationPipeline(
   listingId: string,
-  options?: { sendImmediately?: boolean },
-): Promise<boolean | EvaluationPipelineResult> {
-  const sendImmediately = options?.sendImmediately !== false;
+): Promise<EvaluationPipelineResult> {
   const listing = await getListing(listingId);
   const preferences = await getPreferences();
 
@@ -346,36 +342,6 @@ export async function runEvaluationPipeline(
     shouldSendNoScore: components.length === 0,
     scorecardText,
   };
-
-  if (sendImmediately) {
-    if (result.shouldSendNoScore || overall_score > SCORE_THRESHOLD) {
-      await logConversation({
-        direction: "outbound",
-        message: scorecardText,
-        listing_id: listing.id,
-        intent: null,
-      });
-      await sendWithButtons(scorecardText, [
-        [
-          { text: "💾 Save", callback_data: `save:${listing.id}` },
-          { text: "⏭ Skip", callback_data: `skip:${listing.id}` },
-          { text: "❓ Why?", callback_data: `why:${listing.id}` },
-        ],
-      ]);
-      await supabaseAdmin
-        .from("listings")
-        .update({ status: "evaluated" })
-        .eq("id", listing.id)
-        .eq("status", "pending_evaluation");
-      return true;
-    }
-    await supabaseAdmin
-      .from("listings")
-      .update({ status: "evaluated" })
-      .eq("id", listingId)
-      .eq("status", "pending_evaluation");
-    return false;
-  }
 
   // Mark as evaluated only when still pending (do not overwrite saved/dismissed)
   await supabaseAdmin

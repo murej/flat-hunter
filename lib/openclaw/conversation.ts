@@ -5,7 +5,7 @@ import {
   getActiveListingId,
   getConversationHistory,
 } from "@/lib/supabase";
-import { sendMessage, sendWithButtons } from "@/lib/telegram";
+import { sendMessage, sendWithButtons } from "./telegram";
 import { collectPreferences } from "@/lib/tools/preference";
 import {
   saveListing,
@@ -294,9 +294,8 @@ async function executeToolInternal(
     }
 
     case "update_preferences": {
-      // collectPreferences manages its own LLM call and sends the response itself
-      await collectPreferences(userMessage, messageId);
-      return { type: "direct", message: "", intent: "preferences" };
+      const result = await collectPreferences(userMessage, messageId);
+      return { type: "direct", message: result.message, intent: "preferences" };
     }
 
     default:
@@ -379,7 +378,8 @@ export async function conversationAgent(
   try {
     const preferences = await getPreferences();
     if (!preferences) {
-      await collectPreferences(text, messageId);
+      const result = await collectPreferences(text, messageId);
+      if (result.message) await sendMessage(result.message);
       return;
     }
 

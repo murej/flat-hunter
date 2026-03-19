@@ -2,6 +2,15 @@
 
 This document describes the backend HTTP tools and the Openclaw agent. Openclaw is fully integrated into flat-hunter: all Telegram updates flow through `handleTelegramUpdate` in `lib/openclaw/agent.ts`, which routes callbacks and free text to shared tools or the conversation agent.
 
+## Architecture
+
+All Telegram communication lives in `lib/openclaw/`:
+
+- `lib/openclaw/telegram.ts` — Telegram API client (sendMessage, sendWithButtons, parseInbound, answerCallbackQuery)
+- `lib/openclaw/agent.ts` — handleTelegramUpdate, routes all updates
+- `lib/openclaw/notifications.ts` — consumePendingNotifications, sends ingest output
+- `lib/openclaw/conversation.ts` — conversationAgent for free text
+
 ## Base URL
 
 Replace `{APP_URL}` with your deployed app URL (e.g. `https://your-app.vercel.app` or your tunnel URL during development).

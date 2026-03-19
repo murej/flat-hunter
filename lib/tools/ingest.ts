@@ -656,7 +656,7 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     const evalResults = await Promise.all(
       idsToProcess.map((id) =>
         limit(() =>
-          runEvaluationPipeline(id, { sendImmediately: false }).catch((e) => {
+          runEvaluationPipeline(id).catch((e) => {
             console.error(`Evaluation failed for ${id}:`, e);
             return null;
           }),

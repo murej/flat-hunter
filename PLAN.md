@@ -30,7 +30,7 @@ scorecardComposer.ts
 conversationAgent.ts
 viewingAgent.ts
 /supabase.ts ← Supabase client
-/telegram.ts ← Telegram send/receive helpers
+openclaw/telegram.ts ← Telegram send/receive helpers
 /prompts.ts ← all Claude system prompts in one place
 /types
 index.ts ← shared TypeScript types
@@ -118,7 +118,7 @@ Confirm schema is created before proceeding.
 
 ## Phase 2: Telegram bot setup
 
-In /lib/telegram.ts, implement:
+In /lib/openclaw/telegram.ts, implement:
 
 - sendMessage(text, options) — sends a message to the hardcoded chat ID (stored in env)
 - sendWithButtons(text, buttons) — sends inline keyboard buttons

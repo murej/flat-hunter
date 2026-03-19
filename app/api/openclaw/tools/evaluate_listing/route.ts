@@ -13,9 +13,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await runEvaluationPipeline(listing_id, {
-      sendImmediately: false,
-    });
+    const result = await runEvaluationPipeline(listing_id);
 
     if (typeof result !== "object" || !("scorecardText" in result)) {
       return NextResponse.json({ error: "Evaluation failed" }, { status: 500 });

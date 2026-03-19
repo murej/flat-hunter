@@ -1,5 +1,5 @@
 import { supabaseAdmin, logConversation } from "@/lib/supabase";
-import { sendMessage, sendWithButtons } from "@/lib/telegram";
+import { sendMessage, sendWithButtons } from "./telegram";
 import { sleep } from "@/lib/utils/retry";
 
 type PendingNotification = {

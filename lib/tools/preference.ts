@@ -1,6 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
-import { sendMessage } from "@/lib/telegram";
 import { PREFERENCE_COLLECTOR_SYSTEM } from "@/lib/prompts";
 import { evaluatePreferredAreas } from "./area-context";
 
@@ -9,7 +8,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export async function collectPreferences(
   userMessage: string,
   messageId: string
-): Promise<void> {
+): Promise<{ message: string }> {
   await logConversation({
     telegram_message_id: messageId,
     direction: "inbound",
@@ -123,12 +122,11 @@ export async function collectPreferences(
         assistantText.replace(/<preferences>[\s\S]*?<\/preferences>/, "").trim() +
         "\n\n✅ Your preferences have been saved!";
 
-      await sendMessage(confirmText);
+      return { message: confirmText };
     } catch (e) {
       console.error("Failed to parse preferences JSON:", e);
-      await sendMessage(assistantText);
+      return { message: assistantText };
     }
-  } else {
-    await sendMessage(assistantText);
   }
+  return { message: assistantText };
 }

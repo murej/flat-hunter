@@ -16,9 +16,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await runEvaluationPipeline(listing_id, {
-      sendImmediately: false,
-    });
+    const result = await runEvaluationPipeline(listing_id);
 
     if (typeof result === "object" && result.sent) {
       const batchId = crypto.randomUUID();
