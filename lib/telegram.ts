@@ -11,7 +11,7 @@ const BASE_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 export async function sendMessage(
   text: string,
-  options: Record<string, unknown> = {}
+  options: Record<string, unknown> = {},
 ): Promise<void> {
   const { parse_mode, ...rest } = options;
   const payload: Record<string, unknown> = {
@@ -32,14 +32,14 @@ export async function sendMessage(
   if (!res.ok) {
     const body = await res.text();
     console.error("Telegram sendMessage failed:", body);
-    throw new Error(`Telegram sendMessage failed: ${body}`);
+    throw new Error(`Telegram sendMessage failed: ${res.status}`);
   }
 }
 
 export async function sendWithButtons(
   text: string,
   buttons: AgentButton[][],
-  options: Record<string, unknown> = {}
+  options: Record<string, unknown> = {},
 ): Promise<void> {
   await sendMessage(text, {
     reply_markup: {
@@ -54,7 +54,7 @@ export type ReplyKeyboardRow = Array<{ text: string }>;
 export async function sendWithReplyKeyboard(
   text: string,
   keyboardRows: ReplyKeyboardRow[],
-  options: { is_persistent?: boolean; resize_keyboard?: boolean } = {}
+  options: { is_persistent?: boolean; resize_keyboard?: boolean } = {},
 ): Promise<void> {
   const { is_persistent = true, resize_keyboard = true } = options;
   await sendMessage(text, {
@@ -67,7 +67,7 @@ export async function sendWithReplyKeyboard(
 }
 
 export function parseInbound(
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ): TelegramMessage | null {
   const message =
     (body.message as Record<string, unknown> | undefined) ||
@@ -75,7 +75,9 @@ export function parseInbound(
 
   if (!message) return null;
 
-  const callbackQuery = body.callback_query as Record<string, unknown> | undefined;
+  const callbackQuery = body.callback_query as
+    | Record<string, unknown>
+    | undefined;
   const callbackQueryId = callbackQuery?.id as string | undefined;
 
   const text =
@@ -86,14 +88,14 @@ export function parseInbound(
   const messageId = String(
     (message.message_id as number | undefined) ||
       (message.id as number | undefined) ||
-      ""
+      "",
   );
 
   return { text, messageId, callbackQueryId };
 }
 
 export async function answerCallbackQuery(
-  callbackQueryId: string
+  callbackQueryId: string,
 ): Promise<void> {
   const res = await fetch(`${BASE_URL}/answerCallbackQuery`, {
     method: "POST",
@@ -104,6 +106,6 @@ export async function answerCallbackQuery(
   if (!res.ok) {
     const body = await res.text();
     console.error("Telegram answerCallbackQuery failed:", body);
-    throw new Error(`Telegram answerCallbackQuery failed: ${body}`);
+    throw new Error(`Telegram answerCallbackQuery failed: ${res.status}`);
   }
 }

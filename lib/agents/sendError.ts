@@ -1,4 +1,4 @@
-import { sendMessage } from "./telegram";
+import { sendMessage } from "@/lib/telegram";
 
 export async function sendError(
   message: string = "Something went wrong. Please try again.",

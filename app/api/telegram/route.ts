@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseInbound } from "@/lib/agent/telegram";
-import { sendError } from "@/lib/agent/sendError";
-import { handleTelegramUpdate } from "@/lib/agent/core";
+import { parseInbound } from "@/lib/telegram";
+import { sendError } from "@/lib/agents/sendError";
+import { handleTelegramUpdate } from "@/lib/agents/handler";
 
 export async function POST(req: NextRequest) {
   try {

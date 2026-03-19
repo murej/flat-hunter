@@ -5,8 +5,9 @@ import {
   getActiveListingId,
   getConversationHistory,
 } from "@/lib/supabase";
-import { sendMessage, sendWithButtons } from "./telegram";
-import { collectPreferences } from "@/lib/tools/preference";
+import { sendMessage, sendWithButtons } from "@/lib/telegram";
+import type { AgentButton } from "@/lib/telegram";
+import { collectPreferences } from "./preference";
 import {
   saveListing,
   skipListing,
@@ -15,17 +16,14 @@ import {
   getFormattedPreferences,
   getFormattedSavedList,
   getComparisonData,
-} from "./tools";
+} from "@/lib/tools/listing-tools";
 import {
   CONVERSATION_AGENT_SYSTEM,
   WHY_EXPLANATION_SYSTEM,
   COMPARISON_SYSTEM,
-} from "./shared.prompts";
-import {
-  runGenericAgent,
-  type ToolResult,
-  type AgentButton,
-} from "./core";
+} from "./conversation.prompts";
+import { runAgent, type ToolResult } from "@/lib/core/agent";
+import { buildTools, executeCallAgent } from "@/lib/core/tools";
 
 const ANTHROPIC_OUT_OF_CREDITS_MSG =
   "No more credits, feed Claude. I don't know what to say 😢";
@@ -57,7 +55,6 @@ function isAnthropicRateLimited(error: unknown): boolean {
 
   const isRateLimitStatus = status === 429 || status === 529;
 
-  // API error payload: { type: 'error', error: { type, message }, ... }
   const nestedError = (err.error as Record<string, unknown> | undefined) ?? {};
   const nestedType = String(nestedError.type ?? "").toLowerCase();
 
@@ -72,14 +69,18 @@ function isAnthropicRateLimited(error: unknown): boolean {
   return isRateLimitStatus || isRateLimitType || isRateLimitMessage;
 }
 
-const TOOLS: Anthropic.Tool[] = [
+const CONVERSATION_TOOLS: Anthropic.Tool[] = [
+  ...buildTools(["call_agent", "db"]),
   {
     name: "skip_listing",
     description: "Dismiss a property listing the user does not want to pursue.",
     input_schema: {
       type: "object" as const,
       properties: {
-        listing_id: { type: "string", description: "UUID of the listing to dismiss" },
+        listing_id: {
+          type: "string",
+          description: "UUID of the listing to dismiss",
+        },
       },
       required: ["listing_id"],
     },
@@ -90,14 +91,18 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        listing_id: { type: "string", description: "UUID of the listing to save" },
+        listing_id: {
+          type: "string",
+          description: "UUID of the listing to save",
+        },
       },
       required: ["listing_id"],
     },
   },
   {
     name: "show_property_scorecard",
-    description: "Re-display a property's evaluation scorecard with action buttons.",
+    description:
+      "Re-display a property's evaluation scorecard with action buttons.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -170,18 +175,68 @@ type InternalToolResult = InternalDirectResult | InternalDataResult;
 
 async function executeToolInternal(
   toolName: string,
-  toolInput: Record<string, string>,
+  toolInput: Record<string, unknown>,
   activeListingId: string | null,
   preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>,
   userMessage: string,
-  messageId: string
+  messageId: string,
 ): Promise<InternalToolResult> {
-  const listingId = toolInput.listing_id ?? activeListingId;
+  const listingId = (toolInput.listing_id as string) ?? activeListingId;
+
+  if (toolName === "call_agent") {
+    const data = await executeCallAgent(
+      String(toolInput.agent),
+      String(toolInput.prompt),
+    );
+    return { type: "data", data, toolName };
+  }
+
+  if (toolName === "db_read") {
+    const { dbRead } = await import("@/lib/core/tools/db");
+    const filters =
+      typeof toolInput.filters === "object"
+        ? (toolInput.filters as Record<string, unknown>)
+        : toolInput.filters
+          ? JSON.parse(String(toolInput.filters))
+          : undefined;
+    const result = await dbRead(
+      String(toolInput.table),
+      filters,
+      toolInput.limit ? Number(toolInput.limit) : 100,
+    );
+    const data = result.ok ? JSON.stringify(result.data) : result.error;
+    return { type: "data", data, toolName };
+  }
+
+  if (toolName === "db_write") {
+    const { dbWrite } = await import("@/lib/core/tools/db");
+    const data =
+      typeof toolInput.data === "object"
+        ? (toolInput.data as Record<string, unknown>)
+        : JSON.parse(String(toolInput.data));
+    const filters =
+      typeof toolInput.filters === "object"
+        ? (toolInput.filters as Record<string, unknown>)
+        : toolInput.filters
+          ? JSON.parse(String(toolInput.filters))
+          : undefined;
+    const result = await dbWrite(
+      String(toolInput.table),
+      toolInput.operation as "insert" | "upsert" | "update",
+      data,
+      filters,
+    );
+    const outData = result.ok ? JSON.stringify(result.data ?? "ok") : result.error;
+    return { type: "data", data: outData, toolName };
+  }
 
   switch (toolName) {
     case "skip_listing": {
       if (!listingId) {
-        return { type: "direct", message: "Which property would you like to skip?" };
+        return {
+          type: "direct",
+          message: "Which property would you like to skip?",
+        };
       }
       await skipListing(listingId);
       return {
@@ -194,7 +249,10 @@ async function executeToolInternal(
 
     case "save_listing": {
       if (!listingId) {
-        return { type: "direct", message: "Which property would you like to save?" };
+        return {
+          type: "direct",
+          message: "Which property would you like to save?",
+        };
       }
       await saveListing(listingId);
       return {
@@ -215,10 +273,7 @@ async function executeToolInternal(
       }
       const scorecardResult = await getScorecard(listingId);
       if (!scorecardResult.ok) {
-        return {
-          type: "direct",
-          message: scorecardResult.message,
-        };
+        return { type: "direct", message: scorecardResult.message };
       }
       return {
         type: "direct",
@@ -226,8 +281,8 @@ async function executeToolInternal(
         listingId: scorecardResult.listingId,
         intent: "other",
         scorecard: true,
-        saved: scorecardResult.buttons[0]?.some(
-          (b) => b.callback_data.startsWith("unsave:"),
+        saved: scorecardResult.buttons[0]?.some((b) =>
+          b.callback_data.startsWith("unsave:"),
         ),
         buttons: scorecardResult.buttons,
       };
@@ -269,18 +324,14 @@ async function executeToolInternal(
       }
       const whyResult = await getWhyContext(listingId);
       if (!whyResult.ok) {
-        return {
-          type: "data",
-          data: whyResult.error,
-          toolName,
-        };
+        return { type: "data", data: whyResult.error, toolName };
       }
       return { type: "data", data: whyResult.context, toolName };
     }
 
     case "get_comparison_data": {
-      const idA = toolInput.listing_id_a;
-      const idB = toolInput.listing_id_b;
+      const idA = toolInput.listing_id_a as string;
+      const idB = toolInput.listing_id_b as string;
       if (!idA || !idB) {
         return {
           type: "data",
@@ -318,20 +369,20 @@ function createExecuteTool(
   activeListingId: string | null,
   preferences: NonNullable<Awaited<ReturnType<typeof getPreferences>>>,
   userMessage: string,
-  messageId: string
+  messageId: string,
 ): (name: string, input: Record<string, unknown>) => Promise<ToolResult> {
   return async (
     name: string,
-    input: Record<string, unknown>
+    input: Record<string, unknown>,
   ): Promise<ToolResult> => {
-    const toolInput = input as Record<string, string>;
+    const toolInput = input as Record<string, unknown>;
     const result = await executeToolInternal(
       name,
       toolInput,
       activeListingId,
       preferences,
       userMessage,
-      messageId
+      messageId,
     );
     if (result.type === "direct") {
       let buttons: AgentButton[][] | undefined;
@@ -343,7 +394,9 @@ function createExecuteTool(
           : { text: "💾 Save", callback_data: `save:${result.listingId}` };
         const scorecardButtons = [
           saveButton,
-          ...(result.saved ? [] : [{ text: "⏭ Skip", callback_data: `skip:${result.listingId}` }]),
+          ...(result.saved
+            ? []
+            : [{ text: "⏭ Skip", callback_data: `skip:${result.listingId}` }]),
           { text: "❓ Why?", callback_data: `why:${result.listingId}` },
         ];
         buttons = [scorecardButtons];
@@ -365,9 +418,8 @@ function createExecuteTool(
 
 export async function conversationAgent(
   text: string,
-  messageId: string
+  messageId: string,
 ): Promise<void> {
-  // Dedup guard — bail if this Telegram message was already processed
   const { inserted } = await logConversation({
     telegram_message_id: messageId,
     direction: "inbound",
@@ -383,7 +435,6 @@ export async function conversationAgent(
       return;
     }
 
-    // Direct path for "show preferences" — guarantees fresh data from DB
     if (isShowPreferencesIntent(text)) {
       const executeTool = createExecuteTool(null, preferences, text, messageId);
       const result = await executeTool("show_preferences", {});
@@ -402,7 +453,6 @@ export async function conversationAgent(
       return;
     }
 
-    // Direct path for "show saved properties" — guarantees Remove buttons
     if (isShowSavedIntent(text)) {
       const executeTool = createExecuteTool(null, preferences, text, messageId);
       const result = await executeTool("show_saved_properties", {});
@@ -417,7 +467,9 @@ export async function conversationAgent(
             disable_web_page_preview: true,
           });
         } else {
-          await sendMessage(result.message, { disable_web_page_preview: true });
+          await sendMessage(result.message, {
+            disable_web_page_preview: true,
+          });
         }
       }
       return;
@@ -425,7 +477,8 @@ export async function conversationAgent(
 
     const history = await getConversationHistory(8);
     const listingIdFromText = extractListingId(text);
-    const activeListingId = listingIdFromText ?? (await getActiveListingId(10));
+    const activeListingId =
+      listingIdFromText ?? (await getActiveListingId(10));
 
     if (!listingIdFromText && !activeListingId) {
       const msg =
@@ -445,26 +498,26 @@ export async function conversationAgent(
 
     const messages: Anthropic.MessageParam[] = history;
 
-    let result = await runGenericAgent({
+    let result = await runAgent({
       prompt: text,
       systemPrompt,
-      tools: TOOLS,
+      tools: CONVERSATION_TOOLS,
+      model: "claude-haiku-4-5",
       messages,
       executeTool: createExecuteTool(
         activeListingId,
         preferences,
         text,
-        messageId
+        messageId,
       ),
     });
 
     let dataToolName: string | undefined;
 
-    // Tool returned data — run explanation agent
     if ("type" in result && result.type === "data") {
       dataToolName = result.toolName;
       const explanationAgent = EXPLANATION_AGENTS[dataToolName];
-      result = await runGenericAgent({
+      result = await runAgent({
         prompt: result.data,
         systemPrompt:
           explanationAgent?.systemPrompt ?? CONVERSATION_AGENT_SYSTEM,
@@ -507,7 +560,7 @@ export async function conversationAgent(
 
 function extractListingId(text: string): string | null {
   const match = text.match(
-    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
   );
   return match ? match[0] : null;
 }
@@ -536,5 +589,3 @@ function isShowSavedIntent(text: string): boolean {
   ];
   return patterns.some((p) => p.test(normalized));
 }
-
-export { conversationAgent as default };

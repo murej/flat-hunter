@@ -1,6 +1,6 @@
 import { waitUntil } from "@vercel/functions";
 import { NextRequest, NextResponse } from "next/server";
-import { ingestAgent, runEvaluationsAndNotify } from "@/lib/tools/ingest";
+import { ingestAgent, runEvaluationsAndNotify } from "@/lib/agents/ingest";
 
 export const maxDuration = 60;
 

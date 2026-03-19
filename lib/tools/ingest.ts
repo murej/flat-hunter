@@ -8,13 +8,13 @@ import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
 import {
   EMAIL_PARSER_SYSTEM,
   EMAIL_VERIFICATION_DETECTOR_SYSTEM,
-} from "./ingest.prompts";
+} from "@/lib/agents/ingest.prompts";
 import {
   runEvaluationPipeline,
   type EvaluationPipelineResult,
-} from "./evaluator";
+} from "@/lib/agents/evaluator";
 import { buildScorecardText, buildNoScoreScorecardText, buildScorecardButtons } from "./scorecard";
-import { consumePendingNotifications } from "@/lib/agent/notifications";
+import { consumePendingNotifications } from "@/lib/agents/notifications";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

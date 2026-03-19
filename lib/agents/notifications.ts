@@ -1,5 +1,5 @@
 import { supabaseAdmin, logConversation } from "@/lib/supabase";
-import { sendMessage, sendWithButtons } from "./telegram";
+import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { sleep } from "@/lib/utils/retry";
 
 type PendingNotification = {
@@ -54,7 +54,9 @@ export async function consumePendingNotifications(
         }
       } else if (n.type === "scorecard") {
         const scorecardText = payload.scorecardText as string;
-        const buttons = payload.buttons as Array<Array<{ text: string; callback_data: string }>>;
+        const buttons = payload.buttons as Array<
+          Array<{ text: string; callback_data: string }>
+        >;
         if (scorecardText && buttons) {
           await sendWithButtons(scorecardText, buttons);
           const listingId = payload.listingId as string | undefined;
