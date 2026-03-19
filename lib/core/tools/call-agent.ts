@@ -1,6 +1,6 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
 import { runAgent } from "../agent";
-import { getAgentConfig } from "@/lib/agents/registry";
+import { getAgentConfig } from "@/lib/core/registry";
 
 export const CALL_AGENT_TOOL: Anthropic.Tool = {
   name: "call_agent",
@@ -11,7 +11,7 @@ export const CALL_AGENT_TOOL: Anthropic.Tool = {
     properties: {
       agent: {
         type: "string",
-        description: "Agent name: preference, property_expert, area_expert, transport_expert, finance_expert, evaluator",
+        description: "Agent name: preference, property_expert, area_expert",
       },
       prompt: {
         type: "string",
@@ -28,7 +28,7 @@ export async function executeCallAgent(
 ): Promise<string> {
   const config = getAgentConfig(agent);
   if (!config) {
-    return `Unknown agent: ${agent}. Available: preference, property_expert, area_expert, transport_expert, finance_expert, evaluator`;
+    return `Unknown agent: ${agent}. Available: preference, property_expert, area_expert`;
   }
 
   const result = await runAgent({

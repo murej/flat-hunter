@@ -1,5 +1,6 @@
 import type { FinanceEvalResult } from "@/types";
 import type { MortgageRate } from "@/lib/tools/mortgage-rate";
+import { getLatestMortgageRate } from "./mortgage-rate";
 
 const ENV_MORTGAGE_RATE_RAW = process.env.MORTGAGE_RATE?.trim();
 // Important: `Number("")` is `0`, which would incorrectly override the default.
@@ -77,6 +78,11 @@ function normalizeMortgageRate(input: MortgageRate | null): {
     series_code: input.series_code,
     series_name: input.series_name,
   };
+}
+
+export async function evaluateFinance(price: number, deposit: number) {
+  const rate = await getLatestMortgageRate();
+  return calculateFinance(price, deposit, rate);
 }
 
 export function calculateFinance(

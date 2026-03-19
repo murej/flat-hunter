@@ -1,24 +1,20 @@
 import { runAgent } from "@/lib/core/agent";
 import { AREA_EXPERT_SYSTEM } from "./area-expert.prompts";
-import { buildTools, createExecuteTool, type ToolSet } from "@/lib/core/tools";
+import {
+  buildAreaExpertTools,
+  createAreaExpertExecuteTool,
+} from "./area-expert.tools";
+import { registerAgent } from "@/lib/core/registry";
+import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
 
-const TOOL_SETS: ToolSet[] = ["db", "web_search"];
-const executeTool = createExecuteTool(TOOL_SETS);
+const executeTool = createAreaExpertExecuteTool();
 
-function clampScore(score: unknown, fallback: number): number {
-  if (typeof score !== "number" || !Number.isFinite(score)) return fallback;
-  if (score < 1) return 1;
-  if (score > 10) return 10;
-  return score;
-}
-
-function extractJsonObject(text: string): Record<string, unknown> {
-  const matches = text.match(/\{[\s\S]*\}/g);
-  if (!matches || matches.length === 0) {
-    throw new Error("No JSON in area expert response");
-  }
-  return JSON.parse(matches[matches.length - 1]) as Record<string, unknown>;
-}
+registerAgent("area_expert", {
+  systemPrompt: AREA_EXPERT_SYSTEM,
+  tools: buildAreaExpertTools(),
+  model: "claude-sonnet-4-6",
+  executeTool,
+});
 
 export type AreaExpertResult = {
   area_score: number;
@@ -35,13 +31,13 @@ export async function runAreaExpert(
   const result = await runAgent({
     systemPrompt: AREA_EXPERT_SYSTEM,
     prompt,
-    tools: buildTools(TOOL_SETS),
+    tools: buildAreaExpertTools(),
     model: "claude-sonnet-4-6",
     executeTool,
   });
 
   const text = "message" in result ? result.message : "";
-  const parsed = extractJsonObject(text);
+  const parsed = extractJsonObject(text, "area expert response");
 
   return {
     area_score: clampScore(parsed.area_score, 5),

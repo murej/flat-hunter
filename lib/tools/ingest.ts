@@ -1,6 +1,5 @@
 import { createHash } from "crypto";
 import pLimit from "p-limit";
-import Anthropic from "@anthropic-ai/sdk";
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
@@ -9,14 +8,17 @@ import {
   EMAIL_PARSER_SYSTEM,
   EMAIL_VERIFICATION_DETECTOR_SYSTEM,
 } from "@/lib/agents/ingest.prompts";
+import { runAgent } from "@/lib/core/agent";
 import {
   runEvaluationPipeline,
   type EvaluationPipelineResult,
-} from "@/lib/agents/evaluator";
-import { buildScorecardText, buildNoScoreScorecardText, buildScorecardButtons } from "./scorecard";
+} from "@/lib/tools/evaluation-pipeline";
+import {
+  buildScorecardText,
+  buildNoScoreScorecardText,
+  buildScorecardButtons,
+} from "./scorecard";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const MAX_LISTINGS_PER_EMAIL = 100;
 
@@ -105,17 +107,15 @@ export function buildClaudeEmailParseInput(html: string): string {
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   const claudeInput = buildClaudeEmailParseInput(html);
 
-  const response = await retryWithBackoff(() =>
-    client.messages.create({
+  const result = await retryWithBackoff(() =>
+    runAgent({
+      systemPrompt: EMAIL_PARSER_SYSTEM,
+      prompt: claudeInput,
       model: "claude-sonnet-4-6",
-      max_tokens: 4096,
-      system: EMAIL_PARSER_SYSTEM,
-      messages: [{ role: "user", content: claudeInput }],
     }),
   );
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "[]";
+  const text = "message" in result ? result.message : "[]";
 
   function extractFirstValidJsonArrayCandidate(
     input: string,
@@ -455,21 +455,20 @@ export async function parseVerificationEmail(
       ? fullContent.slice(0, 8000) + "\n\n[... truncated for token limit ...]"
       : fullContent;
 
-  const response = await retryWithBackoff(() =>
-    client.messages.create({
+  const result = await retryWithBackoff(() =>
+    runAgent({
+      systemPrompt: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
+      prompt: content,
       model: "claude-sonnet-4-6",
-      max_tokens: 512,
-      system: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
-      messages: [{ role: "user", content }],
     }),
   );
 
-  const firstBlock = response.content[0];
-  if (!firstBlock || firstBlock.type !== "text") {
+  const text = "message" in result ? result.message : "";
+  if (!text) {
     return { isVerification: false };
   }
 
-  const jsonMatch = firstBlock.text.match(/\{[\s\S]*\}/);
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return { isVerification: false };
 
   try {

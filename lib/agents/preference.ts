@@ -2,19 +2,17 @@ import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
 import { PREFERENCE_COLLECTOR_SYSTEM } from "./preference.prompts";
 import { evaluatePreferredAreas } from "@/lib/tools/area-context";
 import { runAgent } from "@/lib/core/agent";
-import { registerAgent } from "./registry";
+import { registerAgent } from "@/lib/core/registry";
 import {
-  buildTools,
-  createExecuteTool,
-  type ToolSet,
-} from "@/lib/core/tools";
+  buildPreferenceTools,
+  createPreferenceExecuteTool,
+} from "./preference.tools";
 
-const PREFERENCE_TOOLS: ToolSet[] = ["db"];
-const preferenceExecuteTool = createExecuteTool(PREFERENCE_TOOLS);
+const preferenceExecuteTool = createPreferenceExecuteTool();
 
 registerAgent("preference", {
   systemPrompt: PREFERENCE_COLLECTOR_SYSTEM,
-  tools: buildTools(PREFERENCE_TOOLS),
+  tools: buildPreferenceTools(),
   model: "claude-haiku-4-5",
   executeTool: preferenceExecuteTool,
 });
@@ -55,7 +53,7 @@ export async function collectPreferences(
   const result = await runAgent({
     systemPrompt: PREFERENCE_COLLECTOR_SYSTEM,
     prompt: lastUserContent,
-    tools: buildTools(PREFERENCE_TOOLS),
+    tools: buildPreferenceTools(),
     model: "claude-haiku-4-5",
     messages: messages.slice(0, -1),
     executeTool: preferenceExecuteTool,

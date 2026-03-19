@@ -1,24 +1,20 @@
 import { runAgent } from "@/lib/core/agent";
 import { PROPERTY_EXPERT_SYSTEM } from "./property-expert.prompts";
-import { buildTools, createExecuteTool, type ToolSet } from "@/lib/core/tools";
+import {
+  buildPropertyExpertTools,
+  createPropertyExpertExecuteTool,
+} from "./property-expert.tools";
+import { registerAgent } from "@/lib/core/registry";
+import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
 
-const TOOL_SETS: ToolSet[] = ["db", "web_search"];
-const executeTool = createExecuteTool(TOOL_SETS);
+const executeTool = createPropertyExpertExecuteTool();
 
-function clampScore(score: unknown, fallback: number): number {
-  if (typeof score !== "number" || !Number.isFinite(score)) return fallback;
-  if (score < 1) return 1;
-  if (score > 10) return 10;
-  return score;
-}
-
-function extractJsonObject(text: string): Record<string, unknown> {
-  const matches = text.match(/\{[\s\S]*\}/g);
-  if (!matches || matches.length === 0) {
-    throw new Error("No JSON in property expert response");
-  }
-  return JSON.parse(matches[matches.length - 1]) as Record<string, unknown>;
-}
+registerAgent("property_expert", {
+  systemPrompt: PROPERTY_EXPERT_SYSTEM,
+  tools: buildPropertyExpertTools(),
+  model: "claude-sonnet-4-6",
+  executeTool,
+});
 
 export type PropertyExpertResult = {
   price_score: number;
@@ -38,13 +34,13 @@ export async function runPropertyExpert(
   const result = await runAgent({
     systemPrompt: PROPERTY_EXPERT_SYSTEM,
     prompt,
-    tools: buildTools(TOOL_SETS),
+    tools: buildPropertyExpertTools(),
     model: "claude-sonnet-4-6",
     executeTool,
   });
 
   const text = "message" in result ? result.message : "";
-  const parsed = extractJsonObject(text);
+  const parsed = extractJsonObject(text, "property expert response");
 
   return {
     price_score: clampScore(parsed.price_score, 5),

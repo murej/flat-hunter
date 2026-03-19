@@ -3,11 +3,11 @@ import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { fetchAreaContext } from "@/lib/tools/area-context";
 import { buildNoScoreScorecardText, buildScorecardText } from "@/lib/tools/scorecard";
 import type { Evaluation, Listing } from "@/types";
-import { runPropertyExpert } from "./property-expert";
-import { runAreaExpert } from "./area-expert";
-import { runTransportExpert } from "./transport-expert";
-import { runFinanceExpert } from "./finance-expert";
-import { dbRead } from "@/lib/core/tools/db";
+import { runPropertyExpert } from "@/lib/agents/property-expert";
+import { runAreaExpert } from "@/lib/agents/area-expert";
+import { evaluateCommute } from "@/lib/tools/commute";
+import { evaluateFinance } from "@/lib/tools/finance";
+import { dbRead, dbWrite } from "@/lib/core/tools/db";
 
 const SCORE_THRESHOLD = 1;
 
@@ -66,13 +66,12 @@ export async function runEvaluationPipeline(
     preferred_area_profiles: areaProfiles,
   };
 
+  const areaScopeValue =
+    listing.postcode ?? areaContext.postcode?.admin_district ?? "";
+
   const [propertyPrior, areaPrior] = await Promise.all([
     getAgentContext("property_expert", "listing_id", listingId),
-    getAgentContext(
-      "area_expert",
-      "postcode",
-      listing.postcode ?? areaContext.postcode?.admin_district ?? null,
-    ),
+    getAgentContext("area_expert", "postcode", areaScopeValue || "general"),
   ]);
 
   const limit = pLimit(3);
@@ -106,13 +105,13 @@ export async function runEvaluationPipeline(
         }),
       ),
       limit(() =>
-        runTransportExpert(
+        evaluateCommute(
           listing.postcode ?? "",
           preferences.commute_anchor_postcode ?? "",
           preferences.max_commute_minutes ?? 60,
           listing.address,
         ).catch((e) => {
-          console.error("Transport expert failed:", e);
+          console.error("Commute evaluation failed:", e);
           return {
             commute_minutes: 0,
             commute_route: "Commute data unavailable",
@@ -122,8 +121,8 @@ export async function runEvaluationPipeline(
         }),
       ),
       limit(() =>
-        runFinanceExpert(listing.price, preferences.deposit ?? 0).catch((e) => {
-          console.error("Finance expert failed:", e);
+        evaluateFinance(listing.price, preferences.deposit ?? 0).catch((e) => {
+          console.error("Finance evaluation failed:", e);
           return {
             monthly_mortgage: 0,
             monthly_interest_only: 0,
@@ -134,6 +133,25 @@ export async function runEvaluationPipeline(
         }),
       ),
     ]);
+
+  await Promise.all([
+    dbWrite("agent_context", "upsert", {
+      agent_id: "property_expert",
+      scope: "listing_id",
+      scope_value: listingId,
+      content: {
+        findings: `${propertyResult.property_summary} [scores: p=${propertyResult.price_score} s=${propertyResult.size_score} f=${propertyResult.fit_score}]`,
+      },
+    }),
+    dbWrite("agent_context", "upsert", {
+      agent_id: "area_expert",
+      scope: "postcode",
+      scope_value: areaScopeValue || "general",
+      content: {
+        findings: `${areaResult.area_summary} [score: ${areaResult.area_score}]${areaResult.notable_flags.length ? ` [flags: ${areaResult.notable_flags.join(", ")}]` : ""}`,
+      },
+    }),
+  ]);
 
   const weightsConfig = preferences.raw_json?.score_weights as
     | Record<string, number>
