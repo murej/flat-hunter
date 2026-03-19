@@ -1,3 +1,4 @@
+import { getExpertMaxToolIterations } from "@/lib/config/expert-web-search";
 import { runAgent } from "@/lib/core/agent";
 import { PROPERTY_EXPERT_SYSTEM } from "./prompts";
 import {
@@ -10,7 +11,7 @@ import { truncatePriorFindings } from "@/lib/utils/tool-result";
 
 const executeTool = createPropertyExpertExecuteTool();
 
-const WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS = 3;
+const EXPERT_MAX_TOOL_ITERATIONS = getExpertMaxToolIterations();
 
 const MAX_DESCRIPTION_CHARS = 2500;
 const MAX_IMAGE_URLS = 4;
@@ -78,7 +79,7 @@ registerAgent("property_expert", {
   tools: buildPropertyExpertTools(),
   model: "claude-sonnet-4-6",
   executeTool,
-  maxToolIterations: WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS,
+  maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
 });
 
 export type PropertyExpertResult = {
@@ -105,7 +106,7 @@ export async function runPropertyExpert(
     tools: buildPropertyExpertTools(),
     model: "claude-sonnet-4-6",
     executeTool,
-    maxToolIterations: WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS,
+    maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
   });
 
   const text = "message" in result ? result.message : "";

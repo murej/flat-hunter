@@ -1,15 +1,16 @@
+import { getAreaExpertToolSets } from "@/lib/config/expert-web-search";
+import { runAgent } from "@/lib/core/agent";
 import {
   buildTools,
   createExecuteTool,
   type ToolSet,
 } from "@/lib/core/tools";
-import { runAgent } from "@/lib/core/agent";
 import { AREA_PROFILE_EVALUATOR_SYSTEM } from "@/lib/prompts/area";
 import { getPostcodeContextForArea } from "@/lib/tools/area";
 import type { AreaProfile } from "@/lib/tools/area";
 import { retryWithBackoff } from "@/lib/utils/retry";
 
-export const AREA_EXPERT_TOOL_SETS: ToolSet[] = ["db", "web_search"];
+const AREA_EXPERT_TOOL_SETS: ToolSet[] = getAreaExpertToolSets();
 
 export function buildAreaExpertTools() {
   return buildTools(AREA_EXPERT_TOOL_SETS);
@@ -29,7 +30,7 @@ async function runAreaProfile(areaName: string): Promise<AreaProfile | null> {
     runAgent({
       systemPrompt: AREA_PROFILE_EVALUATOR_SYSTEM,
       prompt,
-      model: "claude-sonnet-4-6",
+      model: "claude-haiku-4-5",
     }),
   );
 

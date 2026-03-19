@@ -1,3 +1,4 @@
+import { getExpertMaxToolIterations } from "@/lib/config/expert-web-search";
 import { runAgent } from "@/lib/core/agent";
 import { AREA_EXPERT_SYSTEM } from "./prompts";
 import { slimAreaContextForExpert } from "./context";
@@ -12,14 +13,14 @@ import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
 
 const executeTool = createAreaExpertExecuteTool();
 
-const WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS = 3;
+const EXPERT_MAX_TOOL_ITERATIONS = getExpertMaxToolIterations();
 
 registerAgent("area_expert", {
   systemPrompt: AREA_EXPERT_SYSTEM,
   tools: buildAreaExpertTools(),
   model: "claude-sonnet-4-6",
   executeTool,
-  maxToolIterations: WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS,
+  maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
 });
 
 export type { AreaProfile } from "@/lib/tools/area";
@@ -45,7 +46,7 @@ export async function runAreaExpert(
     tools: buildAreaExpertTools(),
     model: "claude-sonnet-4-6",
     executeTool,
-    maxToolIterations: WEB_SEARCH_EXPERT_MAX_TOOL_ITERATIONS,
+    maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
   });
 
   const text = "message" in result ? result.message : "";
