@@ -1,5 +1,6 @@
 import pLimit from "p-limit";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
+import { isRateLimitError } from "@/lib/utils/retry";
 import { fetchAreaContext } from "@/lib/tools/area";
 import {
   buildNoScoreScorecardText,
@@ -24,6 +25,7 @@ export type EvaluationPipelineResult = {
   unknownScores: { property?: boolean; area?: boolean; commute?: boolean };
   shouldSendNoScore: boolean;
   scorecardText: string;
+  rateLimitHit?: boolean;
 };
 
 async function getAgentContext(
@@ -89,21 +91,25 @@ export async function runEvaluationPipeline(
         ).catch((e) => {
           console.error("Property expert failed:", e);
           return {
-            price_score: 5,
-            size_score: 5,
-            fit_score: 5,
+            price_score: 0,
+            size_score: 0,
+            fit_score: 0,
             deal_breaker_flags: [] as string[],
             property_summary: "Evaluation unavailable",
+            property_unknown: true as const,
+            _rateLimitHit: isRateLimitError(e),
           };
         }),
       ),
       limit(() =>
-        runAreaExpert(areaContextBlock, areaPrior).catch((e) => {
+        runAreaExpert(areaContextBlock, areaPrior        ).catch((e) => {
           console.error("Area expert failed:", e);
           return {
-            area_score: 5,
+            area_score: 0,
             area_summary: "Evaluation unavailable",
             notable_flags: [] as string[],
+            area_unknown: true as const,
+            _rateLimitHit: isRateLimitError(e),
           };
         }),
       ),
@@ -165,12 +171,16 @@ export async function runEvaluationPipeline(
     score: number;
   }> = [];
 
-  components.push(
-    { key: "price", score: propertyResult.price_score },
-    { key: "size", score: propertyResult.size_score },
-    { key: "fit", score: propertyResult.fit_score },
-  );
-  components.push({ key: "area", score: areaResult.area_score });
+  if (!("property_unknown" in propertyResult) || !propertyResult.property_unknown) {
+    components.push(
+      { key: "price", score: propertyResult.price_score },
+      { key: "size", score: propertyResult.size_score },
+      { key: "fit", score: propertyResult.fit_score },
+    );
+  }
+  if (!("area_unknown" in areaResult) || !areaResult.area_unknown) {
+    components.push({ key: "area", score: areaResult.area_score });
+  }
   if (!("commute_unknown" in commuteResult) || !commuteResult.commute_unknown) {
     components.push({ key: "commute", score: commuteResult.commute_score });
   }
@@ -213,6 +223,10 @@ export async function runEvaluationPipeline(
     "commute_route" in commuteResult ? commuteResult.commute_route : "";
   const commuteUnknown =
     "commute_unknown" in commuteResult && commuteResult.commute_unknown;
+  const propertyUnknown =
+    "property_unknown" in propertyResult && propertyResult.property_unknown;
+  const areaUnknown =
+    "area_unknown" in areaResult && areaResult.area_unknown;
 
   const { data: evaluation, error } = await supabaseAdmin
     .from("evaluations")
@@ -233,6 +247,9 @@ export async function runEvaluationPipeline(
       estimated_monthly_total: financeResult.estimated_monthly_total,
       property_summary: propertyResult.property_summary,
       area_summary: areaResult.area_summary,
+      property_scores_unknown: propertyUnknown,
+      area_score_unknown: areaUnknown,
+      commute_score_unknown: commuteUnknown,
       raw_property_eval: {
         price_score: propertyResult.price_score,
         size_score: propertyResult.size_score,
@@ -253,8 +270,8 @@ export async function runEvaluationPipeline(
   if (error) throw error;
 
   const unknownScores = {
-    property: false,
-    area: false,
+    property: propertyUnknown,
+    area: areaUnknown,
     commute: commuteUnknown,
   };
 
@@ -269,6 +286,10 @@ export async function runEvaluationPipeline(
           unknownScores,
         );
 
+  const rateLimitHit =
+    ("_rateLimitHit" in propertyResult && propertyResult._rateLimitHit) ||
+    ("_rateLimitHit" in areaResult && areaResult._rateLimitHit);
+
   const result: EvaluationPipelineResult = {
     sent: components.length === 0 || overall_score > SCORE_THRESHOLD,
     evaluation,
@@ -279,6 +300,7 @@ export async function runEvaluationPipeline(
     unknownScores,
     shouldSendNoScore: components.length === 0,
     scorecardText,
+    ...(rateLimitHit && { rateLimitHit: true }),
   };
 
   await supabaseAdmin

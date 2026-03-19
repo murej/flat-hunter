@@ -2,6 +2,14 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function isRateLimitError(e: unknown): boolean {
+  const err = e as { status?: number; message?: string };
+  if (err?.status === 429) return true;
+  if (typeof err?.message === "string" && /rate.?limit|429/i.test(err.message))
+    return true;
+  return false;
+}
+
 function isRetryable(e: unknown): boolean {
   if (e instanceof TypeError) return true;
 

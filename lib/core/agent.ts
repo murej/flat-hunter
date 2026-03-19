@@ -107,11 +107,19 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
       });
 
       if (result.type === "data") {
-        return {
-          type: "data",
-          data: result.data,
-          toolName: result.toolName,
-        };
+        // db_read/db_write are intermediate: let the model see results and produce final output
+        if (
+          result.toolName === "db_read" ||
+          result.toolName === "db_write"
+        ) {
+          // continue loop
+        } else {
+          return {
+            type: "data",
+            data: result.data,
+            toolName: result.toolName,
+          };
+        }
       }
 
       if (result.type === "direct") {

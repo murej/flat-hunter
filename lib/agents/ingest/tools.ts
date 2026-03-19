@@ -106,17 +106,25 @@ function buildClaudeEmailParseInput(html: string): string {
 }
 
 export async function parseEmailHtml(html: string): Promise<RawListing[]> {
+  const tParse0 = Date.now();
+  // #region agent log
+  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'parseEmailHtml entry',data:{tParse0,htmlLen:html.length},hypothesisId:'H1,H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+  // #endregion
   const claudeInput = buildClaudeEmailParseInput(html);
 
   const result = await retryWithBackoff(() =>
     runAgent({
       systemPrompt: EMAIL_PARSER_SYSTEM,
       prompt: claudeInput,
-      model: "claude-sonnet-4-6",
+      model: "claude-haiku-4-5",
     }),
   );
 
   const text = "message" in result ? result.message : "[]";
+  const tParse1 = Date.now();
+  // #region agent log
+  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'claude parse done',data:{tParse1,claudeMs:tParse1-tParse0},hypothesisId:'H1,H4',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+  // #endregion
 
   function extractFirstValidJsonArrayCandidate(
     input: string,
@@ -255,6 +263,10 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   // and Claude may fail to return usable listing objects. As a fallback, resolve
   // those tracking links by following redirects to the real /for-sale/details/<id> URL.
   if (listings.length === 0) {
+    const tZoopl0 = Date.now();
+    // #region agent log
+    (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'zoopla fallback entry',data:{tZoopl0},hypothesisId:'H3',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+    // #endregion
     try {
       const extracted = buildEmailParseExtractedContent(html);
       const priceCandidates = Array.from(
@@ -293,6 +305,10 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       const resolved = await Promise.all(
         toResolve.map((u) => resolveRedirect(u)),
       );
+      const tZoopl1 = Date.now();
+      // #region agent log
+      (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'zoopla fallback redirects done',data:{tZoopl1,zooplaMs:tZoopl1-tZoopl0,toResolve:toResolve.length},hypothesisId:'H3',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+      // #endregion
       const detailUrls = resolved
         .map((finalUrl) => finalUrl ?? "")
         .filter(Boolean)
@@ -456,6 +472,10 @@ export async function parseVerificationEmail(
       ? fullContent.slice(0, 8000) + "\n\n[... truncated for token limit ...]"
       : fullContent;
 
+  const tVer0 = Date.now();
+  // #region agent log
+  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseVerificationEmail',message:'parseVerificationEmail claude call',data:{tVer0},hypothesisId:'H5',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+  // #endregion
   const result = await retryWithBackoff(() =>
     runAgent({
       systemPrompt: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
@@ -555,6 +575,10 @@ export async function parseVerificationEmail(
 export type IngestResult = { done: true } | { done: false; newIds: string[] };
 
 export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
+  const tEval0 = Date.now();
+  // #region agent log
+  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:runEvaluationsAndNotify',message:'runEvaluationsAndNotify entry',data:{tEval0,newIdsLen:newIds.length},hypothesisId:'H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+  // #endregion
   try {
     const batchId = crypto.randomUUID();
     const preferences = await getPreferences();
@@ -586,20 +610,6 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     }> = [];
     let seq = 0;
 
-    const introText = truncated
-      ? `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`
-      : "I have new listings, will get back to you if there's anything worth checking out.";
-    rows.push({
-      batch_id: batchId,
-      sequence: seq++,
-      type: "intro",
-      payload: {
-        kind: truncated ? "truncated" : "new_listings",
-        text: introText,
-        ...(truncated ? { truncatedTotal: newIds.length } : {}),
-      },
-    });
-
     const limit = pLimit(5);
     const evalResults = await Promise.all(
       idsToProcess.map((id) =>
@@ -611,10 +621,33 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
         ),
       ),
     );
+    const tEval1 = Date.now();
+    // #region agent log
+    (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:runEvaluationsAndNotify',message:'eval pipeline completed',data:{tEval1,evalPipelineMs:tEval1-tEval0,idsProcessed:idsToProcess.length},hypothesisId:'H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+    // #endregion
 
     const results = evalResults.filter(
       (r): r is EvaluationPipelineResult => r !== null && typeof r === "object",
     );
+
+    const rateLimitHit = results.some((r) => r.rateLimitHit);
+    const introText = truncated
+      ? `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`
+      : "I have new listings, will get back to you if there's anything worth checking out.";
+    const introWithRateLimit =
+      rateLimitHit
+        ? `${introText}\n\n⚠️ _Rate limit hit — some evaluations used fallback scores. Try again in a few minutes._`
+        : introText;
+    rows.push({
+      batch_id: batchId,
+      sequence: seq++,
+      type: "intro",
+      payload: {
+        kind: truncated ? "truncated" : "new_listings",
+        text: introWithRateLimit,
+        ...(truncated ? { truncatedTotal: newIds.length } : {}),
+      },
+    });
 
     const toSend = results
       .filter((r) => r.sent)
@@ -688,6 +721,10 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     });
 
     await supabaseAdmin.from("pending_notifications").insert(rows);
+    const tEval2 = Date.now();
+    // #region agent log
+    (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:runEvaluationsAndNotify',message:'runEvaluationsAndNotify exit',data:{tEval2,totalEvalMs:tEval2-tEval0},hypothesisId:'H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+    // #endregion
     if (process.env.VERCEL) {
       waitUntil(consumePendingNotifications(batchId));
     } else {
