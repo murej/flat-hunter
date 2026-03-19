@@ -3,10 +3,7 @@ import { PREFERENCE_COLLECTOR_SYSTEM } from "./prompts";
 import { evaluatePreferredAreas } from "@/lib/agents/area-expert";
 import { runAgent } from "@/lib/core/agent";
 import { registerAgent } from "@/lib/core/registry";
-import {
-  buildPreferenceTools,
-  createPreferenceExecuteTool,
-} from "./tools";
+import { buildPreferenceTools, createPreferenceExecuteTool } from "./tools";
 
 const preferenceExecuteTool = createPreferenceExecuteTool();
 
@@ -67,7 +64,9 @@ export async function collectPreferences(
     intent: "preferences",
   });
 
-  const prefMatch = assistantText.match(/<preferences>([\s\S]*?)<\/preferences>/);
+  const prefMatch = assistantText.match(
+    /<preferences>([\s\S]*?)<\/preferences>/,
+  );
   if (prefMatch) {
     try {
       const parsed = JSON.parse(prefMatch[1].trim());
@@ -81,7 +80,9 @@ export async function collectPreferences(
             ? parsed.max_price
             : (existing?.max_price ?? 0),
         deposit:
-          parsed.deposit !== undefined ? parsed.deposit : (existing?.deposit ?? 0),
+          parsed.deposit !== undefined
+            ? parsed.deposit
+            : (existing?.deposit ?? 0),
         min_bedrooms:
           parsed.min_bedrooms !== undefined
             ? parsed.min_bedrooms
@@ -153,7 +154,9 @@ export async function collectPreferences(
               ? {}
               : area_profiles && Object.keys(area_profiles).length > 0
                 ? area_profiles
-                : (existingRaw.area_profiles as Record<string, unknown> | undefined) ?? {},
+                : ((existingRaw.area_profiles as
+                    | Record<string, unknown>
+                    | undefined) ?? {}),
         },
         updated_at: new Date().toISOString(),
       };

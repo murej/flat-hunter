@@ -254,10 +254,7 @@ export async function fetchAreaContext(
   let imd: IMDContext | null = null;
   let crime_available = false;
   let imd_available = false;
-  if (
-    postcodeContext?.latitude != null &&
-    postcodeContext?.longitude != null
-  ) {
+  if (postcodeContext?.latitude != null && postcodeContext?.longitude != null) {
     try {
       crime = await fetchCrimeData(
         postcodeContext.latitude,
@@ -282,7 +279,10 @@ export async function fetchAreaContext(
     }
   }
 
-  const target_area_match = computeTargetAreaMatch(postcodeContext, targetAreas);
+  const target_area_match = computeTargetAreaMatch(
+    postcodeContext,
+    targetAreas,
+  );
 
   return {
     postcode: postcodeContext,
@@ -331,7 +331,10 @@ export async function resolveAreaToPostcode(
 
 export async function getPostcodeContextForArea(
   areaName: string,
-): Promise<{ postcode: string | null; postcodeContext: PostcodeContext | null }> {
+): Promise<{
+  postcode: string | null;
+  postcodeContext: PostcodeContext | null;
+}> {
   const postcode = await resolveAreaToPostcode(areaName);
   let postcodeContext: PostcodeContext | null = null;
 
