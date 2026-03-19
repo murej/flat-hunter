@@ -20,7 +20,7 @@ import {
   CONVERSATION_AGENT_SYSTEM,
   WHY_EXPLANATION_SYSTEM,
   COMPARISON_SYSTEM,
-} from "@/lib/prompts";
+} from "./shared.prompts";
 import {
   runGenericAgent,
   type ToolResult,

@@ -17,7 +17,7 @@ import {
   getWhyContext,
   UPDATE_PREFERENCES_BUTTONS,
 } from "./tools";
-import { WHY_EXPLANATION_SYSTEM } from "@/lib/prompts";
+import { WHY_EXPLANATION_SYSTEM } from "./shared.prompts";
 import { conversationAgent } from "./conversation";
 
 export type AgentMetadata = {

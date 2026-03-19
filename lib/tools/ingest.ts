@@ -8,7 +8,7 @@ import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
 import {
   EMAIL_PARSER_SYSTEM,
   EMAIL_VERIFICATION_DETECTOR_SYSTEM,
-} from "@/lib/prompts";
+} from "./ingest.prompts";
 import {
   runEvaluationPipeline,
   type EvaluationPipelineResult,

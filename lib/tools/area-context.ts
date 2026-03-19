@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { retryWithBackoff } from "@/lib/utils/retry";
-import { AREA_PROFILE_EVALUATOR_SYSTEM } from "@/lib/prompts";
+import { AREA_PROFILE_EVALUATOR_SYSTEM } from "./area-context.prompts";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const fullPostcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;

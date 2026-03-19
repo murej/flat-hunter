@@ -5,7 +5,7 @@ import {
   getPreferences,
 } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
-import { COMBINED_EVALUATOR_SYSTEM } from "@/lib/prompts";
+import { COMBINED_EVALUATOR_SYSTEM } from "./evaluator.prompts";
 import { fetchAreaContext } from "./area-context";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";

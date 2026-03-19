@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
-import { PREFERENCE_COLLECTOR_SYSTEM } from "@/lib/prompts";
+import { PREFERENCE_COLLECTOR_SYSTEM } from "./preference.prompts";
 import { evaluatePreferredAreas } from "./area-context";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
