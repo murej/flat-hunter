@@ -4,7 +4,6 @@ import {
   getListing,
   getPreferences,
   logConversation,
-  updateListingStatus,
 } from "@/lib/supabase";
 import { sendWithButtons } from "@/lib/telegram";
 import { retryWithBackoff } from "@/lib/utils/retry";
@@ -13,10 +12,7 @@ import { fetchAreaContext } from "./area-context";
 import { evaluateCommute } from "./commute";
 import { calculateFinance } from "./finance";
 import { getLatestMortgageRate } from "./mortgage-rate";
-import {
-  buildNoScoreScorecardText,
-  buildScorecardText,
-} from "./scorecard";
+import { buildNoScoreScorecardText, buildScorecardText } from "./scorecard";
 import type { CombinedEvalResult, Evaluation, Listing } from "@/types";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -138,13 +134,13 @@ export async function combinedEvaluator(
     deal_breaker_flags: Array.isArray(parsed.deal_breaker_flags)
       ? parsed.deal_breaker_flags
       : [],
-    property_summary: typeof parsed.property_summary === "string"
-      ? parsed.property_summary
-      : "",
+    property_summary:
+      typeof parsed.property_summary === "string"
+        ? parsed.property_summary
+        : "",
     area_score,
-    area_summary: typeof parsed.area_summary === "string"
-      ? parsed.area_summary
-      : "",
+    area_summary:
+      typeof parsed.area_summary === "string" ? parsed.area_summary : "",
     notable_flags: Array.isArray(parsed.notable_flags)
       ? parsed.notable_flags
       : [],
@@ -210,7 +206,9 @@ export async function runEvaluationPipeline(
       };
     }),
     getLatestMortgageRate()
-      .then((rate) => calculateFinance(listing.price, preferences?.deposit ?? 0, rate))
+      .then((rate) =>
+        calculateFinance(listing.price, preferences?.deposit ?? 0, rate),
+      )
       .catch((e) => {
         console.error("Finance agent failed:", e);
         return {
@@ -227,8 +225,10 @@ export async function runEvaluationPipeline(
     | Record<string, number>
     | undefined;
 
-  const components: Array<{ key: "price" | "size" | "fit" | "area" | "commute"; score: number }> =
-    [];
+  const components: Array<{
+    key: "price" | "size" | "fit" | "area" | "commute";
+    score: number;
+  }> = [];
 
   if (!combinedResult.property_unknown) {
     components.push(
@@ -324,15 +324,16 @@ export async function runEvaluationPipeline(
     commute: Boolean(commuteResult.commute_unknown),
   };
 
-  const scorecardText = components.length === 0
-    ? buildNoScoreScorecardText(evaluation, listing)
-    : buildScorecardText(
-        evaluation,
-        listing,
-        combinedResult.notable_flags,
-        commuteResult.commute_minutes,
-        unknownScores,
-      );
+  const scorecardText =
+    components.length === 0
+      ? buildNoScoreScorecardText(evaluation, listing)
+      : buildScorecardText(
+          evaluation,
+          listing,
+          combinedResult.notable_flags,
+          commuteResult.commute_minutes,
+          unknownScores,
+        );
 
   const result: EvaluationPipelineResult = {
     sent: components.length === 0 || overall_score > SCORE_THRESHOLD,
@@ -361,21 +362,27 @@ export async function runEvaluationPipeline(
           { text: "❓ Why?", callback_data: `why:${listing.id}` },
         ],
       ]);
-      await updateListingStatus(listing.id, "evaluated");
+      await supabaseAdmin
+        .from("listings")
+        .update({ status: "evaluated" })
+        .eq("id", listing.id)
+        .eq("status", "pending_evaluation");
       return true;
     }
     await supabaseAdmin
       .from("listings")
       .update({ status: "evaluated" })
-      .eq("id", listingId);
+      .eq("id", listingId)
+      .eq("status", "pending_evaluation");
     return false;
   }
 
-  if (!result.sent) {
-    await supabaseAdmin
-      .from("listings")
-      .update({ status: "evaluated" })
-      .eq("id", listingId);
-  }
+  // Mark as evaluated only when still pending (do not overwrite saved/dismissed)
+  await supabaseAdmin
+    .from("listings")
+    .update({ status: "evaluated" })
+    .eq("id", listingId)
+    .eq("status", "pending_evaluation");
+
   return result;
 }

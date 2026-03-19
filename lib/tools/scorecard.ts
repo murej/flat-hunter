@@ -1,6 +1,32 @@
 import type { Evaluation, Listing } from "@/types";
 import { sendMessage } from "@/lib/telegram";
 
+export type ScorecardButton = { text: string; callback_data: string };
+
+export function buildScorecardButtons(
+  listingId: string,
+  isSaved: boolean,
+): ScorecardButton[][] {
+  const saveButton: ScorecardButton = isSaved
+    ? { text: "🗑 Unsave", callback_data: `unsave:${listingId}` }
+    : { text: "💾 Save", callback_data: `save:${listingId}` };
+  const skipButton: ScorecardButton = {
+    text: "⏭ Skip",
+    callback_data: `skip:${listingId}`,
+  };
+  const whyButton: ScorecardButton = {
+    text: "❓ Why?",
+    callback_data: `why:${listingId}`,
+  };
+  return [
+    [
+      saveButton,
+      ...(isSaved ? [] : [skipButton]),
+      whyButton,
+    ],
+  ];
+}
+
 type UnknownScores = {
   property?: boolean;
   area?: boolean;

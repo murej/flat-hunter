@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import pLimit from "p-limit";
 import Anthropic from "@anthropic-ai/sdk";
+import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
 import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
@@ -12,8 +13,8 @@ import {
   runEvaluationPipeline,
   type EvaluationPipelineResult,
 } from "./evaluator";
-import { composeScorecard, composeNoScoreScorecard } from "./scorecard";
-import { sleep } from "@/lib/utils/retry";
+import { buildScorecardText, buildNoScoreScorecardText, buildScorecardButtons } from "./scorecard";
+import { consumePendingNotifications } from "@/lib/openclaw/notifications";
 import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -587,27 +588,45 @@ export async function ingestAgent(
 
 export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
   try {
+    const batchId = crypto.randomUUID();
     const preferences = await getPreferences();
 
     if (!preferences) {
-      await sendMessage(
-        `I have *${newIds.length}* new ${newIds.length === 1 ? "listing" : "listings"} — set your preferences via Telegram to get scorecards.`,
-      );
+      const text = `I have *${newIds.length}* new ${newIds.length === 1 ? "listing" : "listings"} — set your preferences via Telegram to get scorecards.`;
+      await supabaseAdmin.from("pending_notifications").insert({
+        batch_id: batchId,
+        sequence: 0,
+        type: "intro",
+        payload: { kind: "no_prefs", text },
+      });
+      waitUntil(consumePendingNotifications(batchId));
       return;
     }
 
     const idsToProcess = newIds.slice(0, MAX_LISTINGS_PER_EMAIL);
     const truncated = newIds.length > MAX_LISTINGS_PER_EMAIL;
 
-    if (truncated) {
-      await sendMessage(
-        `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`,
-      );
-    } else {
-      await sendMessage(
-        "I have new listings, will get back to you if there's anything worth checking out.",
-      );
-    }
+    const rows: Array<{
+      batch_id: string;
+      sequence: number;
+      type: "intro" | "scorecard" | "summary";
+      payload: Record<string, unknown>;
+    }> = [];
+    let seq = 0;
+
+    const introText = truncated
+      ? `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`
+      : "I have new listings, will get back to you if there's anything worth checking out.";
+    rows.push({
+      batch_id: batchId,
+      sequence: seq++,
+      type: "intro",
+      payload: {
+        kind: truncated ? "truncated" : "new_listings",
+        text: introText,
+        ...(truncated ? { truncatedTotal: newIds.length } : {}),
+      },
+    });
 
     const limit = pLimit(5);
     const evalResults = await Promise.all(
@@ -622,35 +641,39 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     );
 
     const results = evalResults.filter(
-      (r): r is EvaluationPipelineResult =>
-        r !== null && typeof r === "object",
+      (r): r is EvaluationPipelineResult => r !== null && typeof r === "object",
     );
 
     const toSend = results
       .filter((r) => r.sent)
       .sort((a, b) => b.overall_score - a.overall_score);
 
-    const SCORECARD_DELAY_MS = parseInt(
-      process.env.SCORECARD_DELAY_MS ?? "500",
-      10,
-    );
-
-    for (let i = 0; i < toSend.length; i++) {
-      const r = toSend[i];
-      if (r.shouldSendNoScore) {
-        await composeNoScoreScorecard(r.evaluation, r.listing);
-      } else {
-        await composeScorecard(
-          r.evaluation,
-          r.listing,
-          r.notable_flags,
-          r.commute_minutes,
-          r.unknownScores,
-        );
-      }
-      if (i < toSend.length - 1) {
-        await sleep(SCORECARD_DELAY_MS);
-      }
+    for (const r of toSend) {
+      const scorecardText = r.shouldSendNoScore
+        ? buildNoScoreScorecardText(r.evaluation, r.listing)
+        : buildScorecardText(
+            r.evaluation,
+            r.listing,
+            r.notable_flags,
+            r.commute_minutes,
+            r.unknownScores,
+          );
+      const buttons = buildScorecardButtons(
+        r.listing.id,
+        r.listing.status === "saved",
+      );
+      rows.push({
+        batch_id: batchId,
+        sequence: seq++,
+        type: "scorecard",
+        payload: {
+          listingId: r.listing.id,
+          scorecardText,
+          buttons,
+          overall_score: r.overall_score,
+          shouldSendNoScore: r.shouldSendNoScore,
+        },
+      });
     }
 
     const sentCount = toSend.length;
@@ -667,7 +690,7 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
         : "";
 
     const processedCount = idsToProcess.length;
-    await sendMessage(
+    const summaryText =
       suppressedCount > 0
         ? `📬 Email alert processed: *${processedCount}* new ${
             processedCount === 1 ? "property" : "properties"
@@ -678,11 +701,17 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
             processedCount === 1 ? "property" : "properties"
           }${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${
             sentCount === 1 ? "" : "s"
-          }.`,
-      suppressedCount > 0
-        ? { link_preview_options: { is_disabled: true } }
-        : {},
-    );
+          }.`;
+
+    rows.push({
+      batch_id: batchId,
+      sequence: seq++,
+      type: "summary",
+      payload: { text: summaryText },
+    });
+
+    await supabaseAdmin.from("pending_notifications").insert(rows);
+    waitUntil(consumePendingNotifications(batchId));
   } catch (e) {
     throw e;
   }
