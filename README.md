@@ -18,14 +18,12 @@ A Telegram bot that helps you find and evaluate properties. It parses property a
 
 ---
 
-## Develop
-
-### What you need
+## What you need
 
 - **Node.js** (v18+) and **npm**
 - **Accounts** (free tiers): [Supabase](https://supabase.com), [Anthropic](https://console.anthropic.com), [Telegram](https://t.me/BotFather), [Cloudmailin](https://www.cloudmailin.com)
 
-### Setup
+## Setup
 
 1. **Install:** `npm install`
 2. **Create `.env.local`** in the project root with following variables:
@@ -60,24 +58,16 @@ A Telegram bot that helps you find and evaluate properties. It parses property a
 https://cloudmailin:<CLOUDMAILIN_SECRET>@<your-tunnel-or-deoployed-url>/api/ingest
 ```
 
-### Local development
+5. **Deploy**
 
-```
-npm run dev:tunnel
-```
-
-NOTE: Requires [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/) to expose the URL to the Telegram bot
-
-### Deploy
-
-1. Deploy to [Vercel](https://vercel.com)
-2. Copy environment variables to Vercel
+- Deploy to [Vercel](https://vercel.com)
+- Copy environment variables to Vercel
 
 ```
 npm run env:push
 ```
 
-3. Point Telegram bot to deployed Vercel URL
+- Point Telegram bot to deployed Vercel URL
 
 ```
 npm run use:prod
