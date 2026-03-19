@@ -1,7 +1,10 @@
 import pLimit from "p-limit";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { fetchAreaContext } from "@/lib/tools/area";
-import { buildNoScoreScorecardText, buildScorecardText } from "@/lib/tools/scorecard";
+import {
+  buildNoScoreScorecardText,
+  buildScorecardText,
+} from "@/lib/tools/scorecard";
 import type { Evaluation, Listing } from "@/types";
 import { runPropertyExpert } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
@@ -9,7 +12,7 @@ import { evaluateCommute } from "@/lib/tools/commute";
 import { evaluateFinance } from "@/lib/tools/finance";
 import { dbRead, dbWrite } from "@/lib/core/tools/db";
 
-const SCORE_THRESHOLD = 1;
+const SCORE_THRESHOLD = 5;
 
 export type EvaluationPipelineResult = {
   sent: boolean;
