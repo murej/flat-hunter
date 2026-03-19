@@ -1,6 +1,6 @@
 import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
 import { PREFERENCE_COLLECTOR_SYSTEM } from "./prompts";
-import { evaluatePreferredAreas } from "@/lib/tools/area-context";
+import { evaluatePreferredAreas } from "@/lib/agents/area-expert";
 import { runAgent } from "@/lib/core/agent";
 import { registerAgent } from "@/lib/core/registry";
 import {

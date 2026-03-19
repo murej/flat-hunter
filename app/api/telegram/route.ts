@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseInbound } from "@/lib/telegram";
 import { sendError } from "@/lib/core/agent";
 import { handleTelegramUpdate } from "@/lib/agents/conversation/handler";
+// Ensure all delegatable agents are registered before call_agent can invoke them
+import "@/lib/agents/preference";
+import "@/lib/agents/area-expert";
+import "@/lib/agents/property-expert";
 
 export async function POST(req: NextRequest) {
   try {

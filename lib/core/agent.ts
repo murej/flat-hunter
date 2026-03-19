@@ -113,6 +113,14 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
           toolName: result.toolName,
         };
       }
+
+      if (result.type === "direct") {
+        return {
+          message: result.message,
+          ...(result.buttons && { buttons: result.buttons }),
+          ...(result.metadata && { metadata: result.metadata }),
+        };
+      }
     }
 
     currentMessages = [

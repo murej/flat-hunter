@@ -17,7 +17,9 @@ lib/
       index.ts         # Registration, exports, main logic
       prompts.ts       # System prompt(s)
       tools.ts         # Tool schemas and/or execute logic
-    handler.ts         # Optional: top-level router (not an agent)
+      handler.ts       # Optional: top-level router (not an agent)
+  prompts/
+    {shared-prompt}.ts # Shared prompts used by lib/tools
   tools/
     {shared-tool}.ts   # Shared helpers used by multiple agents
 ```
@@ -42,7 +44,11 @@ flowchart TB
         idx[index.ts]
         prompts[prompts.ts]
         tools[tools.ts]
+        handler[handler.ts]
       end
+    end
+    subgraph prompts [prompts/]
+      areaContext[area-context.ts]
     end
     subgraph sharedTools [tools/]
       shared[shared-tool.ts]
@@ -52,8 +58,9 @@ flowchart TB
 
 ## Responsibilities
 
-| Path | Purpose |
-|------|---------|
-| `lib/core/` | Generic agent runtime and built-in tools. No domain logic. |
-| `lib/agents/{name}/` | One folder per agent. Each has `index.ts`, `prompts.ts`, `tools.ts`. |
-| `lib/tools/` | Shared domain tools. Plain functions imported by agents. |
+| Path                 | Purpose                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------- |
+| `lib/core/`          | Generic agent runtime and built-in tools. No domain logic.                                              |
+| `lib/agents/{name}/` | One folder per agent. Each has `index.ts`, `prompts.ts`, `tools.ts` (optional), `handler.ts` (optional) |
+| `lib/prompts/`       | Shared prompts used by lib/tools (e.g. area-context).                                                   |
+| `lib/tools/`         | Shared domain tools. Plain functions imported by agents.                                                |

@@ -1,6 +1,9 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
 import { runAgent } from "../agent";
-import { getAgentConfig } from "@/lib/core/registry";
+import {
+  getAgentConfig,
+  getRegisteredAgents,
+} from "@/lib/core/registry";
 
 export const CALL_AGENT_TOOL: Anthropic.Tool = {
   name: "call_agent",
@@ -28,7 +31,7 @@ export async function executeCallAgent(
 ): Promise<string> {
   const config = getAgentConfig(agent);
   if (!config) {
-    return `Unknown agent: ${agent}. Available: preference, property_expert, area_expert`;
+    return `Unknown agent: ${agent}. Available: ${getRegisteredAgents().join(", ")}`;
   }
 
   const result = await runAgent({

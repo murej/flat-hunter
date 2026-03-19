@@ -4,11 +4,11 @@
 
 Three levels of tools:
 
-| Level | Location | Scope | Example |
-|-------|----------|-------|---------|
-| **Core** | `lib/core/tools/` | All agents | `db`, `call_agent`, `web_search` |
-| **Agent-specific** | `lib/agents/{name}/tools.ts` | Single agent | Custom schemas + execute logic |
-| **Shared** | `lib/tools/` | Multiple agents | Domain helpers (e.g. fetch external API) |
+| Level              | Location                     | Scope           | Example                                  |
+| ------------------ | ---------------------------- | --------------- | ---------------------------------------- |
+| **Core**           | `lib/core/tools/`            | All agents      | `db`, `call_agent`, `web_search`         |
+| **Agent-specific** | `lib/agents/{name}/tools.ts` | Single agent    | Custom schemas + execute logic           |
+| **Shared**         | `lib/tools/`                 | Multiple agents | Domain helpers (e.g. fetch external API) |
 
 ## Core tools (ToolSet pattern)
 
@@ -22,11 +22,7 @@ Core tools are composed via `ToolSet[]`:
 
 ```typescript
 // lib/agents/my-agent/tools.ts
-import {
-  buildTools,
-  createExecuteTool,
-  type ToolSet,
-} from "@/lib/core/tools";
+import { buildTools, createExecuteTool, type ToolSet } from "@/lib/core/tools";
 
 export const MY_AGENT_TOOL_SETS: ToolSet[] = ["db", "web_search"];
 
@@ -110,6 +106,8 @@ export function createOrchestratorExecuteTool() {
   };
 }
 ```
+
+When an agent needs **context** (e.g. active listing ID, user preferences) for its execute logic, it cannot use `createExecuteTool` directly. Instead, create a custom execute function that receives context and routes core tools manually (as in the example above), passing context to custom tool handlers as needed.
 
 ## Shared tools
 

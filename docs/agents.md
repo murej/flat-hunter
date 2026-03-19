@@ -30,11 +30,11 @@ flowchart LR
 
 Each agent lives in `lib/agents/{agent-name}/`:
 
-| File | Purpose |
-|------|---------|
-| `index.ts` | Registration, exports, main logic |
-| `prompts.ts` | System prompt(s) |
-| `tools.ts` | Tool schemas and/or execute logic (or composition of core tools) |
+| File         | Purpose                                                          |
+| ------------ | ---------------------------------------------------------------- |
+| `index.ts`   | Registration, exports, main logic                                |
+| `prompts.ts` | System prompt(s)                                                 |
+| `tools.ts`   | Tool schemas and/or execute logic (or composition of core tools) |
 
 ## Setup example
 
@@ -77,11 +77,7 @@ Ask clarifying questions. When you have enough info, output JSON in <data> tags.
 ### tools.ts (core tools only)
 
 ```typescript
-import {
-  buildTools,
-  createExecuteTool,
-  type ToolSet,
-} from "@/lib/core/tools";
+import { buildTools, createExecuteTool, type ToolSet } from "@/lib/core/tools";
 
 export const COLLECTOR_TOOL_SETS: ToolSet[] = ["db"];
 
@@ -97,3 +93,7 @@ export function createCollectorExecuteTool() {
 ## Registration and loading
 
 Agents register when their module is loaded. Ensure the agent module is imported somewhere so registration runs — for example, via a handler or API route that uses the agent or one of its exports.
+
+The main entry agent (e.g. conversation) typically does not need to register, since it is invoked directly by the handler rather than via `call_agent`.
+
+Some agents (e.g. ingest) are orchestrators that use `runAgent` for one-off LLM calls (e.g. parsing emails) rather than the full tool-loop pattern. They still follow the folder structure with `prompts.ts` and `tools.ts`.

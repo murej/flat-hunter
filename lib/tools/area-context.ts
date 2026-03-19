@@ -1,8 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { retryWithBackoff } from "@/lib/utils/retry";
-import { AREA_PROFILE_EVALUATOR_SYSTEM } from "@/lib/prompts/area-context";
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const fullPostcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
 const outwardCodeRe = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
 
@@ -300,7 +296,9 @@ export async function fetchAreaContext(
   };
 }
 
-async function resolveAreaToPostcode(areaName: string): Promise<string | null> {
+export async function resolveAreaToPostcode(
+  areaName: string,
+): Promise<string | null> {
   const trimmed = areaName.trim();
   if (!trimmed) return null;
 
@@ -331,7 +329,9 @@ async function resolveAreaToPostcode(areaName: string): Promise<string | null> {
   }
 }
 
-export async function evaluateAreaProfile(areaName: string): Promise<AreaProfile | null> {
+export async function getPostcodeContextForArea(
+  areaName: string,
+): Promise<{ postcode: string | null; postcodeContext: PostcodeContext | null }> {
   const postcode = await resolveAreaToPostcode(areaName);
   let postcodeContext: PostcodeContext | null = null;
 
@@ -368,54 +368,5 @@ export async function evaluateAreaProfile(areaName: string): Promise<AreaProfile
     }
   }
 
-  const response = await retryWithBackoff(() =>
-    client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 512,
-      system: AREA_PROFILE_EVALUATOR_SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: `Area: ${areaName}\n\nPostcode context: ${JSON.stringify(postcodeContext ?? { note: "No postcode data available" }, null, 2)}`,
-        },
-      ],
-    }),
-  );
-
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "{}";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    return {
-      area_name: areaName,
-      postcode_used: postcode ?? null,
-      crime_notes: parsed.crime_notes ?? "",
-      amenities_notes: parsed.amenities_notes ?? "",
-      character_notes: parsed.character_notes ?? "",
-      flood_risk_notes: parsed.flood_risk_notes ?? "",
-      transport_notes: parsed.transport_notes ?? "",
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function evaluatePreferredAreas(
-  areaNames: string[],
-): Promise<Record<string, AreaProfile>> {
-  const results = await Promise.all(
-    areaNames.map(async (name) => {
-      const profile = await evaluateAreaProfile(name);
-      return { name, profile };
-    }),
-  );
-
-  const profiles: Record<string, AreaProfile> = {};
-  for (const { name, profile } of results) {
-    if (profile) profiles[name] = profile;
-  }
-  return profiles;
+  return { postcode, postcodeContext };
 }

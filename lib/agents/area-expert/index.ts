@@ -3,6 +3,7 @@ import { AREA_EXPERT_SYSTEM } from "./prompts";
 import {
   buildAreaExpertTools,
   createAreaExpertExecuteTool,
+  evaluatePreferredAreas,
 } from "./tools";
 import { registerAgent } from "@/lib/core/registry";
 import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
@@ -15,6 +16,9 @@ registerAgent("area_expert", {
   model: "claude-sonnet-4-6",
   executeTool,
 });
+
+export type { AreaProfile } from "@/lib/tools/area-context";
+export { evaluatePreferredAreas } from "./tools";
 
 export type AreaExpertResult = {
   area_score: number;
