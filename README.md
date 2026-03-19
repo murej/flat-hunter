@@ -82,3 +82,7 @@ npm run env:push
 ```
 npm run use:prod
 ```
+
+---
+
+[Architecture and development docs](docs/README.md)
