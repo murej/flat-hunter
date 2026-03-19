@@ -16,5 +16,12 @@ export async function runEvaluatorSmokeTest(listingId: string) {
     .eq("listing_id", listingId)
     .maybeSingle();
   assert.ok(evaluation);
+
+  const { data: listing } = await supabaseAdmin
+    .from("listings")
+    .select("status")
+    .eq("id", listingId)
+    .single();
+  assert.strictEqual(listing?.status, "evaluated");
 }
 

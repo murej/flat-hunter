@@ -1,6 +1,6 @@
 # Openclaw Tool Integration
 
-This document describes the backend HTTP tools exposed for Openclaw. Openclaw owns Telegram conversation and sending; the flat-hunter Next.js backend provides evaluation, scorecard generation, and data access.
+This document describes the backend HTTP tools and the Openclaw agent. Openclaw is fully integrated into flat-hunter: all Telegram updates flow through `handleTelegramUpdate` in `lib/openclaw/agent.ts`, which routes callbacks and free text to shared tools or the conversation agent.
 
 ## Base URL
 
@@ -149,19 +149,22 @@ Returns all saved listings.
 
 ---
 
-## Callback Handling
+## Telegram routing (internal)
 
-When the user taps an inline keyboard button, Telegram sends a `callback_query` with `data` set to the `callback_data` value. Openclaw should parse and route:
+The Telegram webhook (`/api/telegram`) parses incoming updates and calls `handleTelegramUpdate` in `lib/openclaw/agent.ts`. All routing is handled by the agent:
 
-| callback_data            | Action            | Tool to call                                                        |
-| ------------------------ | ----------------- | ------------------------------------------------------------------- |
-| `save:{listing_id}`      | Save listing      | `save_listing`                                                      |
-| `skip:{listing_id}`      | Dismiss listing   | `skip_listing`                                                      |
-| `why:{listing_id}`       | Explain scores    | `why_listing` → then generate explanation from `context`            |
-| `unsave:{listing_id}`    | Remove from saved | `skip_listing` (or add `unsave_listing` if you prefer)              |
-| `scorecard:{listing_id}` | Re-show scorecard | `evaluate_listing` (or fetch existing evaluation + build scorecard) |
+| callback_data / text     | Action            | Fast path (no LLM) |
+| ------------------------ | ----------------- | ------------------ |
+| `save:{listing_id}`      | Save listing      | `saveListing`      |
+| `skip:{listing_id}`      | Dismiss listing   | `skipListing`      |
+| `unsave:{listing_id}`    | Remove from saved | `skipListing`      |
+| `why:{listing_id}`       | Explain scores    | `getWhyContext` + explanation LLM |
+| `scorecard:{listing_id}` | Re-show scorecard | `getScorecard`     |
+| `update preferences`     | Show update menu  | Send update buttons |
+| `update:{part}`          | Start preference flow | `collectPreferences` |
+| Free text                | Conversation      | `conversationAgent` (LLM + tools) |
 
-For `unsave`, the current backend treats "unsave" as dismissing. If you want to keep the listing but remove from shortlist, you would need an `unsave_listing` tool that sets status back to `evaluated`. The current agent uses `updateListingStatus(listingId, "dismissed")` for unsave.
+Shared tool implementations live in `lib/openclaw/tools.ts` and are used by both the agent and the HTTP routes.
 
 ---
 
@@ -185,7 +188,7 @@ Repeat for `get_preferences`, `get_listing`, `save_listing`, `skip_listing`, `wh
 
 Openclaw is part of the flat-hunter service. Ingest no longer sends Telegram directly; it writes to `pending_notifications` and triggers an internal consumer.
 
-**Flow:** Cloudmailin → `/api/ingest` → `ingestAgent` parses emails, stores listings, calls `runEvaluationsAndNotify`. `runEvaluationsAndNotify` inserts rows into `pending_notifications` (intro, scorecard, summary) and calls `consumePendingNotifications(batch_id)` via `waitUntil`. The consumer (`lib/openclaw/notifications.ts`) fetches pending rows, sends each to Telegram via `sendMessage` / `sendWithButtons`, and marks them consumed.
+**Flow:** Cloudmailin → `/api/ingest` → `ingestAgent` parses emails, stores listings, calls `runEvaluationsAndNotify`. `runEvaluationsAndNotify` inserts rows into `pending_notifications` (intro, scorecard, summary) and triggers `consumePendingNotifications(batch_id)`. In production (Vercel), `waitUntil` runs the consumer in the background; in local dev, the consumer is awaited directly so messages are sent.
 
 **Payload shapes:**
 
@@ -201,6 +204,6 @@ Openclaw is part of the flat-hunter service. Ingest no longer sends Telegram dir
 
 1. **New listings from ingest:** Cloudmailin → `/api/ingest` → `ingestAgent` parses emails, stores listings, calls `runEvaluationsAndNotify`. Ingest writes intro/scorecard/summary to `pending_notifications`; `consumePendingNotifications` sends to Telegram.
 
-2. **User asks for evaluation:** Openclaw calls `evaluate_listing` → receives `scorecardText` + `buttons` → sends to Telegram via its channel.
+2. **Telegram updates:** Telegram → `/api/telegram` → `handleTelegramUpdate`. Callbacks (save/skip/why/unsave/scorecard) use fast paths; free text goes to `conversationAgent` (LLM + tools).
 
-3. **User taps Save/Skip/Why:** Openclaw receives callback → calls `save_listing` / `skip_listing` / `why_listing` → sends confirmation or explanation to Telegram.
+3. **HTTP tools:** External callers can use the same logic via `GET/POST` endpoints under `/api/openclaw/tools/`. These call the shared functions in `lib/openclaw/tools.ts`.

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateListingStatus } from "@/lib/supabase";
+import { saveListing } from "@/lib/openclaw/tools";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await updateListingStatus(listing_id, "saved");
+    await saveListing(listing_id);
     return NextResponse.json({ ok: true, status: "saved" });
   } catch (error) {
     console.error("save_listing error:", error);

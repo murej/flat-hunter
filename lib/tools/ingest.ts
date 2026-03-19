@@ -15,11 +15,32 @@ import {
 } from "./evaluator";
 import { buildScorecardText, buildNoScoreScorecardText, buildScorecardButtons } from "./scorecard";
 import { consumePendingNotifications } from "@/lib/openclaw/notifications";
-import { sendMessage } from "@/lib/telegram";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const MAX_LISTINGS_PER_EMAIL = 100;
+
+async function enqueueOneOffMessage(
+  text: string,
+  options?: { parse_mode?: false },
+): Promise<void> {
+  const batchId = crypto.randomUUID();
+  await supabaseAdmin.from("pending_notifications").insert({
+    batch_id: batchId,
+    sequence: 0,
+    type: "intro",
+    payload: {
+      kind: "one_off",
+      text,
+      ...(options?.parse_mode === false ? { parse_mode: false } : {}),
+    },
+  });
+  if (process.env.VERCEL) {
+    waitUntil(consumePendingNotifications(batchId));
+  } else {
+    await consumePendingNotifications(batchId);
+  }
+}
 const MAX_EMAIL_CONTENT_BYTES = 50 * 1024; // 50KB
 
 interface RawListing {
@@ -548,16 +569,16 @@ export async function ingestAgent(
   const verification = await parseVerificationEmail(html, subject, plain);
   if (verification.isVerification) {
     if (verification.verificationUrl) {
-      await sendMessage(
+      await enqueueOneOffMessage(
         `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
         { parse_mode: false },
       );
     } else if (verification.verificationCode) {
-      await sendMessage(
+      await enqueueOneOffMessage(
         `📬 New subscription detected. Your verification code is: *${verification.verificationCode}*\n\nEnter it on the verification page to activate your alerts.`,
       );
     } else {
-      await sendMessage(
+      await enqueueOneOffMessage(
         "📬 This looks like a verification email. Please check your inbox and click the verification link (or enter the code) to activate your alerts.",
       );
     }
@@ -567,17 +588,16 @@ export async function ingestAgent(
   const listings = await parseEmailHtml(html);
 
   if (listings.length === 0) {
-    await sendMessage(
+    await enqueueOneOffMessage(
       "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
     );
-
     return { done: true };
   }
 
   const newIds = await deduplicateAndStore(listings);
 
   if (newIds.length === 0) {
-    await sendMessage(
+    await enqueueOneOffMessage(
       "📬 Email alert processed — no new properties (all were duplicates).",
     );
     return { done: true };
@@ -599,7 +619,11 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
         type: "intro",
         payload: { kind: "no_prefs", text },
       });
-      waitUntil(consumePendingNotifications(batchId));
+      if (process.env.VERCEL) {
+        waitUntil(consumePendingNotifications(batchId));
+      } else {
+        await consumePendingNotifications(batchId);
+      }
       return;
     }
 
@@ -707,11 +731,20 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
       batch_id: batchId,
       sequence: seq++,
       type: "summary",
-      payload: { text: summaryText },
+      payload: {
+        text: summaryText,
+        ...(suppressedCount > 0
+          ? { link_preview_options: { is_disabled: true } }
+          : {}),
+      },
     });
 
     await supabaseAdmin.from("pending_notifications").insert(rows);
-    waitUntil(consumePendingNotifications(batchId));
+    if (process.env.VERCEL) {
+      waitUntil(consumePendingNotifications(batchId));
+    } else {
+      await consumePendingNotifications(batchId);
+    }
   } catch (e) {
     throw e;
   }

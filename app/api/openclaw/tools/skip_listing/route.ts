@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateListingStatus } from "@/lib/supabase";
+import { skipListing } from "@/lib/openclaw/tools";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await updateListingStatus(listing_id, "dismissed");
+    await skipListing(listing_id);
     return NextResponse.json({ ok: true, status: "dismissed" });
   } catch (error) {
     console.error("skip_listing error:", error);

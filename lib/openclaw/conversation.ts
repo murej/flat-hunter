@@ -1,16 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   getPreferences,
-  getListing,
-  supabaseAdmin,
   logConversation,
-  updateListingStatus,
   getActiveListingId,
   getConversationHistory,
 } from "@/lib/supabase";
-import { buildScorecardText } from "@/lib/tools/scorecard";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
-import { collectPreferences } from "./tools/preference";
+import { collectPreferences } from "@/lib/tools/preference";
+import {
+  saveListing,
+  skipListing,
+  getScorecard,
+  getWhyContext,
+  getFormattedPreferences,
+  getFormattedSavedList,
+  getComparisonData,
+} from "./tools";
 import {
   CONVERSATION_AGENT_SYSTEM,
   WHY_EXPLANATION_SYSTEM,
@@ -20,7 +25,7 @@ import {
   runGenericAgent,
   type ToolResult,
   type AgentButton,
-} from "./agent-core";
+} from "@/lib/agent-core";
 
 const ANTHROPIC_OUT_OF_CREDITS_MSG =
   "No more credits, feed Claude. I don't know what to say 😢";
@@ -178,7 +183,7 @@ async function executeToolInternal(
       if (!listingId) {
         return { type: "direct", message: "Which property would you like to skip?" };
       }
-      await updateListingStatus(listingId, "dismissed");
+      await skipListing(listingId);
       return {
         type: "direct",
         message: "Done — property dismissed. 👋",
@@ -191,7 +196,7 @@ async function executeToolInternal(
       if (!listingId) {
         return { type: "direct", message: "Which property would you like to save?" };
       }
-      await updateListingStatus(listingId, "saved");
+      await saveListing(listingId);
       return {
         type: "direct",
         message: "Saved! ⭐️ I'll keep that one for you.",
@@ -208,114 +213,49 @@ async function executeToolInternal(
             "Which property would you like to see? Tap a scorecard button or mention the property.",
         };
       }
-      const [
-        { data: evaluation },
-        { data: listing },
-      ] = await Promise.all([
-        supabaseAdmin
-          .from("evaluations")
-          .select(
-            "price_score, size_score, fit_score, area_score, commute_score, overall_score, deal_breaker_flags, commute_minutes, monthly_mortgage, property_summary, area_summary"
-          )
-          .eq("listing_id", listingId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single(),
-        supabaseAdmin
-          .from("listings")
-          .select("status, title, price, url")
-          .eq("id", listingId)
-          .single(),
-      ]);
-      if (!evaluation || !listing) {
+      const scorecardResult = await getScorecard(listingId);
+      if (!scorecardResult.ok) {
         return {
           type: "direct",
-          message:
-            "I couldn't find a scorecard for that property — it may not have been evaluated yet.",
+          message: scorecardResult.message,
         };
       }
-      const unknownScores = {
-        property: false,
-        area: false,
-        commute: false,
-      };
-      const scorecardText = buildScorecardText(
-        evaluation as any,
-        listing as any,
-        [],
-        evaluation.commute_minutes,
-        unknownScores,
-      );
       return {
         type: "direct",
-        message: scorecardText,
-        listingId,
+        message: scorecardResult.scorecardText,
+        listingId: scorecardResult.listingId,
         intent: "other",
         scorecard: true,
-        saved: listing?.status === "saved",
+        saved: scorecardResult.buttons[0]?.some(
+          (b) => b.callback_data.startsWith("unsave:"),
+        ),
+        buttons: scorecardResult.buttons,
       };
     }
 
     case "show_saved_properties": {
-      const { data: listings } = await supabaseAdmin
-        .from("listings")
-        .select("id, title, price, address, url")
-        .eq("status", "saved")
-        .order("created_at", { ascending: false });
-      if (!listings || listings.length === 0) {
-        return { type: "direct", message: "You haven't saved any properties yet." };
+      const savedResult = await getFormattedSavedList();
+      if (!savedResult.ok) {
+        return { type: "direct", message: savedResult.message };
       }
-      const list = listings
-        .map(
-          (
-            l: { title: string; price: number; address: string; url: string },
-            i: number
-          ) =>
-            `${i + 1}. *${l.title}*\n   £${l.price?.toLocaleString()} · ${l.address}\n   [🔗 View listing](${l.url})`
-        )
-        .join("\n\n");
       return {
         type: "direct",
-        message: `⭐️ *Your saved properties:*\n\n${list}`,
+        message: savedResult.message,
         intent: "other",
-        savedListings: listings.map((l: { id: string }) => ({ id: l.id })),
+        savedListings: savedResult.savedListings.map((l) => ({ id: l.id })),
       };
     }
 
     case "show_preferences": {
-      const fresh = await getPreferences();
-      const p = (fresh ?? preferences) as {
-        areas?: string[];
-        max_price?: number;
-        deposit?: number;
-        min_bedrooms?: number;
-        commute_anchor?: string;
-        commute_anchor_postcode?: string;
-        max_commute_minutes?: number;
-        must_haves?: string[];
-        deal_breakers?: string[];
-        style_notes?: string;
-        area_preferences?: string[];
-      };
-      const msg = [
-        `📋 *Your current preferences:*`,
-        ``,
-        `📍 *Areas:* ${p.areas?.join(", ") || "Not set"}`,
-        `💰 *Max price:* £${p.max_price?.toLocaleString() || "Not set"}`,
-        `💵 *Deposit:* £${p.deposit?.toLocaleString() || "Not set"}`,
-        `🛏 *Min bedrooms:* ${p.min_bedrooms || "Not set"}`,
-        `🚇 *Commute to:* ${p.commute_anchor_postcode || p.commute_anchor || "Not set"} (max ${p.max_commute_minutes} min)`,
-        `✅ *Must-haves:* ${p.must_haves?.join(", ") || "None specified"}`,
-        `❌ *Deal-breakers:* ${p.deal_breakers?.join(", ") || "None specified"}`,
-        `🏘 *Area preferences:* ${p.area_preferences?.join(", ") || "None specified"}`,
-        `🏠 *Style:* ${p.style_notes || "Not set"}`,
-        ``,
-      ].join("\n");
+      const prefsResult = await getFormattedPreferences();
+      if (!prefsResult.ok) {
+        return { type: "direct", message: "No preferences set." };
+      }
       return {
         type: "direct",
-        message: msg,
+        message: prefsResult.message,
         intent: "preferences",
-        buttons: [[{ text: "Update", callback_data: "update preferences" }]],
+        buttons: prefsResult.buttons,
       };
     }
 
@@ -327,31 +267,15 @@ async function executeToolInternal(
           toolName,
         };
       }
-      const [{ data: listing }, { data: evaluation }] = await Promise.all([
-        supabaseAdmin
-          .from("listings")
-          .select("title, address, price")
-          .eq("id", listingId)
-          .single(),
-        supabaseAdmin
-          .from("evaluations")
-          .select("*")
-          .eq("listing_id", listingId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single(),
-      ]);
-      if (!evaluation) {
+      const whyResult = await getWhyContext(listingId);
+      if (!whyResult.ok) {
         return {
           type: "data",
-          data: "No evaluation found for this property.",
+          data: whyResult.error,
           toolName,
         };
       }
-      const context = listing
-        ? `Property: ${listing.title} at ${listing.address} (£${listing.price?.toLocaleString()})\n\nEvaluation:\n${JSON.stringify(evaluation, null, 2)}`
-        : `Evaluation:\n${JSON.stringify(evaluation, null, 2)}`;
-      return { type: "data", data: context, toolName };
+      return { type: "data", data: whyResult.context, toolName };
     }
 
     case "get_comparison_data": {
@@ -364,42 +288,8 @@ async function executeToolInternal(
           toolName,
         };
       }
-      const [evalA, evalB, listingA, listingB] = await Promise.all([
-        supabaseAdmin
-          .from("evaluations")
-          .select("*")
-          .eq("listing_id", idA)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single(),
-        supabaseAdmin
-          .from("evaluations")
-          .select("*")
-          .eq("listing_id", idB)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single(),
-        supabaseAdmin
-          .from("listings")
-          .select("title, address, price")
-          .eq("id", idA)
-          .single(),
-        supabaseAdmin
-          .from("listings")
-          .select("title, address, price")
-          .eq("id", idB)
-          .single(),
-      ]);
-      const labelA = listingA.data
-        ? `${listingA.data.title} (${listingA.data.address})`
-        : idA;
-      const labelB = listingB.data
-        ? `${listingB.data.title} (${listingB.data.address})`
-        : idB;
-      const data =
-        evalA.data && evalB.data
-          ? `Property A — ${labelA}:\n${JSON.stringify(evalA.data, null, 2)}\n\nProperty B — ${labelB}:\n${JSON.stringify(evalB.data, null, 2)}`
-          : "Could not find evaluations for both properties.";
+      const result = await getComparisonData(idA, idB);
+      const data = result.ok ? result.data : result.message;
       return { type: "data", data, toolName };
     }
 

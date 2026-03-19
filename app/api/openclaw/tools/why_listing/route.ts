@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getWhyContext } from "@/lib/openclaw/tools";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,36 +12,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const [{ data: listing }, { data: evaluation }] = await Promise.all([
-      supabaseAdmin
-        .from("listings")
-        .select("title, address, price, url")
-        .eq("id", listing_id)
-        .single(),
-      supabaseAdmin
-        .from("evaluations")
-        .select("*")
-        .eq("listing_id", listing_id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single(),
-    ]);
+    const result = await getWhyContext(listing_id);
 
-    if (!evaluation) {
+    if (!result.ok) {
       return NextResponse.json(
-        { error: "No evaluation found for this property" },
+        { error: result.error },
         { status: 404 }
       );
     }
 
-    const context = listing
-      ? `Property: ${listing.title} at ${listing.address} (£${listing.price?.toLocaleString()})\n\nEvaluation:\n${JSON.stringify(evaluation, null, 2)}`
-      : `Evaluation:\n${JSON.stringify(evaluation, null, 2)}`;
-
     return NextResponse.json({
-      context,
-      listing: listing ?? null,
-      evaluation,
+      context: result.context,
+      listing: result.listing,
+      evaluation: result.evaluation,
     });
   } catch (error) {
     console.error("why_listing error:", error);

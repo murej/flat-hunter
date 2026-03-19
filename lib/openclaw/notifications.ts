@@ -42,7 +42,16 @@ export async function consumePendingNotifications(
     try {
       if (n.type === "intro" || n.type === "summary") {
         const text = payload.text as string;
-        if (text) await sendMessage(text);
+        if (text) {
+          const opts: Record<string, unknown> = {};
+          if (n.type === "summary" && payload.link_preview_options) {
+            opts.link_preview_options = payload.link_preview_options;
+          }
+          if (payload.parse_mode === false) {
+            opts.parse_mode = false;
+          }
+          await sendMessage(text, opts);
+        }
       } else if (n.type === "scorecard") {
         const scorecardText = payload.scorecardText as string;
         const buttons = payload.buttons as Array<Array<{ text: string; callback_data: string }>>;
