@@ -7,7 +7,7 @@ import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
 import {
   EMAIL_PARSER_SYSTEM,
   EMAIL_VERIFICATION_DETECTOR_SYSTEM,
-} from "@/lib/agents/ingest.prompts";
+} from "./ingest.prompts";
 import { runAgent } from "@/lib/core/agent";
 import {
   runEvaluationPipeline,
@@ -17,12 +17,32 @@ import {
   buildScorecardText,
   buildNoScoreScorecardText,
   buildScorecardButtons,
-} from "./scorecard";
+} from "@/lib/tools/scorecard";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
 
-const MAX_LISTINGS_PER_EMAIL = 100;
+export const MAX_LISTINGS_PER_EMAIL = 100;
 
-async function enqueueOneOffMessage(
+const MAX_EMAIL_CONTENT_BYTES = 50 * 1024; // 50KB
+
+export interface RawListing {
+  portal_id: string;
+  url: string;
+  title: string;
+  price: number | null;
+  address: string;
+  postcode: string;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  sqft: number | null;
+  description: string;
+  image_urls: string[];
+  floorplan_url: string;
+  agent_name: string;
+  agent_email: string;
+  listed_date: string;
+}
+
+export async function enqueueOneOffMessage(
   text: string,
   options?: { parse_mode?: false },
 ): Promise<void> {
@@ -42,25 +62,6 @@ async function enqueueOneOffMessage(
   } else {
     await consumePendingNotifications(batchId);
   }
-}
-const MAX_EMAIL_CONTENT_BYTES = 50 * 1024; // 50KB
-
-interface RawListing {
-  portal_id: string;
-  url: string;
-  title: string;
-  price: number | null;
-  address: string;
-  postcode: string;
-  bedrooms: number | null;
-  bathrooms: number | null;
-  sqft: number | null;
-  description: string;
-  image_urls: string[];
-  floorplan_url: string;
-  agent_name: string;
-  agent_email: string;
-  listed_date: string;
 }
 
 export function computeIdempotencyKey(html: string, subject?: string): string {
@@ -86,7 +87,7 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
   throw error;
 }
 
-export function buildEmailParseExtractedContent(html: string): string {
+function buildEmailParseExtractedContent(html: string): string {
   let content = extractTextAndUrlsFromHtml(html);
   const encoder = new TextEncoder();
   const bytes = encoder.encode(content);
@@ -99,7 +100,7 @@ export function buildEmailParseExtractedContent(html: string): string {
   return content;
 }
 
-export function buildClaudeEmailParseInput(html: string): string {
+function buildClaudeEmailParseInput(html: string): string {
   const content = buildEmailParseExtractedContent(html);
   return `Parse the following property alert email (text and URLs extracted from HTML) and extract all listings:\n\n${content}`;
 }
@@ -552,58 +553,6 @@ export async function parseVerificationEmail(
 }
 
 export type IngestResult = { done: true } | { done: false; newIds: string[] };
-
-export async function ingestAgent(
-  html: string,
-  subject?: string,
-  plain?: string,
-): Promise<IngestResult> {
-  const key = computeIdempotencyKey(html, subject);
-  const claimed = await claimIdempotencyKey(key);
-  if (!claimed) {
-    return { done: true };
-  }
-
-  // Check verification first (saves listing-parse call for verification emails)
-  const verification = await parseVerificationEmail(html, subject, plain);
-  if (verification.isVerification) {
-    if (verification.verificationUrl) {
-      await enqueueOneOffMessage(
-        `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
-        { parse_mode: false },
-      );
-    } else if (verification.verificationCode) {
-      await enqueueOneOffMessage(
-        `📬 New subscription detected. Your verification code is: *${verification.verificationCode}*\n\nEnter it on the verification page to activate your alerts.`,
-      );
-    } else {
-      await enqueueOneOffMessage(
-        "📬 This looks like a verification email. Please check your inbox and click the verification link (or enter the code) to activate your alerts.",
-      );
-    }
-    return { done: true };
-  }
-
-  const listings = await parseEmailHtml(html);
-
-  if (listings.length === 0) {
-    await enqueueOneOffMessage(
-      "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
-    );
-    return { done: true };
-  }
-
-  const newIds = await deduplicateAndStore(listings);
-
-  if (newIds.length === 0) {
-    await enqueueOneOffMessage(
-      "📬 Email alert processed — no new properties (all were duplicates).",
-    );
-    return { done: true };
-  }
-
-  return { done: false, newIds };
-}
 
 export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
   try {
