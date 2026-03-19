@@ -9,7 +9,7 @@
     "use:prod": "bash scripts/use-prod.sh",
     "build": "next build",
     "start": "npm run use:prod && next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "env:push": "bash scripts/push-env-to-vercel.sh"
   },
   "dependencies": {
@@ -18,7 +18,7 @@
     "@vercel/functions": "^3.4.3",
     "ai": "^3",
     "html-to-text": "^9.0.5",
-    "next": "14.2.29",
+    "next": "^16.2.0",
     "p-limit": "^4.0.0",
     "react": "^18",
     "react-dom": "^18",
@@ -30,8 +30,8 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.29",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.0",
     "postcss": "^8",
     "tailwindcss": "^3",
     "tsx": "^4",
