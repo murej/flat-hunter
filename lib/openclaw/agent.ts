@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import type { TelegramMessage } from "@/types";
 import {
   answerCallbackQuery,
@@ -5,6 +6,7 @@ import {
   sendWithButtons,
   sendWithReplyKeyboard,
 } from "./telegram";
+import type { AgentButton } from "./telegram";
 import { getPreferences } from "@/lib/supabase";
 import { logConversation } from "@/lib/supabase";
 import { collectPreferences } from "@/lib/tools/preference";
@@ -15,9 +17,104 @@ import {
   getWhyContext,
   UPDATE_PREFERENCES_BUTTONS,
 } from "./tools";
-import { runGenericAgent } from "@/lib/agent-core";
 import { WHY_EXPLANATION_SYSTEM } from "@/lib/prompts";
 import { conversationAgent } from "./conversation";
+
+export type AgentMetadata = {
+  listingId?: string | null;
+  intent?: string | null;
+};
+
+export type { AgentButton };
+
+export type DirectToolResult = {
+  type: "direct";
+  message: string;
+  buttons?: AgentButton[][];
+  metadata?: AgentMetadata;
+};
+
+export type DataToolResult = {
+  type: "data";
+  data: string;
+  toolName: string;
+};
+
+export type ToolResult = DirectToolResult | DataToolResult;
+
+export type GenericAgentInput = {
+  prompt: string;
+  systemPrompt: string;
+  tools?: Anthropic.Tool[];
+  messages?: Anthropic.MessageParam[];
+  executeTool?: (
+    name: string,
+    input: Record<string, unknown>,
+  ) => Promise<ToolResult>;
+};
+
+export type MessageOutput = {
+  message: string;
+  buttons?: AgentButton[][];
+  metadata?: AgentMetadata;
+};
+
+export type DataOutput = {
+  type: "data";
+  data: string;
+  toolName: string;
+};
+
+export type GenericAgentOutput = MessageOutput | DataOutput;
+
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+export async function runGenericAgent(
+  input: GenericAgentInput,
+): Promise<GenericAgentOutput> {
+  const { prompt, systemPrompt, tools, messages: history, executeTool } = input;
+
+  const messages: Anthropic.MessageParam[] = history
+    ? [...history, { role: "user" as const, content: prompt }]
+    : [{ role: "user" as const, content: prompt }];
+
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 1024,
+    system: systemPrompt,
+    ...(tools && tools.length > 0 ? { tools } : {}),
+    messages,
+  });
+
+  const toolBlock = response.content.find(
+    (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+  );
+  const textBlock = response.content.find(
+    (b): b is Anthropic.TextBlock => b.type === "text",
+  );
+
+  if (!toolBlock || !executeTool) {
+    const message = textBlock?.text ?? "";
+    return { message };
+  }
+
+  const toolInput = toolBlock.input as Record<string, unknown>;
+  const result = await executeTool(toolBlock.name, toolInput);
+
+  if (result.type === "data") {
+    return {
+      type: "data",
+      data: result.data,
+      toolName: result.toolName,
+    };
+  }
+
+  return {
+    message: result.message,
+    buttons: result.buttons,
+    metadata: result.metadata,
+  };
+}
 
 export async function handleTelegramUpdate(
   parsed: TelegramMessage,

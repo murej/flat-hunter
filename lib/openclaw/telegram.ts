@@ -1,5 +1,9 @@
 import { TelegramMessage } from "@/types";
-import type { AgentButton } from "@/lib/agent-core";
+
+export type AgentButton = {
+  text: string;
+  callback_data: string;
+};
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID!;
