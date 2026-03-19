@@ -1,12 +1,12 @@
 import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
-import { PREFERENCE_COLLECTOR_SYSTEM } from "./preference.prompts";
+import { PREFERENCE_COLLECTOR_SYSTEM } from "./prompts";
 import { evaluatePreferredAreas } from "@/lib/tools/area-context";
 import { runAgent } from "@/lib/core/agent";
 import { registerAgent } from "@/lib/core/registry";
 import {
   buildPreferenceTools,
   createPreferenceExecuteTool,
-} from "./preference.tools";
+} from "./tools";
 
 const preferenceExecuteTool = createPreferenceExecuteTool();
 

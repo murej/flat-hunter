@@ -6,17 +6,17 @@ import {
   getConversationHistory,
 } from "@/lib/supabase";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
-import { collectPreferences } from "./preference";
+import { collectPreferences } from "@/lib/agents/preference";
 import {
   CONVERSATION_AGENT_SYSTEM,
   WHY_EXPLANATION_SYSTEM,
   COMPARISON_SYSTEM,
-} from "./conversation.prompts";
+} from "./prompts";
 import { runAgent } from "@/lib/core/agent";
 import {
   buildConversationTools,
   createConversationExecuteTool,
-} from "./conversation.tools";
+} from "./tools";
 
 const ANTHROPIC_OUT_OF_CREDITS_MSG =
   "No more credits, feed Claude. I don't know what to say 😢";

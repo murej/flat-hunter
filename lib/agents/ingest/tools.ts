@@ -7,7 +7,7 @@ import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
 import {
   EMAIL_PARSER_SYSTEM,
   EMAIL_VERIFICATION_DETECTOR_SYSTEM,
-} from "./ingest.prompts";
+} from "./prompts";
 import { runAgent } from "@/lib/core/agent";
 import {
   runEvaluationPipeline,
@@ -283,7 +283,7 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
             method: "GET",
             redirect: "follow",
             headers: { "user-agent": "flat-hunter/ingest" },
-          });
+        });
           return res.url ?? null;
         } catch {
           return null;

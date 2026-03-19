@@ -1,9 +1,9 @@
 import { runAgent } from "@/lib/core/agent";
-import { AREA_EXPERT_SYSTEM } from "./area-expert.prompts";
+import { AREA_EXPERT_SYSTEM } from "./prompts";
 import {
   buildAreaExpertTools,
   createAreaExpertExecuteTool,
-} from "./area-expert.tools";
+} from "./tools";
 import { registerAgent } from "@/lib/core/registry";
 import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
 

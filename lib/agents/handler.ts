@@ -7,7 +7,7 @@ import {
 } from "@/lib/telegram";
 import { getPreferences } from "@/lib/supabase";
 import { logConversation } from "@/lib/supabase";
-import { collectPreferences } from "./preference";
+import { collectPreferences } from "@/lib/agents/preference";
 import {
   saveListing,
   skipListing,
@@ -15,8 +15,8 @@ import {
   getWhyContext,
   UPDATE_PREFERENCES_BUTTONS,
 } from "@/lib/tools/listing";
-import { WHY_EXPLANATION_SYSTEM } from "./conversation.prompts";
-import { conversationAgent } from "./conversation";
+import { WHY_EXPLANATION_SYSTEM } from "@/lib/agents/conversation/prompts";
+import { conversationAgent } from "@/lib/agents/conversation";
 import { runAgent } from "@/lib/core/agent";
 
 export async function handleTelegramUpdate(

@@ -1,6 +1,6 @@
 import type { Anthropic } from "@anthropic-ai/sdk";
 import type { AgentButton } from "@/lib/telegram";
-import { collectPreferences } from "./preference";
+import { collectPreferences } from "@/lib/agents/preference";
 import {
   saveListing,
   skipListing,

@@ -1,9 +1,9 @@
 import { runAgent } from "@/lib/core/agent";
-import { PROPERTY_EXPERT_SYSTEM } from "./property-expert.prompts";
+import { PROPERTY_EXPERT_SYSTEM } from "./prompts";
 import {
   buildPropertyExpertTools,
   createPropertyExpertExecuteTool,
-} from "./property-expert.tools";
+} from "./tools";
 import { registerAgent } from "@/lib/core/registry";
 import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
 
