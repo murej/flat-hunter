@@ -3,6 +3,7 @@ import pLimit from "p-limit";
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
+import { getEmailVerificationModel } from "@/lib/config/conversation-llm";
 import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
 import {
   EMAIL_PARSER_SYSTEM,
@@ -117,6 +118,7 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       systemPrompt: EMAIL_PARSER_SYSTEM,
       prompt: claudeInput,
       model: "claude-haiku-4-5",
+      telemetryTag: "ingest_parse_email",
     }),
   );
 
@@ -480,7 +482,8 @@ export async function parseVerificationEmail(
     runAgent({
       systemPrompt: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
       prompt: content,
-      model: "claude-sonnet-4-6",
+      model: getEmailVerificationModel(),
+      telemetryTag: "ingest_verification",
     }),
   );
 

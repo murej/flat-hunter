@@ -107,6 +107,7 @@ export async function runPropertyExpert(
     model: "claude-sonnet-4-6",
     executeTool,
     maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
+    telemetryTag: "property_expert",
   });
 
   const text = "message" in result ? result.message : "";

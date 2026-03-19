@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { envBool } from "@/lib/config/env-utils";
 import { sendMessage } from "@/lib/telegram";
 
 export type AgentMetadata = {
@@ -32,6 +33,8 @@ export type RunAgentInput = {
     input: Record<string, unknown>,
   ) => Promise<ToolResult>;
   maxToolIterations?: number;
+  /** When LLM_USAGE_LOG=true, included in structured usage logs. */
+  telemetryTag?: string;
 };
 
 export type MessageOutput = {
@@ -53,6 +56,22 @@ const DEFAULT_MAX_TOOL_ITERATIONS = 5;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+function logLlmUsage(
+  telemetryTag: string | undefined,
+  model: string,
+  usage: unknown,
+): void {
+  if (!envBool(process.env.LLM_USAGE_LOG, false, "LLM_USAGE_LOG")) return;
+  console.log(
+    JSON.stringify({
+      kind: "llm_usage",
+      telemetryTag: telemetryTag ?? null,
+      model,
+      usage,
+    }),
+  );
+}
+
 export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
   const {
     systemPrompt,
@@ -62,6 +81,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
     messages: history,
     executeTool,
     maxToolIterations = DEFAULT_MAX_TOOL_ITERATIONS,
+    telemetryTag,
   } = input;
 
   const messages: Anthropic.MessageParam[] = history
@@ -79,6 +99,8 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
       ...(tools && tools.length > 0 ? { tools } : {}),
       messages: currentMessages,
     });
+
+    logLlmUsage(telemetryTag, model, response.usage);
 
     const toolBlocks = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",

@@ -1,3 +1,4 @@
+import { getPreferenceMaxToolIterations } from "@/lib/config/conversation-llm";
 import { supabaseAdmin, logConversation, getPreferences } from "@/lib/supabase";
 import { PREFERENCE_COLLECTOR_SYSTEM } from "./prompts";
 import { evaluatePreferredAreas } from "@/lib/agents/area-expert";
@@ -8,6 +9,8 @@ import { truncateForToolResult } from "@/lib/utils/tool-result";
 
 const preferenceExecuteTool = createPreferenceExecuteTool();
 
+const PREFERENCE_MAX_TOOL_ITERATIONS = getPreferenceMaxToolIterations();
+
 const PREFERENCE_HISTORY_MSG_MAX = 1000;
 const PREFERENCE_HISTORY_KEEP_RECENT = 8;
 
@@ -16,6 +19,7 @@ registerAgent("preference", {
   tools: buildPreferenceTools(),
   model: "claude-haiku-4-5",
   executeTool: preferenceExecuteTool,
+  maxToolIterations: PREFERENCE_MAX_TOOL_ITERATIONS,
 });
 
 export async function collectPreferences(
@@ -72,6 +76,8 @@ export async function collectPreferences(
     tools: buildPreferenceTools(),
     model: "claude-haiku-4-5",
     messages: priorMessages,
+    maxToolIterations: PREFERENCE_MAX_TOOL_ITERATIONS,
+    telemetryTag: "preference_collector",
     executeTool: preferenceExecuteTool,
   });
 

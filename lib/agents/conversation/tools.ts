@@ -12,6 +12,12 @@ import {
 } from "@/lib/tools/listing";
 import { buildScorecardButtons } from "@/lib/tools/scorecard";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
+import {
+  getReEvalCooldownHours,
+  isConversationCallAgentEnabled,
+  isConversationReEvaluationAllowed,
+} from "@/lib/config/conversation-llm";
+import { supabaseAdmin } from "@/lib/supabase";
 import { buildTools, executeCallAgent } from "@/lib/core/tools";
 import type { ToolResult } from "@/lib/core/agent";
 
@@ -110,7 +116,13 @@ export const CONVERSATION_TOOL_SCHEMAS: Anthropic.Tool[] = [
 ];
 
 export function buildConversationTools(): Anthropic.Tool[] {
-  return [...buildTools(["call_agent"]), ...CONVERSATION_TOOL_SCHEMAS];
+  const callAgentPart = isConversationCallAgentEnabled()
+    ? buildTools(["call_agent"])
+    : [];
+  const schemas = CONVERSATION_TOOL_SCHEMAS.filter(
+    (t) => t.name !== "evaluate_listing" || isConversationReEvaluationAllowed(),
+  );
+  return [...callAgentPart, ...schemas];
 }
 
 type InternalDirectResult = {
@@ -138,6 +150,30 @@ export type ConversationToolContext = {
   userMessage: string;
   messageId: string;
 };
+
+async function reEvalCooldownMessage(
+  listingId: string,
+): Promise<string | null> {
+  const hours = getReEvalCooldownHours();
+  if (hours <= 0) return null;
+
+  const { data } = await supabaseAdmin
+    .from("evaluations")
+    .select("created_at")
+    .eq("listing_id", listingId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data?.created_at) return null;
+
+  const last = new Date(data.created_at as string).getTime();
+  const elapsedHr = (Date.now() - last) / (3600 * 1000);
+  if (elapsedHr >= hours) return null;
+
+  const remaining = Math.max(1, Math.ceil(hours - elapsedHr));
+  return `This property was evaluated recently — please wait about ${remaining} more hour(s) before running a full re-evaluation.`;
+}
 
 async function executeToolInternal(
   toolName: string,
@@ -193,6 +229,15 @@ async function executeToolInternal(
           type: "direct",
           message:
             "Which property would you like to re-evaluate? Tap a scorecard button or mention the property.",
+        };
+      }
+      const cooldownMsg = await reEvalCooldownMessage(listingId);
+      if (cooldownMsg) {
+        return {
+          type: "direct",
+          message: cooldownMsg,
+          listingId,
+          intent: "other",
         };
       }
       try {

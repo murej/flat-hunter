@@ -42,6 +42,7 @@ export async function executeCallAgent(
     model: config.model,
     executeTool: config.executeTool,
     maxToolIterations: config.maxToolIterations,
+    telemetryTag: `call_agent:${agent}`,
   });
 
   if ("type" in result && result.type === "data") {
