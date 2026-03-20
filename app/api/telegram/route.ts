@@ -1,27 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { parseInbound } from "@/lib/telegram";
-import { sendError } from "@/lib/core/agent";
 import { handleTelegramUpdate } from "@/lib/agents/conversation/handler";
-// Ensure all delegatable agents are registered before call_agent can invoke them
-import "@/lib/agents/preference";
-import "@/lib/agents/area-expert";
+
+// Import agents to trigger registration
 import "@/lib/agents/property-expert";
+import "@/lib/agents/area-expert";
+import "@/lib/agents/preference";
 
-export async function POST(req: NextRequest) {
+export const maxDuration = 60;
+
+export async function POST(request: Request) {
   try {
-    const body = (await req.json()) as Record<string, unknown>;
-    const parsed = parseInbound(body);
+    const body = (await request.json()) as Record<string, unknown>;
+    const input = parseInbound(body);
 
-    if (parsed) {
-      await handleTelegramUpdate(parsed);
+    if (!input.text) {
+      return NextResponse.json({ ok: true });
     }
 
+    await handleTelegramUpdate(input);
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error("Telegram webhook error:", error);
-    try {
-      await sendError();
-    } catch (_) {}
-    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("Telegram webhook error:", err);
+    return NextResponse.json({ ok: true }); // Always 200 to prevent Telegram retries
   }
 }

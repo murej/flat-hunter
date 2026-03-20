@@ -1,41 +1,32 @@
 {
-  "name": "flat-hunter",
+  "name": "stath",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:tunnel": "bash scripts/dev-tunnel.sh",
-    "set-commands": "tsx scripts/set-telegram-commands.ts",
-    "use:prod": "npm run env:push && bash scripts/use-prod.sh",
     "build": "next build",
-    "start": "npm run use:prod && next start",
-    "lint": "eslint .",
-    "env:push": "bash scripts/push-env-to-vercel.sh"
+    "start": "next start",
+    "lint": "next lint",
+    "set-commands": "npx tsx scripts/set-telegram-commands.ts",
+    "sync-rate": "npx tsx scripts/sync-boe-mortgage-rate.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@supabase/supabase-js": "^2",
-    "@vercel/functions": "^3.4.3",
-    "ai": "^3",
-    "langmail": "^0.7.0",
-    "next": "^16.2.0",
-    "p-limit": "^4.0.0",
-    "postal-mime": "^2.7.4",
-    "react": "^18",
-    "react-dom": "^18",
-    "resend": "^3"
+    "@ai-sdk/anthropic": "^1.2.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "@vercel/functions": "^2.0.0",
+    "ai": "^4.3.0",
+    "langmail": "^0.3.0",
+    "next": "^15.3.0",
+    "p-limit": "^6.2.0",
+    "postal-mime": "^2.4.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "autoprefixer": "^10",
-    "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.0",
-    "postcss": "^8",
-    "tailwindcss": "^3",
-    "tsx": "^4",
-    "typescript": "^5",
-    "vercel": "^50"
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0"
   }
 }

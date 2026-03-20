@@ -1,81 +1,41 @@
-import type { Anthropic } from "@anthropic-ai/sdk";
-import type { ToolResult } from "../agent";
-import { truncateForToolResult } from "@/lib/utils/tool-result";
-import { dbRead, dbWrite } from "./db";
-import { executeCallAgent } from "./call-agent";
-import { CALL_AGENT_TOOL } from "./call-agent";
-import { DB_READ_TOOL, DB_WRITE_TOOL } from "./db";
-import { WEB_SEARCH_TOOL } from "./web-search";
-
-export { CALL_AGENT_TOOL, DB_READ_TOOL, DB_WRITE_TOOL, WEB_SEARCH_TOOL };
-export { executeCallAgent } from "./call-agent";
-export { dbRead, dbWrite } from "./db";
+import type { CoreTool } from "ai";
+import { buildDbReadTool, buildDbWriteTool, type DbToolConfig } from "./db";
+import { buildCallAgentTool } from "./call-agent";
+import { buildWebSearchTool } from "./web-search";
 
 export type ToolSet = "db" | "call_agent" | "web_search";
 
-export function createExecuteTool(tools: ToolSet[]): (
-  name: string,
-  input: Record<string, unknown>,
-) => Promise<ToolResult> {
-  return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
-    if (name === "db_read" && tools.includes("db")) {
-      const result = await dbRead(
-        input.table as string,
-        input.filters as Record<string, unknown> | undefined,
-        (input.limit as number) ?? 100,
-      );
-      const raw = result.ok
-        ? JSON.stringify(result.data)
-        : result.error;
-      const data = truncateForToolResult(raw);
-      return { type: "data", data, toolName: "db_read" };
-    }
+type BuildToolsConfig = {
+  db?: DbToolConfig;
+};
 
-    if (name === "db_write" && tools.includes("db")) {
-      const result = await dbWrite(
-        input.table as string,
-        input.operation as "insert" | "upsert" | "update",
-        input.data as Record<string, unknown>,
-        input.filters as Record<string, unknown> | undefined,
-      );
-      const raw = result.ok
-        ? JSON.stringify(result.data ?? "ok")
-        : result.error;
-      const data = truncateForToolResult(raw);
-      return { type: "data", data, toolName: "db_write" };
-    }
+export function buildTools(
+  sets: ToolSet[],
+  config?: BuildToolsConfig,
+): Record<string, CoreTool> {
+  const tools: Record<string, CoreTool> = {};
 
-    if (name === "call_agent" && tools.includes("call_agent")) {
-      const data = await executeCallAgent(
-        input.agent as string,
-        input.prompt as string,
-      );
-      return { type: "data", data, toolName: "call_agent" };
-    }
-
-    return {
-      type: "data",
-      data: `Unknown or unavailable tool: ${name}`,
-      toolName: name,
-    };
-  };
-}
-
-export function buildTools(toolSets: ToolSet[]): Anthropic.Tool[] {
-  const tools: Anthropic.Tool[] = [];
-
-  if (toolSets.includes("db")) {
-    tools.push(DB_READ_TOOL as Anthropic.Tool);
-    tools.push(DB_WRITE_TOOL as Anthropic.Tool);
+  if (sets.includes("db") && config?.db) {
+    tools.db_read = buildDbReadTool(config.db);
+    tools.db_write = buildDbWriteTool(config.db);
   }
 
-  if (toolSets.includes("call_agent")) {
-    tools.push(CALL_AGENT_TOOL);
-  }
-
-  if (toolSets.includes("web_search")) {
-    tools.push(WEB_SEARCH_TOOL);
+  if (sets.includes("call_agent")) {
+    tools.call_agent = buildCallAgentTool();
   }
 
   return tools;
 }
+
+export function buildProviderTools(sets: ToolSet[]): unknown[] {
+  const tools: unknown[] = [];
+
+  if (sets.includes("web_search")) {
+    const ws = buildWebSearchTool();
+    if (ws) tools.push(ws);
+  }
+
+  return tools;
+}
+
+export type { DbToolConfig } from "./db";

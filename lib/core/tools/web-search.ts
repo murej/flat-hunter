@@ -1,10 +1,17 @@
-import type { Anthropic } from "@anthropic-ai/sdk";
+// Web search provider tool placeholder.
+// The Anthropic AI SDK's built-in web search tool requires a model that supports it.
+// This is a no-op in SDK versions without native web search support.
+// When available, it would be: anthropic.tools.webSearch({ maxUses: 3 })
 
-/**
- * Anthropic native web search tool descriptor.
- * Use basic web_search_20250305 for broader model support and ZDR eligibility.
- */
-export const WEB_SEARCH_TOOL = {
-  type: "web_search_20250305",
-  name: "web_search",
-} as unknown as Anthropic.Tool;
+export function buildWebSearchTool(): unknown | null {
+  try {
+    // Dynamic check for web search support
+    const { anthropic } = require("@ai-sdk/anthropic");
+    if (anthropic.tools && "webSearch" in anthropic.tools) {
+      return (anthropic.tools as Record<string, Function>).webSearch({ maxUses: 3 });
+    }
+  } catch {
+    // Not available
+  }
+  return null;
+}

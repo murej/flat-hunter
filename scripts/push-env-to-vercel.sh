@@ -1,32 +1,19 @@
-#!/usr/bin/env bash
-# Push .env.local to Vercel production only (no development/preview)
-# Run from project root: ./scripts/push-env-to-vercel.sh
+#!/bin/bash
+# Push .env variables to Vercel project
+# Requires: vercel CLI authenticated
 
-set -e
-cd "$(dirname "$0")/.."
+if [ ! -f .env ]; then
+  echo "No .env file found"
+  exit 1
+fi
 
-[[ -f .env.local ]] || { echo ".env.local not found"; exit 1; }
-
-trim() {
-  local v="$1"
-  v="${v#"${v%%[![:space:]]*}"}"
-  v="${v%"${v##*[![:space:]]}"}"
-  printf '%s' "$v"
-}
-
-while IFS= read -r line; do
-  [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-  key=$(trim "${line%%=*}")
-  value=$(trim "${line#*=}")
-  value="${value#\"}"
-  value="${value%\"}"
-  value=$(trim "$value")
+while IFS='=' read -r key value; do
+  # Skip comments and empty lines
+  [[ "$key" =~ ^#.*$ ]] && continue
   [[ -z "$key" ]] && continue
-  [[ -z "$value" ]] && { echo "Skipped (empty): $key"; continue; }
 
-  # production only; --force overwrites existing (no duplicates)
-  printf '%s' "$value" | vercel env add "$key" production --force --yes
-  echo "Set: $key"
-done < .env.local
+  echo "Setting $key..."
+  echo "$value" | vercel env add "$key" production --force 2>/dev/null || true
+done < .env
 
-echo "Done. All env vars pushed to Vercel production."
+echo "Done."

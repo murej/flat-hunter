@@ -4,117 +4,52 @@ import {
   parseVerificationEmail,
   parseEmailHtml,
   deduplicateAndStore,
-  enqueueOneOffMessage,
-  type IngestResult,
 } from "./tools";
-
-export type { IngestResult, RawListing } from "./tools";
-export {
-  computeIdempotencyKey,
-  claimIdempotencyKey,
-  runEvaluationsAndNotify,
-} from "./tools";
+import { buildLlmContextFromParts, buildLlmContextFromRaw } from "./email-llm-input";
+import { sendMessage } from "@/lib/telegram";
 
 export async function ingestAgent(
-  html: string,
-  subject?: string,
-  plain?: string,
-  rawMessage?: string,
-): Promise<IngestResult> {
-  const key = computeIdempotencyKey(html, subject, plain);
+  content: string,
+  isRaw: boolean,
+): Promise<{ newIds: number[] }> {
+  // Build LLM-friendly content
+  const llmContent = isRaw
+    ? await buildLlmContextFromRaw(content)
+    : content;
+
+  // Idempotency check
+  const key = computeIdempotencyKey(llmContent);
   const claimed = await claimIdempotencyKey(key);
   if (!claimed) {
-    // #region agent log
-    fetch(
-      "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "80f195",
-        },
-        body: JSON.stringify({
-          sessionId: "80f195",
-          runId: "post-fix",
-          hypothesisId: "A",
-          location: "ingest/index.ts:idempotency",
-          message: "duplicate idempotency — enqueueing user notice",
-          data: { keyPrefix: key.slice(0, 16) },
-          timestamp: Date.now(),
-        }),
-      },
-    ).catch(() => {});
-    // #endregion
-    await enqueueOneOffMessage(
-      "📬 This email was already processed (same content as before — e.g. a duplicate forward or provider retry). Nothing new was added.",
-      { parse_mode: false },
-    );
-    return { done: true };
+    console.log("Duplicate email, skipping.");
+    return { newIds: [] };
   }
 
-  // Check verification first (saves listing-parse call for verification emails)
-  const verification = await parseVerificationEmail(
-    html,
-    subject,
-    plain,
-    rawMessage,
-  );
+  // Check if verification email
+  const verification = await parseVerificationEmail(llmContent);
   if (verification.isVerification) {
-    if (verification.verificationUrl) {
-      await enqueueOneOffMessage(
-        `📬 New subscription detected. Please click the link below to verify your email:\n\n${verification.verificationUrl}`,
-        { parse_mode: false },
-      );
-    } else if (verification.verificationCode) {
-      await enqueueOneOffMessage(
-        `📬 New subscription detected. Your verification code is: *${verification.verificationCode}*\n\nEnter it on the verification page to activate your alerts.`,
-      );
-    } else {
-      await enqueueOneOffMessage(
-        "📬 This looks like a verification email. Please check your inbox and click the verification link (or enter the code) to activate your alerts.",
-      );
-    }
-    return { done: true };
+    const msg = verification.verificationUrl
+      ? `🔐 Verification email received.\nURL: ${verification.verificationUrl}`
+      : verification.verificationCode
+        ? `🔐 Verification code: ${verification.verificationCode}`
+        : "🔐 Verification email received (no URL/code extracted).";
+    await sendMessage(msg);
+    return { newIds: [] };
   }
 
-  // #region agent log
-  fetch(
-    "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "80f195",
-      },
-      body: JSON.stringify({
-        sessionId: "80f195",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "ingest/index.ts:after-verification",
-        message: "past verification — parsing listings",
-        data: { htmlLen: html.length },
-        timestamp: Date.now(),
-      }),
-    },
-  ).catch(() => {});
-  // #endregion
-  const listings = await parseEmailHtml(html, subject, rawMessage);
-
+  // Parse listings
+  const listings = await parseEmailHtml(llmContent);
   if (listings.length === 0) {
-    await enqueueOneOffMessage(
-      "Couldn't find any listings in this email — it may not be a property alert, or the format wasn't recognized.",
-    );
-    return { done: true };
+    console.log("No listings found in email.");
+    return { newIds: [] };
   }
 
-  const newIds = await deduplicateAndStore(listings, html || plain || "");
-
+  // Dedup and store
+  const newIds = await deduplicateAndStore(listings);
   if (newIds.length === 0) {
-    await enqueueOneOffMessage(
-      "📬 Email alert processed — no new properties (all were duplicates).",
-    );
-    return { done: true };
+    console.log("All listings were duplicates.");
+    return { newIds: [] };
   }
 
-  return { done: false, newIds };
+  return { newIds };
 }

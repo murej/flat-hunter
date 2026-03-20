@@ -1,24 +1,17 @@
 #!/bin/bash
-# Re-points the Telegram webhook back to the Vercel production URL.
-# Run with: npm run use:prod
+# Set Telegram webhook to production URL
+# Usage: ./scripts/use-prod.sh <vercel-url>
 
-if [ -f .env.local ]; then
-  set -a
-  source .env.local
-  set +a
-fi
+URL="${1:-https://your-app.vercel.app}"
+BOT_TOKEN="$TELEGRAM_BOT_TOKEN"
 
-
-if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-  echo "Error: TELEGRAM_BOT_TOKEN not set in .env.local"
+if [ -z "$BOT_TOKEN" ]; then
+  echo "TELEGRAM_BOT_TOKEN not set"
   exit 1
 fi
 
-echo "Pointing Telegram webhook at: ${NEXT_PUBLIC_APP_URL}/api/telegram"
+# Push env first
+bash scripts/push-env-to-vercel.sh
 
-curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d "{\"url\": \"${NEXT_PUBLIC_APP_URL}/api/telegram\"}"
-
-echo ""
-echo "Done. Bot is now live on Vercel."
+echo "Setting webhook to $URL/api/telegram..."
+curl -s "https://api.telegram.org/bot$BOT_TOKEN/setWebhook?url=$URL/api/telegram" | jq .

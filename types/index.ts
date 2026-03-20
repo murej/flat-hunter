@@ -1,33 +1,31 @@
-export type ScoreWeights = {
-  fit?: number;
-  commute?: number;
-  price?: number;
-  size?: number;
-  area?: number;
-};
-
-export interface Preferences {
-  id: string;
-  created_at: string;
-  updated_at: string;
+export type Preferences = {
+  id: number;
   areas: string[];
   max_price: number;
+  deposit: number;
   min_bedrooms: number;
+  commute_anchor: string;
+  commute_postcode: string;
+  commute_max_minutes: number;
   must_haves: string[];
   deal_breakers: string[];
-  commute_anchor: string;
-  commute_anchor_postcode: string;
-  max_commute_minutes: number;
-  style_notes: string;
-  freeform_notes: string;
-  deposit: number;
-  area_preferences?: string[];
-  raw_json: Record<string, unknown>;
-}
-
-export interface Listing {
-  id: string;
+  style_notes: string | null;
+  freeform_notes: string | null;
+  area_preferences: string[];
+  raw_json: Record<string, unknown> | null;
   created_at: string;
+  updated_at: string;
+};
+
+export type ListingStatus =
+  | "pending_evaluation"
+  | "evaluated"
+  | "saved"
+  | "dismissed"
+  | "viewing_requested";
+
+export type Listing = {
+  id: number;
   portal_id: string;
   url: string;
   title: string;
@@ -36,101 +34,97 @@ export interface Listing {
   postcode: string;
   bedrooms: number;
   bathrooms: number;
-  sqft: number;
+  sqft: number | null;
   description: string;
   image_urls: string[];
-  floorplan_url: string;
-  agent_name: string;
-  agent_email: string;
-  listed_date: string;
-  status:
-    | "pending_evaluation"
-    | "evaluated"
-    | "saved"
-    | "dismissed"
-    | "viewing_requested";
-  raw_email_html: string;
-}
-
-export interface Evaluation {
-  id: string;
-  listing_id: string;
+  floorplan_url: string | null;
+  agent_name: string | null;
+  agent_email: string | null;
+  listed_date: string | null;
+  status: ListingStatus;
+  raw_email_html: string | null;
   created_at: string;
+  updated_at: string;
+};
+
+export type Evaluation = {
+  id: number;
+  listing_id: number;
   price_score: number;
   size_score: number;
   fit_score: number;
-  area_score: number;
   commute_score: number;
+  area_score: number;
   overall_score: number;
   deal_breaker_flags: string[];
-  commute_minutes: number;
-  commute_route: string;
-  monthly_mortgage: number;
-  monthly_interest_only: number;
-  stamp_duty: number;
-  estimated_monthly_total: number;
+  commute_minutes: number | null;
+  commute_route: string | null;
+  mortgage_monthly: number | null;
+  interest_only_monthly: number | null;
+  stamp_duty: number | null;
+  stress_test_monthly: number | null;
+  total_monthly: number | null;
   property_summary: string;
   area_summary: string;
-  raw_property_eval: Record<string, unknown>;
-  raw_area_eval: Record<string, unknown>;
-  raw_finance_eval: Record<string, unknown>;
-}
-
-export interface Conversation {
-  id: string;
+  raw_property_eval: Record<string, unknown> | null;
+  raw_area_eval: Record<string, unknown> | null;
+  property_unknown: string | null;
+  area_unknown: string | null;
   created_at: string;
-  telegram_message_id: string;
+};
+
+export type Conversation = {
+  id: number;
+  telegram_message_id: number;
   direction: "inbound" | "outbound";
   message: string;
-  listing_id: string | null;
-  intent:
-    | "view"
-    | "skip"
-    | "save"
-    | "why"
-    | "preferences"
-    | "compare"
-    | "other"
-    | null;
-}
+  listing_id: number | null;
+  intent: string | null;
+  created_at: string;
+};
 
-export interface TelegramMessage {
-  text: string;
-  messageId: string;
-  callbackQueryId?: string;
-}
+export type ScoreWeights = {
+  fit?: number;
+  commute?: number;
+  price?: number;
+  size?: number;
+  area?: number;
+};
 
-export interface PropertyEvalResult {
+export type PropertyEvalResult = {
   price_score: number;
   size_score: number;
   fit_score: number;
-  property_unknown?: boolean;
   deal_breaker_flags: string[];
   property_summary: string;
+  property_unknown?: string;
   raw: Record<string, unknown>;
-}
+};
 
-export interface AreaEvalResult {
+export type AreaEvalResult = {
   area_score: number;
   area_summary: string;
-  area_unknown?: boolean;
   notable_flags: string[];
+  area_unknown?: string;
   raw: Record<string, unknown>;
-}
+};
 
-export interface CombinedEvalResult extends PropertyEvalResult, AreaEvalResult {}
-
-export interface CommuteEvalResult {
-  commute_minutes: number;
-  commute_route: string;
+export type CommuteEvalResult = {
   commute_score: number;
-  commute_unknown?: boolean;
-}
+  commute_minutes: number | null;
+  commute_route: string | null;
+};
 
-export interface FinanceEvalResult {
-  monthly_mortgage: number;
-  monthly_interest_only: number;
+export type FinanceEvalResult = {
+  mortgage_monthly: number;
+  interest_only_monthly: number;
   stamp_duty: number;
-  estimated_monthly_total: number;
-  raw: Record<string, unknown>;
-}
+  stress_test_monthly: number;
+  total_monthly: number;
+};
+
+export type TelegramPayload = {
+  buttons?: Array<Array<{ text: string; callback_data: string }>>;
+  parse_mode?: "Markdown" | "HTML";
+  metadata?: Record<string, unknown>;
+};

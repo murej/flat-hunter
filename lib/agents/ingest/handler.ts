@@ -1,140 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
-import { waitUntil } from "@vercel/functions";
+import { NextResponse } from "next/server";
 import { ingestAgent } from "./index";
 import { runEvaluationsAndNotify } from "./tools";
-import { extractMimeParts } from "@/lib/utils/email-llm-input";
+import { buildLlmContextFromParts } from "./email-llm-input";
+
+function checkAuth(request: Request): boolean {
+  const secret = process.env.CLOUDMAILIN_SECRET;
+  if (!secret) return true; // No auth configured
+
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader) return false;
+
+  const [scheme, credentials] = authHeader.split(" ");
+  if (scheme !== "Basic") return false;
+
+  const decoded = atob(credentials);
+  return decoded === secret;
+}
 
 export async function handleIngestWebhook(
-  req: NextRequest,
-): Promise<NextResponse> {
-  try {
-    const contentType = req.headers.get("content-type") ?? "";
-
-    // Authentication is the same for both JSON and raw multipart formats
-    if (process.env.CLOUDMAILIN_SECRET) {
-      const authHeader = req.headers.get("authorization") ?? "";
-      const base64 = authHeader.replace(/^Basic\s+/i, "");
-      const decoded = Buffer.from(base64, "base64").toString("utf8");
-      const password = decoded.split(":").slice(1).join(":");
-      if (password !== process.env.CLOUDMAILIN_SECRET) {
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "80f195",
-            },
-            body: JSON.stringify({
-              sessionId: "80f195",
-              runId: "pre-fix",
-              hypothesisId: "B",
-              location: "handler.ts:ingest-auth",
-              message: "ingest webhook unauthorized",
-              data: { hasAuthHeader: Boolean(authHeader) },
-              timestamp: Date.now(),
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    }
-
-    let html: string;
-    let plain: string;
-    let subject: string | undefined;
-    let rawMessage: string | undefined;
-
-    if (contentType.startsWith("multipart/form-data")) {
-      // CloudMailin raw message format — full RFC 5322 in the `message` field
-      const formData = await req.formData();
-      rawMessage = (formData.get("message") as string | null) ?? "";
-      // Extract MIME parts for idempotency/storage (LLM context built later inside the agent)
-      const mimeResult = await extractMimeParts(rawMessage);
-      html = mimeResult.html;
-      plain = mimeResult.plain;
-      subject = mimeResult.subject || undefined;
-    } else {
-      // Support both flat and normalized CloudMailin JSON formats
-      const body = await req.json();
-      html = body.html ?? body.body?.html ?? "";
-      plain = body.plain ?? body.body?.plain ?? "";
-      subject = (body.subject ??
-        body.headers?.subject ??
-        body.headers?.Subject) as string | undefined;
-    }
-
-    // #region agent log
-    fetch(
-      "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "80f195",
-        },
-        body: JSON.stringify({
-          sessionId: "80f195",
-          runId: "pre-fix",
-          hypothesisId: "C",
-          location: "handler.ts:payload",
-          message: "ingest payload shape",
-          data: {
-            isRaw: Boolean(rawMessage),
-            htmlLen: html.length,
-            plainLen: plain.length,
-            subjectLen: subject?.length ?? 0,
-          },
-          timestamp: Date.now(),
-        }),
-      },
-    ).catch(() => {});
-    // #endregion
-    const result = await ingestAgent(html, subject, plain || undefined, rawMessage);
-
-    if (result.done) {
-      return NextResponse.json({ ok: true });
-    }
-
-    const notifyPromise = runEvaluationsAndNotify(result.newIds).catch(
-      (err) => {
-        console.error("runEvaluationsAndNotify failed:", err);
-      },
-    );
-    if (process.env.VERCEL) {
-      waitUntil(notifyPromise);
-    } else {
-      await notifyPromise;
-    }
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    // #region agent log
-    fetch(
-      "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "80f195",
-        },
-        body: JSON.stringify({
-          sessionId: "80f195",
-          runId: "pre-fix",
-          hypothesisId: "E",
-          location: "handler.ts:catch",
-          message: "ingest webhook threw",
-          data: {
-            errName: error instanceof Error ? error.name : "unknown",
-            errMsg: error instanceof Error ? error.message.slice(0, 200) : "",
-          },
-          timestamp: Date.now(),
-        }),
-      },
-    ).catch(() => {});
-    // #endregion
-    console.error("Ingest webhook error:", error);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  request: Request,
+): Promise<{ response: NextResponse; backgroundWork?: () => Promise<void> }> {
+  if (!checkAuth(request)) {
+    return { response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
+
+  const contentType = request.headers.get("content-type") || "";
+  let content: string;
+  let isRaw = false;
+
+  if (contentType.includes("multipart/form-data")) {
+    // CloudMailin raw format — RFC 5322
+    const formData = await request.formData();
+    const raw = formData.get("message");
+    if (!raw) {
+      return { response: NextResponse.json({ error: "No message in form data" }, { status: 400 }) };
+    }
+    content = raw.toString();
+    isRaw = true;
+  } else {
+    // JSON format
+    const body = (await request.json()) as Record<string, unknown>;
+    const html = (body.html as string) || "";
+    const plain = (body.plain as string) || "";
+    const subject = (body.subject as string) || "";
+    content = buildLlmContextFromParts(html, subject, plain);
+  }
+
+  const { newIds } = await ingestAgent(content, isRaw);
+
+  return {
+    response: NextResponse.json({ ok: true, newListings: newIds.length }),
+    backgroundWork: newIds.length > 0
+      ? () => runEvaluationsAndNotify(newIds)
+      : undefined,
+  };
 }

@@ -1,154 +1,134 @@
 import type { CommuteEvalResult } from "@/types";
-import { retryWithBackoff } from "@/lib/utils/retry";
+import { retryWithBackoff, sleep } from "@/lib/utils/retry";
 
-const TFL_BASE = "https://api.tfl.gov.uk/journey/journeyresults";
-const fullPostcodeRe = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i;
-const outwardCodeRe = /^[A-Z]{1,2}\d[A-Z\d]?$/i;
+async function resolvePostcodeToCoords(
+  postcode: string,
+): Promise<{ lat: number; lon: number } | null> {
+  const res = await fetch(
+    `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`,
+  );
+  if (!res.ok) return null;
+  const json = (await res.json()) as {
+    result: { latitude: number; longitude: number };
+  };
+  return { lat: json.result.latitude, lon: json.result.longitude };
+}
 
-async function geocodeAddress(address: string): Promise<string | null> {
+async function resolveAddressToCoords(
+  address: string,
+): Promise<{ lat: number; lon: number } | null> {
+  await sleep(1100); // Nominatim rate limit
   try {
-    const res = await retryWithBackoff(async () => {
-      const r = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=gb`,
-        { headers: { "User-Agent": "flat-hunter/1.0" } },
-      );
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r;
-    });
-    const data = await res.json();
-    if (!data?.[0]?.lat || !data?.[0]?.lon) return null;
-    return `${data[0].lat},${data[0].lon}`;
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+      { headers: { "User-Agent": "Stath/1.0" } },
+    );
+    if (!res.ok) return null;
+    const results = (await res.json()) as Array<{
+      lat: string;
+      lon: string;
+    }>;
+    if (!results[0]) return null;
+    return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
   } catch {
     return null;
   }
 }
 
-async function resolveFromLocation(
-  postcode: string,
-  address?: string
-): Promise<string | null> {
-  if (fullPostcodeRe.test(postcode.trim())) return postcode.trim();
+type TfLJourney = {
+  duration: number;
+  legs: Array<{ instruction: { summary: string } }>;
+};
 
-  if (address) {
-    const coords = await geocodeAddress(address);
-    if (coords) return coords;
-  }
+async function fetchTfLJourney(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+): Promise<{ minutes: number; route: string } | null> {
+  const params = new URLSearchParams({
+    from: `${fromLat},${fromLon}`,
+    to: `${toLat},${toLon}`,
+    mode: "public-transport",
+    timeIs: "departing",
+  });
 
-  if (outwardCodeRe.test(postcode.trim())) {
-    try {
-      const res = await retryWithBackoff(async () => {
-        const r = await fetch(
-          `https://api.postcodes.io/postcodes?q=${encodeURIComponent(postcode.trim())}&limit=1`,
+  if (process.env.TFL_APP_ID) params.set("app_id", process.env.TFL_APP_ID);
+  if (process.env.TFL_APP_KEY) params.set("app_key", process.env.TFL_APP_KEY);
+
+  try {
+    const journey = await retryWithBackoff(
+      async () => {
+        const res = await fetch(
+          `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat},${fromLon}/to/${toLat},${toLon}?${params}`,
         );
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r;
-      });
-      const data = await res.json();
-      return (data?.result?.[0]?.postcode as string) ?? null;
-    } catch {
-      return null;
-    }
-  }
+        if (!res.ok) throw new Error(`TfL API ${res.status}`);
+        return (await res.json()) as { journeys?: TfLJourney[] };
+      },
+      { maxRetries: 2, baseDelayMs: 1000, tag: "tfl" },
+    );
 
-  return null;
+    const best = journey.journeys?.[0];
+    if (!best) return null;
+
+    const route = best.legs
+      .map((l) => l.instruction.summary)
+      .join(" → ");
+
+    return { minutes: best.duration, route };
+  } catch {
+    return null;
+  }
+}
+
+function computeCommuteScore(
+  minutes: number,
+  maxMinutes: number,
+): number {
+  const ratio = minutes / maxMinutes;
+  if (ratio <= 0.5) return 10;
+  if (ratio <= 0.75) return 8;
+  if (ratio <= 1.0) return 6;
+  if (ratio <= 1.25) return 4;
+  if (ratio <= 1.5) return 2;
+  return 1;
 }
 
 export async function evaluateCommute(
   fromPostcode: string,
   toPostcode: string,
-  maxCommuteMinutes: number,
-  address?: string
+  maxMinutes: number,
+  address?: string,
 ): Promise<CommuteEvalResult> {
-  if (!Number.isFinite(maxCommuteMinutes) || maxCommuteMinutes <= 0) {
-    return {
-      commute_minutes: 0,
-      commute_route: "Commute time limit misconfigured",
-      commute_score: 0,
-      commute_unknown: true,
-    };
+  // Resolve origin
+  let origin = await resolvePostcodeToCoords(fromPostcode);
+  if (!origin && address) {
+    origin = await resolveAddressToCoords(address);
+  }
+  if (!origin) {
+    return { commute_score: 5, commute_minutes: null, commute_route: null };
   }
 
-  if (!fromPostcode || !toPostcode) {
-    return {
-      commute_minutes: 0,
-      commute_route: "Commute time unknown",
-      commute_score: 0,
-      commute_unknown: true,
-    };
+  // Resolve destination
+  const dest = await resolvePostcodeToCoords(toPostcode);
+  if (!dest) {
+    return { commute_score: 5, commute_minutes: null, commute_route: null };
   }
 
-  const resolvedFrom = await resolveFromLocation(fromPostcode, address);
+  const journey = await fetchTfLJourney(
+    origin.lat,
+    origin.lon,
+    dest.lat,
+    dest.lon,
+  );
 
-  if (!resolvedFrom) {
-    return {
-      commute_minutes: 0,
-      commute_route: "Commute time unknown",
-      commute_score: 0,
-      commute_unknown: true,
-    };
+  if (!journey) {
+    return { commute_score: 5, commute_minutes: null, commute_route: null };
   }
-
-  const from = encodeURIComponent(resolvedFrom);
-  const to = encodeURIComponent(toPostcode);
-  const appId = process.env.TFL_APP_ID ?? "";
-  const appKey = process.env.TFL_APP_KEY ?? "";
-
-  const params = new URLSearchParams();
-  if (appId) params.set("app_id", appId);
-  if (appKey) params.set("app_key", appKey);
-
-  const url = `${TFL_BASE}/${from}/to/${to}?${params.toString()}`;
-
-  const res = await retryWithBackoff(async () => {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`TfL API error: ${r.status}`);
-    return r;
-  });
-
-  const data = await res.json();
-  const journeys = data.journeys as Array<{
-    duration: number;
-    legs: Array<{ instruction?: { summary?: string } }>;
-  }>;
-
-  if (!journeys || journeys.length === 0) {
-    return {
-      commute_minutes: 0,
-      commute_route: "No journey found",
-      commute_score: 0,
-      commute_unknown: true,
-    };
-  }
-
-  const fastest = journeys.reduce((best, j) => {
-    if (!best) return j;
-    if (typeof j.duration !== "number" || !Number.isFinite(j.duration)) {
-      return best;
-    }
-    return j.duration < best.duration ? j : best;
-  }, journeys[0]);
-
-  const commuteMinutes = fastest.duration;
-
-  const routeSummary = (fastest.legs ?? [])
-    .map((leg) => leg.instruction?.summary || "")
-    .filter(Boolean)
-    .join(" → ");
-
-  const commuteScore = scoreCommute(commuteMinutes, maxCommuteMinutes);
 
   return {
-    commute_minutes: commuteMinutes,
-    commute_route: routeSummary || `${commuteMinutes} min journey`,
-    commute_score: commuteScore,
+    commute_score: computeCommuteScore(journey.minutes, maxMinutes),
+    commute_minutes: journey.minutes,
+    commute_route: journey.route,
   };
-}
-
-function scoreCommute(minutes: number, maxMinutes: number): number {
-  if (minutes <= maxMinutes * 0.5) return 10;
-  if (minutes <= maxMinutes * 0.75) return 8;
-  if (minutes <= maxMinutes) return 6;
-  if (minutes <= maxMinutes * 1.25) return 4;
-  if (minutes <= maxMinutes * 1.5) return 2;
-  return 1;
 }

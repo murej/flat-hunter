@@ -1,180 +1,104 @@
-import type { TelegramMessage } from "@/types";
-import {
-  answerCallbackQuery,
-  sendMessage,
-  sendWithButtons,
-  sendWithReplyKeyboard,
-} from "@/lib/telegram";
-import { getPreferences } from "@/lib/supabase";
-import { logConversation } from "@/lib/supabase";
-import { collectPreferences } from "@/lib/agents/preference";
-import {
-  saveListing,
-  skipListing,
-  getScorecard,
-  getWhyContext,
-  UPDATE_PREFERENCES_BUTTONS,
-} from "@/lib/tools/listing";
-import { WHY_EXPLANATION_SYSTEM } from "@/lib/agents/conversation/prompts";
-import { conversationAgent } from "@/lib/agents/conversation";
-import { getWhyExplanationModel } from "@/lib/config/agent-models";
-import { runAgent } from "@/lib/core/agent";
+import { sendMessage, sendWithButtons, answerCallbackQuery } from "@/lib/telegram";
+import { logConversation, getPreferences } from "@/lib/supabase";
+import { saveListing, skipListing, getScorecard, getWhyContext } from "@/lib/tools/listing";
+import { runPreferenceAgent } from "@/lib/agents/preference";
+import { conversationAgent } from "./index";
 
-export async function handleTelegramUpdate(
-  parsed: TelegramMessage,
-): Promise<void> {
-  const { text, messageId, callbackQueryId } = parsed;
+export async function handleTelegramUpdate(input: {
+  text: string;
+  messageId: number;
+  callbackQueryId?: string;
+}): Promise<void> {
+  const { text, messageId, callbackQueryId } = input;
 
-  const answerCallback = async () => {
-    if (callbackQueryId) await answerCallbackQuery(callbackQueryId);
-  };
+  if (!text) return;
 
+  // Acknowledge callback query immediately
+  if (callbackQueryId) {
+    await answerCallbackQuery(callbackQueryId);
+  }
+
+  // Route: /start
   if (text === "/start") {
-    await answerCallback();
-    const preferences = await getPreferences();
-    if (preferences) {
-      await sendWithReplyKeyboard(
-        "Welcome back. Use the buttons below or type a message.",
-        [
-          [{ text: "Saved" }, { text: "Preferences" }],
-          [{ text: "New matches" }],
-        ],
-      );
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "start" });
+    const prefs = await getPreferences();
+    if (prefs) {
+      await sendMessage("Welcome back! Your preferences are already set up. Type anything to chat, or say 'update preferences' to change them.");
     } else {
-      const result = await collectPreferences(
-        "I'd like to set up my property search preferences.",
-        messageId,
-      );
-      if (result.message) {
-        await sendMessage(result.message);
-        await logConversation({
-          direction: "outbound",
-          message: result.message,
-          intent: "preferences",
-        });
-      }
-    }
-    return;
-  }
-
-  if (text.startsWith("unsave:")) {
-    const listingId = text.split(":")[1];
-    if (listingId) {
-      await answerCallback();
-      await skipListing(listingId);
-      await sendMessage("Removed from saved properties.");
-    }
-    return;
-  }
-
-  if (text.startsWith("save:")) {
-    const listingId = text.split(":")[1];
-    if (listingId) {
-      await answerCallback();
-      await saveListing(listingId);
-      await sendMessage("Saved! ⭐️ I'll keep that one for you.");
-    }
-    return;
-  }
-
-  if (text.startsWith("skip:")) {
-    const listingId = text.split(":")[1];
-    if (listingId) {
-      await answerCallback();
-      await skipListing(listingId);
-      await sendMessage("Done — property dismissed. 👋");
-    }
-    return;
-  }
-
-  if (text.startsWith("why:")) {
-    const listingId = text.split(":")[1];
-    if (listingId) {
-      await answerCallback();
-      const result = await getWhyContext(listingId);
-      if (result.ok) {
-        const explanation = await runAgent({
-          prompt: result.context,
-          systemPrompt: WHY_EXPLANATION_SYSTEM,
-          model: getWhyExplanationModel(),
-          telemetryTag: "why_explanation",
-        });
-        const message = "message" in explanation ? explanation.message : "";
-        if (message) {
-          await sendMessage(message);
-          await logConversation({
-            direction: "outbound",
-            message,
-            listing_id: listingId,
-            intent: "why",
-          });
-        }
-      }
-    }
-    return;
-  }
-
-  if (text.startsWith("scorecard:")) {
-    const listingId = text.split(":")[1];
-    if (listingId) {
-      await answerCallback();
-      const result = await getScorecard(listingId);
-      if (result.ok) {
-        await sendWithButtons(result.scorecardText, result.buttons, {
-          parse_mode: "HTML",
-        });
-        await logConversation({
-          direction: "outbound",
-          message: result.scorecardText,
-          listing_id: result.listingId,
-          intent: null,
-        });
-      } else {
-        await sendMessage(result.message);
-      }
-    }
-    return;
-  }
-
-  if (text === "update preferences") {
-    await answerCallback();
-    const updatePrompt = "What would you like to update?";
-    await sendWithButtons(updatePrompt, UPDATE_PREFERENCES_BUTTONS);
-    await logConversation({
-      direction: "outbound",
-      message: updatePrompt,
-      intent: "preferences",
-    });
-    return;
-  }
-
-  if (text.startsWith("update:")) {
-    await answerCallback();
-    const part = text.replace(/^update:/, "");
-    const messageMap: Record<string, string> = {
-      areas: "I want to update my areas",
-      budget: "I want to update my budget and deposit",
-      bedrooms: "I want to update my minimum bedrooms",
-      commute: "I want to update my commute settings",
-      must_haves: "I want to update my must-haves",
-      deal_breakers: "I want to update my deal-breakers",
-      other: "I want to update my preferences",
-    };
-    const naturalMessage =
-      messageMap[part] ?? "I want to update my preferences";
-    const dedupId = callbackQueryId ?? messageId;
-    const result = await collectPreferences(naturalMessage, dedupId);
-    if (result.message) {
+      const result = await runPreferenceAgent("The user just started. Begin collecting their property search preferences.");
       await sendMessage(result.message);
-      await logConversation({
-        direction: "outbound",
-        message: result.message,
-        intent: "preferences",
-      });
+    }
+    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Welcome", intent: "start" });
+    return;
+  }
+
+  // Route: save:/skip:/unsave: callbacks
+  const saveMatch = text.match(/^(save|skip|unsave):(\d+)$/);
+  if (saveMatch) {
+    const [, action, idStr] = saveMatch;
+    const id = parseInt(idStr, 10);
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: action });
+
+    if (action === "save") {
+      await saveListing(id);
+      await sendMessage("💾 Saved!");
+    } else if (action === "unsave") {
+      // Reset to evaluated
+      const { updateListingStatus } = await import("@/lib/supabase");
+      await updateListingStatus(id, "evaluated");
+      await sendMessage("📌 Unsaved. Status reset to evaluated.");
+    } else {
+      await skipListing(id);
+      await sendMessage("⏭ Skipped.");
     }
     return;
   }
 
-  await answerCallback();
+  // Route: why:{id}
+  const whyMatch = text.match(/^why:(\d+)$/);
+  if (whyMatch) {
+    const id = parseInt(whyMatch[1], 10);
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: "why" });
+
+    const context = await getWhyContext(id);
+    if (!context) {
+      await sendMessage("Could not find evaluation data for this listing.");
+      return;
+    }
+
+    // Use conversation agent to generate explanation
+    const prompt = `Explain why listing ${id} received its scores. Here's the context:\n${JSON.stringify(context, null, 2)}`;
+    const result = await conversationAgent(prompt, messageId, id);
+    return;
+  }
+
+  // Route: scorecard:{id}
+  const scorecardMatch = text.match(/^scorecard:(\d+)$/);
+  if (scorecardMatch) {
+    const id = parseInt(scorecardMatch[1], 10);
+    const scorecard = await getScorecard(id);
+    if (scorecard) {
+      await sendWithButtons(scorecard.text, scorecard.buttons, "Markdown");
+    } else {
+      await sendMessage("Listing not found.");
+    }
+    return;
+  }
+
+  // Route: update preferences / update:{category}
+  if (text === "update preferences" || text.startsWith("update:")) {
+    const category = text.startsWith("update:") ? text.split(":")[1] : undefined;
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "update_preferences" });
+
+    const prompt = category
+      ? `The user wants to update their ${category} preferences. Read current preferences first, then ask what they'd like to change.`
+      : "The user wants to update their preferences. Read current preferences and ask what they'd like to change.";
+    const result = await runPreferenceAgent(prompt);
+    await sendMessage(result.message);
+    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: result.message, intent: "update_preferences" });
+    return;
+  }
+
+  // Default: conversation agent
   await conversationAgent(text, messageId);
 }

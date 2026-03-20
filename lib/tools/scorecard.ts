@@ -1,118 +1,82 @@
-import type { Evaluation, Listing } from "@/types";
+import type { Listing, Evaluation } from "@/types";
 
-/** Telegram HTML parse mode: escape text outside tags. */
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function scoreBar(score: number): string {
+  const filled = Math.round(score);
+  return "█".repeat(filled) + "░".repeat(10 - filled);
 }
 
-/** href value for <a> — quote and ampersand per Telegram HTML rules. */
-function escHref(url: string): string {
-  return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+function formatMoney(n: number | null): string {
+  if (n === null) return "N/A";
+  return `£${n.toLocaleString("en-GB")}`;
 }
 
-export type ScorecardButton = { text: string; callback_data: string };
+export function buildScorecardText(
+  listing: Listing,
+  evaluation: Evaluation,
+): string {
+  const lines = [
+    `🏠 *${listing.title}*`,
+    `📍 ${listing.address}`,
+    `💰 ${formatMoney(listing.price)}`,
+    `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${listing.sqft} sqft` : ""}`,
+    "",
+    `*Overall: ${evaluation.overall_score}/10*`,
+    "",
+    `Fit:     ${scoreBar(evaluation.fit_score)} ${evaluation.fit_score}/10`,
+    `Price:   ${scoreBar(evaluation.price_score)} ${evaluation.price_score}/10`,
+    `Size:    ${scoreBar(evaluation.size_score)} ${evaluation.size_score}/10`,
+    `Area:    ${scoreBar(evaluation.area_score)} ${evaluation.area_score}/10`,
+    `Commute: ${scoreBar(evaluation.commute_score)} ${evaluation.commute_score}/10`,
+  ];
+
+  if (evaluation.commute_minutes !== null) {
+    lines.push(`🚇 ${evaluation.commute_minutes} min — ${evaluation.commute_route}`);
+  }
+
+  if (evaluation.total_monthly !== null) {
+    lines.push(`💷 ${formatMoney(evaluation.total_monthly)}/mo (mortgage + service)`);
+  }
+
+  if (evaluation.deal_breaker_flags.length > 0) {
+    lines.push(`\n⚠️ Deal breakers: ${evaluation.deal_breaker_flags.join(", ")}`);
+  }
+
+  lines.push(`\n${evaluation.property_summary}`);
+  lines.push(`\n📌 ${evaluation.area_summary}`);
+
+  if (listing.url) {
+    lines.push(`\n🔗 ${listing.url}`);
+  }
+
+  return lines.join("\n");
+}
 
 export function buildScorecardButtons(
-  listingId: string,
+  listingId: number,
   isSaved: boolean,
-): ScorecardButton[][] {
-  const saveButton: ScorecardButton = isSaved
-    ? { text: "🗑 Unsave", callback_data: `unsave:${listingId}` }
-    : { text: "💾 Save", callback_data: `save:${listingId}` };
-  const skipButton: ScorecardButton = {
-    text: "⏭ Skip",
-    callback_data: `skip:${listingId}`,
-  };
-  const whyButton: ScorecardButton = {
-    text: "❓ Why?",
-    callback_data: `why:${listingId}`,
-  };
+): Array<Array<{ text: string; callback_data: string }>> {
   return [
     [
-      saveButton,
-      ...(isSaved ? [] : [skipButton]),
-      whyButton,
+      isSaved
+        ? { text: "📌 Unsave", callback_data: `unsave:${listingId}` }
+        : { text: "💾 Save", callback_data: `save:${listingId}` },
+      { text: "⏭ Skip", callback_data: `skip:${listingId}` },
+      { text: "❓ Why?", callback_data: `why:${listingId}` },
     ],
   ];
 }
 
-type UnknownScores = {
-  property?: boolean;
-  area?: boolean;
-  commute?: boolean;
-};
-
-const s = (score: number, unknown?: boolean) =>
-  unknown ? "N/A  " : `${score}/10`;
-
-export function buildScorecardText(
-  evaluation: Evaluation,
-  listing: Listing,
-  notableFlags: string[],
-  commuteMinutes: number,
-  unknownScores: UnknownScores = {},
-): string {
-  const allFlags = [...(evaluation.deal_breaker_flags || []), ...notableFlags];
-
-  const commuteLabel = unknownScores.commute
-    ? "N/A  "
-    : `${evaluation.commute_score}/10 (${commuteMinutes} min)`;
-
-  const hasUnknown = !!(
-    unknownScores.property ||
-    unknownScores.area ||
-    unknownScores.commute
-  );
-  const overallLabel = `${evaluation.overall_score}/10${hasUnknown ? "*" : ""}`;
-
-  const title = esc(listing.title || "Untitled property");
-  const urlLine = listing.url
-    ? `<a href="${escHref(listing.url)}">🔗 View listing</a>`
-    : "🔗 No link";
-
-  const watchOutsHtml =
-    allFlags.length > 0
-      ? allFlags.map((f) => `• ${esc(f)}`).join("\n  ")
-      : "• None identified";
-
-  const scorecardText = `🏠 <b>${title}</b>
-  --------------------------------------
-  £${listing.price?.toLocaleString()} · £${evaluation.monthly_mortgage}/mo
-
-✅ Score:                         ${overallLabel}
-  --------------------------------------
-  Property fit:                       ${s(evaluation.fit_score, unknownScores.property)}
-  Size:                                   ${s(evaluation.size_score, unknownScores.property)}
-  Area:                                  ${s(evaluation.area_score, unknownScores.area)}
-  Commute:                         ${commuteLabel}
-  Value:                                 ${s(evaluation.price_score, unknownScores.property)}  
-  --------------------------------------
-
-⚠️ Watch outs
-  ${watchOutsHtml}
-
-${urlLine}`;
-  return scorecardText;
-}
-
-export function buildNoScoreScorecardText(
-  _evaluation: Evaluation,
-  listing: Listing,
-): string {
-  const title = esc(listing.title || "Untitled property");
-  const urlLine = listing.url
-    ? `<a href="${escHref(listing.url)}">🔗 View listing</a>`
-    : "Listing URL unavailable";
-
-  const scorecardText = `🏠 ${title}
-💰 £${listing.price?.toLocaleString()}
-
-No score
-  This property couldn't be evaluated — not enough data to score it against your preferences.
-
-${urlLine}`;
-  return scorecardText;
+export function buildNoScoreScorecardText(listing: Listing): string {
+  return [
+    `🏠 *${listing.title}*`,
+    `📍 ${listing.address}`,
+    `💰 ${formatMoney(listing.price)}`,
+    `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath`,
+    "",
+    "⏳ Evaluation pending...",
+    "",
+    listing.url ? `🔗 ${listing.url}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

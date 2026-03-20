@@ -1,8 +1,8 @@
 export default function Home() {
   return (
-    <main className="min-h-screen p-8">
-      <h1 className="text-2xl font-bold">Flat Hunter</h1>
-      <p className="mt-2 text-gray-600">Property search automation running.</p>
+    <main style={{ padding: "2rem", fontFamily: "system-ui" }}>
+      <h1>Stath</h1>
+      <p>Property search assistant. This app runs as API routes only.</p>
     </main>
   );
 }

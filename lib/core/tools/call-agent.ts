@@ -1,54 +1,35 @@
-import type { Anthropic } from "@anthropic-ai/sdk";
+import { tool } from "ai";
+import { z } from "zod";
+import { getAgentConfig } from "../registry";
 import { runAgent } from "../agent";
-import {
-  getAgentConfig,
-  getRegisteredAgents,
-} from "@/lib/core/registry";
 import { truncateForToolResult } from "@/lib/utils/tool-result";
 
-export const CALL_AGENT_TOOL: Anthropic.Tool = {
-  name: "call_agent",
-  description:
-    "Delegate to registered agent: preference, property_expert, area_expert.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      agent: {
-        type: "string",
-        description: "Agent name: preference, property_expert, area_expert",
-      },
-      prompt: {
-        type: "string",
-        description: "The prompt to send to the agent",
-      },
+export function buildCallAgentTool() {
+  return tool({
+    description:
+      "Delegate a task to a registered specialist agent. Use when you need expert help on a specific topic.",
+    parameters: z.object({
+      agent: z
+        .string()
+        .describe("The name of the registered agent to call"),
+      prompt: z
+        .string()
+        .describe("The task or question to send to the agent"),
+    }),
+    execute: async ({ agent, prompt }) => {
+      const config = getAgentConfig(agent);
+      if (!config) return `Error: agent "${agent}" not found in registry.`;
+
+      const result = await runAgent({
+        systemPrompt: config.systemPrompt,
+        prompt,
+        tools: config.tools,
+        providerTools: config.providerTools,
+        model: config.model,
+        maxSteps: config.maxSteps,
+        telemetryTag: `call_agent:${agent}`,
+      });
+      return truncateForToolResult(result.message);
     },
-    required: ["agent", "prompt"],
-  },
-};
-
-export async function executeCallAgent(
-  agent: string,
-  prompt: string,
-): Promise<string> {
-  const config = getAgentConfig(agent);
-  if (!config) {
-    return `Unknown agent: ${agent}. Available: ${getRegisteredAgents().join(", ")}`;
-  }
-
-  const result = await runAgent({
-    systemPrompt: config.systemPrompt,
-    prompt,
-    tools: config.tools,
-    model: config.model,
-    executeTool: config.executeTool,
-    maxToolIterations: config.maxToolIterations,
-    telemetryTag: `call_agent:${agent}`,
   });
-
-  if ("type" in result && result.type === "data") {
-    return truncateForToolResult(result.data);
-  }
-
-  const msg = "message" in result ? result.message : "";
-  return truncateForToolResult(msg);
 }

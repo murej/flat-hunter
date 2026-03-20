@@ -1,16 +1,15 @@
-import { getPropertyExpertToolSets } from "@/lib/config/expert-web-search";
+import { buildTools, buildProviderTools } from "@/lib/core/tools";
+import { dbConfig } from "@/lib/config/db-config";
 import {
-  buildTools,
-  createExecuteTool,
-  type ToolSet,
-} from "@/lib/core/tools";
+  getPropertyExpertToolSets,
+  EXPERT_MAX_STEPS,
+} from "@/lib/config/expert-web-search";
 
-const PROPERTY_EXPERT_TOOL_SETS: ToolSet[] = getPropertyExpertToolSets();
-
-export function buildPropertyExpertTools() {
-  return buildTools(PROPERTY_EXPERT_TOOL_SETS);
-}
-
-export function createPropertyExpertExecuteTool() {
-  return createExecuteTool(PROPERTY_EXPERT_TOOL_SETS);
+export function getPropertyExpertTools() {
+  const sets = getPropertyExpertToolSets();
+  return {
+    tools: buildTools(sets, { db: dbConfig }),
+    providerTools: buildProviderTools(sets),
+    maxSteps: EXPERT_MAX_STEPS,
+  };
 }

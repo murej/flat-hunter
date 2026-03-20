@@ -1,111 +1,92 @@
-import { TelegramMessage } from "@/types";
+const BASE = () =>
+  `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN!}`;
+const CHAT_ID = () => process.env.TELEGRAM_CHAT_ID!;
 
-export type AgentButton = {
-  text: string;
-  callback_data: string;
+type SendOptions = {
+  parse_mode?: "Markdown" | "HTML";
+  reply_markup?: unknown;
 };
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID!;
-const BASE_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
+async function callTelegram(method: string, body: Record<string, unknown>) {
+  const res = await fetch(`${BASE()}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    console.error(`Telegram ${method} error:`, text);
+  }
+  return res;
+}
 
 export async function sendMessage(
   text: string,
-  options: Record<string, unknown> = {},
+  opts?: SendOptions,
 ): Promise<void> {
-  const { parse_mode, ...rest } = options;
-  const payload: Record<string, unknown> = {
-    chat_id: CHAT_ID,
+  await callTelegram("sendMessage", {
+    chat_id: CHAT_ID(),
     text,
-    ...rest,
-  };
-  if (parse_mode !== null && parse_mode !== false) {
-    payload.parse_mode = parse_mode ?? "Markdown";
-  }
-
-  const res = await fetch(`${BASE_URL}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    ...opts,
   });
-
-  if (!res.ok) {
-    const body = await res.text();
-    console.error("Telegram sendMessage failed:", body);
-    throw new Error(`Telegram sendMessage failed: ${res.status}`);
-  }
 }
 
 export async function sendWithButtons(
   text: string,
-  buttons: AgentButton[][],
-  options: Record<string, unknown> = {},
+  buttons: Array<Array<{ text: string; callback_data: string }>>,
+  parseMode?: "Markdown" | "HTML",
 ): Promise<void> {
   await sendMessage(text, {
-    reply_markup: {
-      inline_keyboard: buttons,
-    },
-    ...options,
+    parse_mode: parseMode,
+    reply_markup: { inline_keyboard: buttons },
   });
 }
-
-export type ReplyKeyboardRow = Array<{ text: string }>;
 
 export async function sendWithReplyKeyboard(
   text: string,
-  keyboardRows: ReplyKeyboardRow[],
-  options: { is_persistent?: boolean; resize_keyboard?: boolean } = {},
+  keyboard: string[][],
 ): Promise<void> {
-  const { is_persistent = true, resize_keyboard = true } = options;
   await sendMessage(text, {
     reply_markup: {
-      keyboard: keyboardRows,
-      is_persistent,
-      resize_keyboard,
+      keyboard: keyboard.map((row) =>
+        row.map((text) => ({ text })),
+      ),
+      resize_keyboard: true,
+      one_time_keyboard: true,
     },
   });
 }
 
-export function parseInbound(
-  body: Record<string, unknown>,
-): TelegramMessage | null {
-  const message =
-    (body.message as Record<string, unknown> | undefined) ||
-    (body.callback_query as Record<string, unknown> | undefined);
+export function parseInbound(body: Record<string, unknown>): {
+  text: string;
+  messageId: number;
+  callbackQueryId?: string;
+} {
+  // Callback query (inline button press)
+  if (body.callback_query) {
+    const cq = body.callback_query as Record<string, unknown>;
+    const msg = cq.message as Record<string, unknown> | undefined;
+    return {
+      text: (cq.data as string) || "",
+      messageId: (msg?.message_id as number) || 0,
+      callbackQueryId: cq.id as string,
+    };
+  }
 
-  if (!message) return null;
-
-  const callbackQuery = body.callback_query as
-    | Record<string, unknown>
-    | undefined;
-  const callbackQueryId = callbackQuery?.id as string | undefined;
-
-  const text =
-    (message.text as string | undefined) ||
-    (message.data as string | undefined) ||
-    "";
-
-  const messageId = String(
-    (message.message_id as number | undefined) ||
-      (message.id as number | undefined) ||
-      "",
-  );
-
-  return { text, messageId, callbackQueryId };
+  // Regular message
+  const msg = body.message as Record<string, unknown> | undefined;
+  return {
+    text: (msg?.text as string) || "",
+    messageId: (msg?.message_id as number) || 0,
+  };
 }
 
 export async function answerCallbackQuery(
   callbackQueryId: string,
+  text?: string,
 ): Promise<void> {
-  const res = await fetch(`${BASE_URL}/answerCallbackQuery`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ callback_query_id: callbackQueryId }),
+  await callTelegram("answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    ...(text && { text }),
   });
-
-  if (!res.ok) {
-    const body = await res.text();
-    console.error("Telegram answerCallbackQuery failed:", body);
-    throw new Error(`Telegram answerCallbackQuery failed: ${res.status}`);
-  }
 }

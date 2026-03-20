@@ -1,15 +1,6 @@
-import {
-  buildTools,
-  createExecuteTool,
-  type ToolSet,
-} from "@/lib/core/tools";
+import { buildTools } from "@/lib/core/tools";
+import { dbConfig } from "@/lib/config/db-config";
 
-export const PREFERENCE_TOOL_SETS: ToolSet[] = ["db"];
-
-export function buildPreferenceTools() {
-  return buildTools(PREFERENCE_TOOL_SETS);
-}
-
-export function createPreferenceExecuteTool() {
-  return createExecuteTool(PREFERENCE_TOOL_SETS);
+export function getPreferenceTools() {
+  return buildTools(["db"], { db: dbConfig });
 }

@@ -1,56 +1,27 @@
-/**
- * Anthropic model IDs for each agent path — override via env (see .env.example).
- */
+import { envModel } from "@/lib/utils/env-utils";
 
-import { envModel } from "@/lib/config/env-utils";
+const DEFAULT = "claude-haiku-4-5";
 
-const HAIKU_DEFAULT = "claude-haiku-4-5";
+export const getPropertyExpertModel = () =>
+  envModel("PROPERTY_EXPERT_MODEL", DEFAULT);
 
-/** When `runAgent` omits `model` (e.g. simple text turns). */
-export function getRunAgentDefaultModel(): string {
-  return envModel(process.env.LLM_DEFAULT_MODEL, HAIKU_DEFAULT);
-}
+export const getAreaExpertModel = () =>
+  envModel("AREA_EXPERT_MODEL", DEFAULT);
 
-export function getPropertyExpertModel(): string {
-  return envModel(process.env.PROPERTY_EXPERT_MODEL, HAIKU_DEFAULT);
-}
+export const getConversationModel = () =>
+  envModel("CONVERSATION_MODEL", DEFAULT);
 
-export function getAreaExpertModel(): string {
-  return envModel(process.env.AREA_EXPERT_MODEL, HAIKU_DEFAULT);
-}
+export const getWhyExplanationModel = () =>
+  envModel("WHY_EXPLANATION_MODEL", DEFAULT);
 
-/** Telegram conversation router (tools + Haiku-class tasks). */
-export function getConversationModel(): string {
-  return envModel(process.env.CONVERSATION_MODEL, HAIKU_DEFAULT);
-}
+export const getPreferenceCollectorModel = () =>
+  envModel("PREFERENCE_COLLECTOR_MODEL", DEFAULT);
 
-/** Why/compare explanation step after a data tool (defaults to CONVERSATION_MODEL). */
-export function getConversationExplanationModel(): string {
-  const explicit = process.env.CONVERSATION_EXPLANATION_MODEL?.trim();
-  if (explicit) return explicit;
-  return getConversationModel();
-}
+export const getIngestParseModel = () =>
+  envModel("INGEST_PARSE_MODEL", DEFAULT);
 
-/** “Why?” callback from scorecard (defaults to conversation explanation model). */
-export function getWhyExplanationModel(): string {
-  const explicit = process.env.WHY_EXPLANATION_MODEL?.trim();
-  if (explicit) return explicit;
-  return getConversationExplanationModel();
-}
+export const getEmailVerificationModel = () =>
+  envModel("EMAIL_VERIFICATION_MODEL", DEFAULT);
 
-export function getPreferenceCollectorModel(): string {
-  return envModel(process.env.PREFERENCE_COLLECTOR_MODEL, HAIKU_DEFAULT);
-}
-
-/** Listing JSON extraction from alert email HTML. */
-export function getIngestParseModel(): string {
-  return envModel(process.env.INGEST_PARSE_MODEL, HAIKU_DEFAULT);
-}
-
-export function getEmailVerificationModel(): string {
-  return envModel(process.env.EMAIL_VERIFICATION_MODEL, HAIKU_DEFAULT);
-}
-
-export function getAreaProfileModel(): string {
-  return envModel(process.env.AREA_PROFILE_MODEL, HAIKU_DEFAULT);
-}
+export const getAreaProfileModel = () =>
+  envModel("AREA_PROFILE_MODEL", DEFAULT);

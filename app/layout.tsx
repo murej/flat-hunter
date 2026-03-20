@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
-import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "Flat Hunter",
-  description: "Property search automation",
+export const metadata = {
+  title: "Stath",
+  description: "Property search assistant",
 };
 
 export default function RootLayout({

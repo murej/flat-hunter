@@ -1,395 +1,174 @@
-import type { Anthropic } from "@anthropic-ai/sdk";
-import type { AgentButton } from "@/lib/telegram";
-import { collectPreferences } from "@/lib/agents/preference";
+import { tool } from "ai";
+import { z } from "zod";
+import { buildTools } from "@/lib/core/tools";
+import { dbConfig } from "@/lib/config/db-config";
+import { isCallAgentEnabled, isReEvaluationAllowed, RE_EVAL_COOLDOWN_HOURS } from "@/lib/config/conversation-llm";
 import {
   saveListing,
   skipListing,
   getScorecard,
   getWhyContext,
-  getFormattedPreferences,
-  getFormattedSavedList,
   getComparisonData,
+  getFormattedSavedList,
+  getFormattedPreferences,
+  UPDATE_PREFERENCES_BUTTONS,
 } from "@/lib/tools/listing";
-import { buildScorecardButtons } from "@/lib/tools/scorecard";
-import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
-import {
-  getReEvalCooldownHours,
-  isConversationCallAgentEnabled,
-  isConversationReEvaluationAllowed,
-} from "@/lib/config/conversation-llm";
 import { supabaseAdmin } from "@/lib/supabase";
-import { buildTools, executeCallAgent } from "@/lib/core/tools";
-import type { ToolResult } from "@/lib/core/agent";
+import type { ToolResult } from "@/lib/core/types";
+import type { TelegramPayload } from "@/types";
 
-export const CONVERSATION_TOOL_SCHEMAS: Anthropic.Tool[] = [
-  {
-    name: "skip_listing",
-    description: "Dismiss listing.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id: {
-          type: "string",
-          description: "Listing UUID",
-        },
-      },
-      required: ["listing_id"],
-    },
-  },
-  {
-    name: "save_listing",
-    description: "Save listing to shortlist.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id: {
-          type: "string",
-          description: "Listing UUID",
-        },
-      },
-      required: ["listing_id"],
-    },
-  },
-  {
-    name: "show_property_scorecard",
-    description: "Show scorecard + buttons for a listing.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id: { type: "string", description: "Listing UUID" },
-      },
-      required: ["listing_id"],
-    },
-  },
-  {
-    name: "evaluate_listing",
-    description: "Re-run full evaluation (property, area, commute, finance).",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id: {
-          type: "string",
-          description: "Listing UUID",
-        },
-      },
-      required: ["listing_id"],
-    },
-  },
-  {
-    name: "show_saved_properties",
-    description: "List saved properties.",
-    input_schema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "show_preferences",
-    description: "Show current search preferences.",
-    input_schema: { type: "object" as const, properties: {} },
-  },
-  {
-    name: "get_property_evaluation",
-    description: "Load evaluation JSON for “why” explanations.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id: { type: "string", description: "Listing UUID" },
-      },
-      required: ["listing_id"],
-    },
-  },
-  {
-    name: "get_comparison_data",
-    description: "Load two listings’ evaluations for comparison.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        listing_id_a: { type: "string", description: "Listing UUID" },
-        listing_id_b: { type: "string", description: "Listing UUID" },
-      },
-      required: ["listing_id_a", "listing_id_b"],
-    },
-  },
-  {
-    name: "update_preferences",
-    description: "Start preference update flow.",
-    input_schema: { type: "object" as const, properties: {} },
-  },
-];
+export function buildConversationTools(activeListingId: number | null) {
+  let captured: ToolResult | null = null;
 
-export function buildConversationTools(): Anthropic.Tool[] {
-  const callAgentPart = isConversationCallAgentEnabled()
-    ? buildTools(["call_agent"])
-    : [];
-  const schemas = CONVERSATION_TOOL_SCHEMAS.filter(
-    (t) => t.name !== "evaluate_listing" || isConversationReEvaluationAllowed(),
+  const coreTools = buildTools(
+    isCallAgentEnabled() ? ["db", "call_agent"] : ["db"],
+    { db: dbConfig },
   );
-  return [...callAgentPart, ...schemas];
-}
 
-type InternalDirectResult = {
-  type: "direct";
-  message: string;
-  listingId?: string | null;
-  intent?: string | null;
-  scorecard?: boolean;
-  saved?: boolean;
-  savedListings?: Array<{ id: string }>;
-  buttons?: AgentButton[][];
-};
+  const domainTools = {
+    show_preferences: tool({
+      description: "Show the user's current search preferences",
+      parameters: z.object({}),
+      execute: async () => {
+        const text = await getFormattedPreferences();
+        captured = { type: "direct", message: text, payload: { parse_mode: "Markdown" } as TelegramPayload };
+        return text;
+      },
+    }),
 
-type InternalDataResult = {
-  type: "data";
-  data: string;
-  toolName: string;
-};
+    show_saved_properties: tool({
+      description: "Show all saved/shortlisted properties",
+      parameters: z.object({}),
+      execute: async () => {
+        const text = await getFormattedSavedList();
+        captured = { type: "direct", message: text, payload: { parse_mode: "Markdown" } as TelegramPayload };
+        return text;
+      },
+    }),
 
-type InternalToolResult = InternalDirectResult | InternalDataResult;
+    save_listing: tool({
+      description: "Save/shortlist a property listing",
+      parameters: z.object({
+        listing_id: z.number().describe("The listing ID to save"),
+      }),
+      execute: async ({ listing_id }) => {
+        const msg = await saveListing(listing_id);
+        captured = { type: "direct", message: msg };
+        return msg;
+      },
+    }),
 
-export type ConversationToolContext = {
-  activeListingId: string | null;
-  preferences: Record<string, unknown>;
-  userMessage: string;
-  messageId: string;
-};
+    skip_listing: tool({
+      description: "Dismiss/skip a property listing",
+      parameters: z.object({
+        listing_id: z.number().describe("The listing ID to skip"),
+      }),
+      execute: async ({ listing_id }) => {
+        const msg = await skipListing(listing_id);
+        captured = { type: "direct", message: msg };
+        return msg;
+      },
+    }),
 
-async function reEvalCooldownMessage(
-  listingId: string,
-): Promise<string | null> {
-  const hours = getReEvalCooldownHours();
-  if (hours <= 0) return null;
-
-  const { data } = await supabaseAdmin
-    .from("evaluations")
-    .select("created_at")
-    .eq("listing_id", listingId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!data?.created_at) return null;
-
-  const last = new Date(data.created_at as string).getTime();
-  const elapsedHr = (Date.now() - last) / (3600 * 1000);
-  if (elapsedHr >= hours) return null;
-
-  const remaining = Math.max(1, Math.ceil(hours - elapsedHr));
-  return `This property was evaluated recently — please wait about ${remaining} more hour(s) before running a full re-evaluation.`;
-}
-
-async function executeToolInternal(
-  toolName: string,
-  toolInput: Record<string, unknown>,
-  ctx: ConversationToolContext,
-): Promise<InternalToolResult> {
-  const listingId = (toolInput.listing_id as string) ?? ctx.activeListingId;
-
-  if (toolName === "call_agent") {
-    const data = await executeCallAgent(
-      String(toolInput.agent),
-      String(toolInput.prompt),
-    );
-    return { type: "data", data, toolName };
-  }
-
-  switch (toolName) {
-    case "skip_listing": {
-      if (!listingId) {
-        return {
+    show_property_scorecard: tool({
+      description: "Show the full scorecard for a property",
+      parameters: z.object({
+        listing_id: z.number().describe("The listing ID"),
+      }),
+      execute: async ({ listing_id }) => {
+        const scorecard = await getScorecard(listing_id);
+        if (!scorecard) return "Listing not found.";
+        captured = {
           type: "direct",
-          message: "Which property would you like to skip?",
+          message: scorecard.text,
+          payload: { buttons: scorecard.buttons, parse_mode: "Markdown" } as TelegramPayload,
         };
-      }
-      await skipListing(listingId);
-      return {
-        type: "direct",
-        message: "Done — property dismissed. 👋",
-        listingId,
-        intent: "skip",
-      };
-    }
+        return scorecard.text;
+      },
+    }),
 
-    case "save_listing": {
-      if (!listingId) {
-        return {
+    evaluate_listing: tool({
+      description: "Trigger re-evaluation of a listing (respects cooldown)",
+      parameters: z.object({
+        listing_id: z.number().describe("The listing ID to re-evaluate"),
+      }),
+      execute: async ({ listing_id }) => {
+        if (!isReEvaluationAllowed()) {
+          return "Re-evaluation is currently disabled.";
+        }
+
+        // Check cooldown
+        const { data: existing } = await supabaseAdmin
+          .from("evaluations")
+          .select("created_at")
+          .eq("listing_id", listing_id)
+          .single();
+
+        if (existing) {
+          const lastEval = new Date(existing.created_at).getTime();
+          const cooldownMs = RE_EVAL_COOLDOWN_HOURS * 60 * 60 * 1000;
+          if (Date.now() - lastEval < cooldownMs) {
+            return `This listing was evaluated less than ${RE_EVAL_COOLDOWN_HOURS} hours ago. Please wait before re-evaluating.`;
+          }
+        }
+
+        // Queue for re-evaluation
+        await supabaseAdmin
+          .from("listings")
+          .update({ status: "pending_evaluation", updated_at: new Date().toISOString() })
+          .eq("id", listing_id);
+
+        captured = { type: "direct", message: "Re-evaluation queued. The cron job will pick it up within 5 minutes." };
+        return "Re-evaluation queued.";
+      },
+    }),
+
+    get_property_evaluation: tool({
+      description: "Get evaluation data for a property to explain scores (triggers Why explanation chain)",
+      parameters: z.object({
+        listing_id: z.number().describe("The listing ID"),
+      }),
+      execute: async ({ listing_id }) => {
+        const context = await getWhyContext(listing_id);
+        if (!context) return "Listing or evaluation not found.";
+        captured = { type: "data", data: context, toolName: "get_property_evaluation" };
+        return JSON.stringify(context);
+      },
+    }),
+
+    get_comparison_data: tool({
+      description: "Get data for comparing multiple properties",
+      parameters: z.object({
+        listing_ids: z.array(z.number()).describe("Array of listing IDs to compare"),
+      }),
+      execute: async ({ listing_ids }) => {
+        const data = await getComparisonData(listing_ids);
+        if (data.length === 0) return "No listings found.";
+        captured = { type: "data", data, toolName: "get_comparison_data" };
+        return JSON.stringify(data);
+      },
+    }),
+
+    update_preferences: tool({
+      description: "Start preference update flow",
+      parameters: z.object({
+        category: z.string().optional().describe("Specific category to update, or empty for full update"),
+      }),
+      execute: async ({ category }) => {
+        captured = {
           type: "direct",
-          message: "Which property would you like to save?",
+          message: category
+            ? `Let's update your ${category} preferences. What would you like to change?`
+            : "What preferences would you like to update?",
+          payload: { buttons: UPDATE_PREFERENCES_BUTTONS, parse_mode: "Markdown" } as TelegramPayload,
         };
-      }
-      await saveListing(listingId);
-      return {
-        type: "direct",
-        message: "Saved! ⭐️ I'll keep that one for you.",
-        listingId,
-        intent: "save",
-      };
-    }
+        return "Preference update initiated.";
+      },
+    }),
+  };
 
-    case "evaluate_listing": {
-      if (!listingId) {
-        return {
-          type: "direct",
-          message:
-            "Which property would you like to re-evaluate? Tap a scorecard button or mention the property.",
-        };
-      }
-      const cooldownMsg = await reEvalCooldownMessage(listingId);
-      if (cooldownMsg) {
-        return {
-          type: "direct",
-          message: cooldownMsg,
-          listingId,
-          intent: "other",
-        };
-      }
-      try {
-        const result = await runEvaluationPipeline(listingId);
-        const buttons = buildScorecardButtons(
-          result.listing.id,
-          result.listing.status === "saved",
-        );
-        return {
-          type: "direct",
-          message: result.scorecardText,
-          listingId: result.listing.id,
-          intent: "other",
-          scorecard: true,
-          saved: result.listing.status === "saved",
-          buttons,
-        };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { type: "data", data: `Evaluation failed: ${msg}`, toolName };
-      }
-    }
-
-    case "show_property_scorecard": {
-      if (!listingId) {
-        return {
-          type: "direct",
-          message:
-            "Which property would you like to see? Tap a scorecard button or mention the property.",
-        };
-      }
-      const scorecardResult = await getScorecard(listingId);
-      if (!scorecardResult.ok) {
-        return { type: "direct", message: scorecardResult.message };
-      }
-      return {
-        type: "direct",
-        message: scorecardResult.scorecardText,
-        listingId: scorecardResult.listingId,
-        intent: "other",
-        scorecard: true,
-        saved: scorecardResult.buttons[0]?.some((b) =>
-          b.callback_data.startsWith("unsave:"),
-        ),
-        buttons: scorecardResult.buttons,
-      };
-    }
-
-    case "show_saved_properties": {
-      const savedResult = await getFormattedSavedList();
-      if (!savedResult.ok) {
-        return { type: "direct", message: savedResult.message };
-      }
-      return {
-        type: "direct",
-        message: savedResult.message,
-        intent: "other",
-        savedListings: savedResult.savedListings.map((l) => ({ id: l.id })),
-      };
-    }
-
-    case "show_preferences": {
-      const prefsResult = await getFormattedPreferences();
-      if (!prefsResult.ok) {
-        return { type: "direct", message: "No preferences set." };
-      }
-      return {
-        type: "direct",
-        message: prefsResult.message,
-        intent: "preferences",
-        buttons: prefsResult.buttons,
-      };
-    }
-
-    case "get_property_evaluation": {
-      if (!listingId) {
-        return {
-          type: "data",
-          data: "No listing ID found. Ask the user which property they mean.",
-          toolName,
-        };
-      }
-      const whyResult = await getWhyContext(listingId);
-      if (!whyResult.ok) {
-        return { type: "data", data: whyResult.error, toolName };
-      }
-      return { type: "data", data: whyResult.context, toolName };
-    }
-
-    case "get_comparison_data": {
-      const idA = toolInput.listing_id_a as string;
-      const idB = toolInput.listing_id_b as string;
-      if (!idA || !idB) {
-        return {
-          type: "data",
-          data: "Please mention the IDs of the two properties you'd like to compare.",
-          toolName,
-        };
-      }
-      const result = await getComparisonData(idA, idB);
-      const data = result.ok ? result.data : result.message;
-      return { type: "data", data, toolName };
-    }
-
-    case "update_preferences": {
-      const result = await collectPreferences(ctx.userMessage, ctx.messageId);
-      return { type: "direct", message: result.message, intent: "preferences" };
-    }
-
-    default:
-      return { type: "data", data: `Unknown tool: ${toolName}`, toolName };
-  }
-}
-
-export function createConversationExecuteTool(
-  ctx: ConversationToolContext,
-): (name: string, input: Record<string, unknown>) => Promise<ToolResult> {
-  return async (
-    name: string,
-    input: Record<string, unknown>,
-  ): Promise<ToolResult> => {
-    const toolInput = input as Record<string, unknown>;
-    const result = await executeToolInternal(name, toolInput, ctx);
-    if (result.type === "direct") {
-      let buttons: AgentButton[][] | undefined;
-      if (result.buttons && result.buttons.length > 0) {
-        buttons = result.buttons;
-      } else if (result.scorecard && result.listingId) {
-        const saveButton = result.saved
-          ? { text: "🗑 Unsave", callback_data: `unsave:${result.listingId}` }
-          : { text: "💾 Save", callback_data: `save:${result.listingId}` };
-        const scorecardButtons = [
-          saveButton,
-          ...(result.saved
-            ? []
-            : [{ text: "⏭ Skip", callback_data: `skip:${result.listingId}` }]),
-          { text: "❓ Why?", callback_data: `why:${result.listingId}` },
-        ];
-        buttons = [scorecardButtons];
-      } else if (result.savedListings && result.savedListings.length > 0) {
-        buttons = result.savedListings.map((l, i) => [
-          { text: `📋 ${i + 1}`, callback_data: `scorecard:${l.id}` },
-        ]);
-      }
-      return {
-        type: "direct",
-        message: result.message,
-        metadata: { listingId: result.listingId, intent: result.intent },
-        buttons,
-        parse_mode: result.scorecard ? "HTML" : undefined,
-      };
-    }
-    return result;
+  return {
+    tools: { ...coreTools, ...domainTools },
+    getCaptured: () => captured,
   };
 }

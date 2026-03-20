@@ -1,118 +1,112 @@
--- Flat Hunter database schema
--- Run in Supabase SQL Editor, or use the Supabase MCP to apply.
+-- Stath database schema
 
-create table preferences (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz default now(),
-  updated_at timestamptz default now(),
-  areas text[],
-  max_price integer,
-  min_bedrooms integer,
-  must_haves text[],
-  deal_breakers text[],
-  commute_anchor text,
-  commute_anchor_postcode text,
-  max_commute_minutes integer,
-  style_notes text,
-  freeform_notes text,
-  deposit integer,
-  area_preferences text[] default '{}',
-  raw_json jsonb
+CREATE TABLE IF NOT EXISTS preferences (
+  id SERIAL PRIMARY KEY,
+  areas TEXT[] NOT NULL DEFAULT '{}',
+  max_price INTEGER NOT NULL DEFAULT 0,
+  deposit INTEGER NOT NULL DEFAULT 0,
+  min_bedrooms INTEGER NOT NULL DEFAULT 1,
+  commute_anchor TEXT NOT NULL DEFAULT '',
+  commute_postcode TEXT NOT NULL DEFAULT '',
+  commute_max_minutes INTEGER NOT NULL DEFAULT 45,
+  must_haves TEXT[] NOT NULL DEFAULT '{}',
+  deal_breakers TEXT[] NOT NULL DEFAULT '{}',
+  style_notes TEXT,
+  freeform_notes TEXT,
+  area_preferences TEXT[] NOT NULL DEFAULT '{}',
+  raw_json JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create table listings (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz default now(),
-  portal_id text unique,
-  url text,
-  title text,
-  price integer,
-  address text,
-  postcode text,
-  bedrooms integer,
-  bathrooms integer,
-  sqft integer,
-  description text,
-  image_urls text[],
-  floorplan_url text,
-  agent_name text,
-  agent_email text,
-  listed_date date,
-  status text default 'pending_evaluation',
-  raw_email_html text
+CREATE TABLE IF NOT EXISTS listings (
+  id SERIAL PRIMARY KEY,
+  portal_id TEXT NOT NULL UNIQUE,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  price INTEGER NOT NULL,
+  address TEXT NOT NULL,
+  postcode TEXT NOT NULL,
+  bedrooms INTEGER NOT NULL DEFAULT 0,
+  bathrooms INTEGER NOT NULL DEFAULT 0,
+  sqft INTEGER,
+  description TEXT NOT NULL DEFAULT '',
+  image_urls TEXT[] NOT NULL DEFAULT '{}',
+  floorplan_url TEXT,
+  agent_name TEXT,
+  agent_email TEXT,
+  listed_date TEXT,
+  status TEXT NOT NULL DEFAULT 'pending_evaluation'
+    CHECK (status IN ('pending_evaluation', 'evaluated', 'saved', 'dismissed', 'viewing_requested')),
+  raw_email_html TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create table evaluations (
-  id uuid primary key default gen_random_uuid(),
-  listing_id uuid references listings(id),
-  created_at timestamptz default now(),
-  price_score numeric,
-  size_score numeric,
-  fit_score numeric,
-  area_score numeric,
-  commute_score numeric,
-  overall_score numeric,
-  deal_breaker_flags text[],
-  commute_minutes integer,
-  commute_route text,
-  monthly_mortgage numeric,
-  monthly_interest_only numeric,
-  stamp_duty numeric,
-  estimated_monthly_total numeric,
-  property_summary text,
-  area_summary text,
-  raw_property_eval jsonb,
-  raw_area_eval jsonb,
-  raw_finance_eval jsonb,
-  property_scores_unknown boolean default false,
-  area_score_unknown boolean default false,
-  commute_score_unknown boolean default false
+CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status);
+CREATE INDEX IF NOT EXISTS idx_listings_portal_id ON listings(portal_id);
+
+CREATE TABLE IF NOT EXISTS evaluations (
+  id SERIAL PRIMARY KEY,
+  listing_id INTEGER NOT NULL UNIQUE REFERENCES listings(id) ON DELETE CASCADE,
+  price_score INTEGER NOT NULL,
+  size_score INTEGER NOT NULL,
+  fit_score INTEGER NOT NULL,
+  commute_score INTEGER NOT NULL,
+  area_score INTEGER NOT NULL,
+  overall_score NUMERIC(3,1) NOT NULL,
+  deal_breaker_flags TEXT[] NOT NULL DEFAULT '{}',
+  commute_minutes INTEGER,
+  commute_route TEXT,
+  mortgage_monthly INTEGER,
+  interest_only_monthly INTEGER,
+  stamp_duty INTEGER,
+  stress_test_monthly INTEGER,
+  total_monthly INTEGER,
+  property_summary TEXT NOT NULL DEFAULT '',
+  area_summary TEXT NOT NULL DEFAULT '',
+  raw_property_eval JSONB,
+  raw_area_eval JSONB,
+  property_unknown TEXT,
+  area_unknown TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create table conversations (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz default now(),
-  telegram_message_id text,
-  direction text,
-  message text,
-  listing_id uuid references listings(id),
-  intent text
+CREATE TABLE IF NOT EXISTS conversations (
+  id SERIAL PRIMARY KEY,
+  telegram_message_id INTEGER NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  message TEXT NOT NULL,
+  listing_id INTEGER REFERENCES listings(id) ON DELETE SET NULL,
+  intent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Idempotency table for Cloudmailin ingest webhook.
--- Prevents duplicate processing when Cloudmailin retries (e.g. on timeout).
-create table ingest_idempotency (
-  idempotency_key text primary key,
-  created_at timestamptz default now()
+CREATE INDEX IF NOT EXISTS idx_conversations_created ON conversations(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ingest_idempotency (
+  idempotency_key TEXT PRIMARY KEY
 );
 
--- Pending notifications for ingest handoff to Openclaw consumer.
--- Ingest writes intro/scorecard/summary rows; consumer sends to Telegram and acks.
-create table pending_notifications (
-  id uuid primary key default gen_random_uuid(),
-  batch_id uuid not null,
-  sequence int not null,
-  type text not null check (type in ('intro', 'scorecard', 'summary')),
-  payload jsonb not null,
-  created_at timestamptz default now(),
-  consumed_at timestamptz
+CREATE TABLE IF NOT EXISTS pending_notifications (
+  id SERIAL PRIMARY KEY,
+  batch_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL DEFAULT 0,
+  type TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}',
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index idx_pending_notifications_unconsumed
-  on pending_notifications (batch_id, sequence)
-  where consumed_at is null;
+CREATE INDEX IF NOT EXISTS idx_notifications_batch ON pending_notifications(batch_id, consumed_at);
 
--- Agent context: general findings per agent/scope (refined on write to prevent inflation)
-create table agent_context (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz default now(),
-  updated_at timestamptz default now(),
-  agent_id text not null,
-  scope text not null,
-  scope_value text,
-  content jsonb not null,
-  expires_at timestamptz,
-  unique(agent_id, scope, scope_value)
+CREATE TABLE IF NOT EXISTS agent_context (
+  id SERIAL PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  scope_value TEXT NOT NULL,
+  content JSONB NOT NULL DEFAULT '{}',
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (agent_id, scope, scope_value)
 );
-
-create index idx_agent_context_lookup on agent_context (agent_id, scope, scope_value);
