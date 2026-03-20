@@ -12,6 +12,10 @@ import {
   WHY_EXPLANATION_SYSTEM,
   COMPARISON_SYSTEM,
 } from "./prompts";
+import {
+  getConversationExplanationModel,
+  getConversationModel,
+} from "@/lib/config/agent-models";
 import { getConversationMaxToolIterations } from "@/lib/config/conversation-llm";
 import { runAgent } from "@/lib/core/agent";
 import {
@@ -170,7 +174,7 @@ export async function conversationAgent(
       prompt: text,
       systemPrompt,
       tools: buildConversationTools(),
-      model: "claude-haiku-4-5",
+      model: getConversationModel(),
       messages,
       maxToolIterations: getConversationMaxToolIterations(),
       telemetryTag: "conversation_router",
@@ -191,6 +195,7 @@ export async function conversationAgent(
         prompt: result.data,
         systemPrompt:
           explanationAgent?.systemPrompt ?? CONVERSATION_AGENT_SYSTEM,
+        model: getConversationExplanationModel(),
         telemetryTag: "conversation_explanation",
       });
     }

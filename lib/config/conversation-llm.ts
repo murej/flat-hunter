@@ -2,25 +2,12 @@
  * Env-driven knobs for Telegram conversation + related LLM calls (token/cost control).
  */
 
-import {
-  envBool,
-  envIntClamped,
-  envModel,
-} from "@/lib/config/env-utils";
+import { envBool, envIntClamped } from "@/lib/config/env-utils";
 
-const DEFAULT_AREA_PROFILE_MODEL = "claude-haiku-4-5";
-const DEFAULT_EMAIL_VERIFICATION_MODEL = "claude-haiku-4-5";
-
-export function getAreaProfileModel(): string {
-  return envModel(process.env.AREA_PROFILE_MODEL, DEFAULT_AREA_PROFILE_MODEL);
-}
-
-export function getEmailVerificationModel(): string {
-  return envModel(
-    process.env.EMAIL_VERIFICATION_MODEL,
-    DEFAULT_EMAIL_VERIFICATION_MODEL,
-  );
-}
+export {
+  getAreaProfileModel,
+  getEmailVerificationModel,
+} from "@/lib/config/agent-models";
 
 /** Default true — set CONVERSATION_CALL_AGENT=false to avoid nested Sonnet experts from chat. */
 export function isConversationCallAgentEnabled(): boolean {

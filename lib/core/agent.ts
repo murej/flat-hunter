@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getRunAgentDefaultModel } from "@/lib/config/agent-models";
 import { envBool } from "@/lib/config/env-utils";
 import { sendMessage } from "@/lib/telegram";
 
@@ -51,7 +52,6 @@ export type DataOutput = {
 
 export type RunAgentOutput = MessageOutput | DataOutput;
 
-const DEFAULT_MODEL = "claude-haiku-4-5";
 const DEFAULT_MAX_TOOL_ITERATIONS = 5;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -77,7 +77,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
     systemPrompt,
     prompt,
     tools,
-    model = DEFAULT_MODEL,
+    model = getRunAgentDefaultModel(),
     messages: history,
     executeTool,
     maxToolIterations = DEFAULT_MAX_TOOL_ITERATIONS,

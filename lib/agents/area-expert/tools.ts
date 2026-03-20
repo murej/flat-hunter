@@ -1,7 +1,5 @@
-import {
-  getAreaProfileModel,
-  isAreaProfileBatchEnabled,
-} from "@/lib/config/conversation-llm";
+import { getAreaProfileModel } from "@/lib/config/agent-models";
+import { isAreaProfileBatchEnabled } from "@/lib/config/conversation-llm";
 import { getAreaExpertToolSets } from "@/lib/config/expert-web-search";
 import { runAgent } from "@/lib/core/agent";
 import pLimit from "p-limit";

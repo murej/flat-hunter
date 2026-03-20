@@ -1,3 +1,4 @@
+import { getPropertyExpertModel } from "@/lib/config/agent-models";
 import { getExpertMaxToolIterations } from "@/lib/config/expert-web-search";
 import { runAgent } from "@/lib/core/agent";
 import { PROPERTY_EXPERT_SYSTEM } from "./prompts";
@@ -12,6 +13,7 @@ import { truncatePriorFindings } from "@/lib/utils/tool-result";
 const executeTool = createPropertyExpertExecuteTool();
 
 const EXPERT_MAX_TOOL_ITERATIONS = getExpertMaxToolIterations();
+const PROPERTY_EXPERT_MODEL = getPropertyExpertModel();
 
 const MAX_DESCRIPTION_CHARS = 2500;
 const MAX_IMAGE_URLS = 4;
@@ -77,7 +79,7 @@ function slimPreferencesForPropertyExpert(
 registerAgent("property_expert", {
   systemPrompt: PROPERTY_EXPERT_SYSTEM,
   tools: buildPropertyExpertTools(),
-  model: "claude-sonnet-4-6",
+  model: PROPERTY_EXPERT_MODEL,
   executeTool,
   maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
 });
@@ -104,7 +106,7 @@ export async function runPropertyExpert(
     systemPrompt: PROPERTY_EXPERT_SYSTEM,
     prompt,
     tools: buildPropertyExpertTools(),
-    model: "claude-sonnet-4-6",
+    model: PROPERTY_EXPERT_MODEL,
     executeTool,
     maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
     telemetryTag: "property_expert",

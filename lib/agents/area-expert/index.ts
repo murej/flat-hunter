@@ -1,3 +1,4 @@
+import { getAreaExpertModel } from "@/lib/config/agent-models";
 import { getExpertMaxToolIterations } from "@/lib/config/expert-web-search";
 import { runAgent } from "@/lib/core/agent";
 import { AREA_EXPERT_SYSTEM } from "./prompts";
@@ -14,11 +15,12 @@ import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
 const executeTool = createAreaExpertExecuteTool();
 
 const EXPERT_MAX_TOOL_ITERATIONS = getExpertMaxToolIterations();
+const AREA_EXPERT_MODEL = getAreaExpertModel();
 
 registerAgent("area_expert", {
   systemPrompt: AREA_EXPERT_SYSTEM,
   tools: buildAreaExpertTools(),
-  model: "claude-sonnet-4-6",
+  model: AREA_EXPERT_MODEL,
   executeTool,
   maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
 });
@@ -44,7 +46,7 @@ export async function runAreaExpert(
     systemPrompt: AREA_EXPERT_SYSTEM,
     prompt,
     tools: buildAreaExpertTools(),
-    model: "claude-sonnet-4-6",
+    model: AREA_EXPERT_MODEL,
     executeTool,
     maxToolIterations: EXPERT_MAX_TOOL_ITERATIONS,
     telemetryTag: "area_expert",

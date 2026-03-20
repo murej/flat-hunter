@@ -64,7 +64,7 @@ export async function ingestAgent(
     return { done: true };
   }
 
-  const newIds = await deduplicateAndStore(listings);
+  const newIds = await deduplicateAndStore(listings, html);
   // #region agent log
   (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/index.ts:ingestAgent',message:'after deduplicateAndStore',data:{newIdsLen:newIds.length},hypothesisId:'no-msg',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
   // #endregion

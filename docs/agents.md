@@ -96,4 +96,4 @@ Agents register when their module is loaded. Ensure the agent module is imported
 
 The main entry agent (e.g. conversation) typically does not need to register, since it is invoked directly by the handler rather than via `call_agent`.
 
-Some agents (e.g. ingest) are orchestrators that use `runAgent` for one-off LLM calls (e.g. parsing emails) rather than the full tool-loop pattern. They still follow the folder structure with `prompts.ts` and `tools.ts`.
+Some agents (e.g. ingest) are orchestrators that use `runAgent` for one-off LLM calls (e.g. parsing emails) rather than the full tool-loop pattern. They still follow the folder structure with `prompts.ts` and `tools.ts`. Ingest persists `listings.raw_email_html`: a URL-anchored HTML snippet when the listing URL appears in the email body, otherwise a byte-capped copy of the full body (for debugging and future tooling).

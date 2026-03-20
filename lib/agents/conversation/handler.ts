@@ -17,6 +17,7 @@ import {
 } from "@/lib/tools/listing";
 import { WHY_EXPLANATION_SYSTEM } from "@/lib/agents/conversation/prompts";
 import { conversationAgent } from "@/lib/agents/conversation";
+import { getWhyExplanationModel } from "@/lib/config/agent-models";
 import { runAgent } from "@/lib/core/agent";
 
 export async function handleTelegramUpdate(
@@ -88,6 +89,8 @@ export async function handleTelegramUpdate(
         const explanation = await runAgent({
           prompt: result.context,
           systemPrompt: WHY_EXPLANATION_SYSTEM,
+          model: getWhyExplanationModel(),
+          telemetryTag: "why_explanation",
         });
         const message = "message" in explanation ? explanation.message : "";
         if (message) {

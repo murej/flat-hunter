@@ -3,8 +3,14 @@ import pLimit from "p-limit";
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
-import { getEmailVerificationModel } from "@/lib/config/conversation-llm";
-import { extractTextAndUrlsFromHtml } from "@/lib/utils/email-html";
+import {
+  getEmailVerificationModel,
+  getIngestParseModel,
+} from "@/lib/config/agent-models";
+import {
+  extractTextAndUrlsFromHtml,
+  extractRelevantListingHtml,
+} from "@/lib/utils/email-html";
 import {
   EMAIL_PARSER_SYSTEM,
   EMAIL_VERIFICATION_DETECTOR_SYSTEM,
@@ -117,7 +123,7 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
     runAgent({
       systemPrompt: EMAIL_PARSER_SYSTEM,
       prompt: claudeInput,
-      model: "claude-haiku-4-5",
+      model: getIngestParseModel(),
       telemetryTag: "ingest_parse_email",
     }),
   );
@@ -355,6 +361,7 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
 
 export async function deduplicateAndStore(
   listings: RawListing[],
+  sourceBody: string,
 ): Promise<string[]> {
   if (listings.length === 0) return [];
 
@@ -407,6 +414,7 @@ export async function deduplicateAndStore(
     agent_email: listing.agent_email,
     listed_date: listing.listed_date,
     status: "pending_evaluation",
+    raw_email_html: extractRelevantListingHtml(sourceBody, listing.url),
   }));
 
   const { data: inserted, error } = await supabaseAdmin
