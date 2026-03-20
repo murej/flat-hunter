@@ -25,30 +25,39 @@ A Telegram bot that helps you find and evaluate properties. It parses property a
 
 ## Setup
 
-1. **Install:** `npm install`
-2. **Create `.env.local`** in the project root with following variables:
+1. **Install:**
 
-| Variable                        | What it does                                                |
-| ------------------------------- | ----------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`             | API key from Anthropic. Powers the AI.                      |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL.                                       |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key.                                     |
-| `SUPABASE_SERVICE_ROLE_KEY`     | Supabase service role key — keep secret.                    |
-| `TELEGRAM_BOT_TOKEN`            | Token from @BotFather.                                      |
-| `TELEGRAM_CHAT_ID`              | Your chat ID (get from @userinfobot).                       |
-| `CLOUDMAILIN_SECRET`            | Email password (make it up, no special characters).         |
-| `MORTGAGE_RATE`                 | Annual rate override. Defaults to 4.5, autoupdates monthly. |
-| `TFL_APP_KEY`                   | Optional. TfL credentials for commute.                      |
-| `NEXT_PUBLIC_APP_URL`           | Deployed app URL                                            |
+```
+npm install
+```
+
+2. **Create `.env.local`** in the project root (copy `.env.example`) and set required environment variables (see next steps)
 
 3. **Create a database**
    - Create [Supabase](https://supabase.com) project\*\*
+   - Get your API keys and copy them to enviro
+
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=
+   SUPABASE_SERVICE_ROLE_KEY=
+   ```
+
    - Open SQL Editor, paste the contents of [`supabase/schema.sql`](supabase/schema.sql), and run it.
    - **Mortgage rates sync (optional):** Deploy a Supabase Edge Function (see [`scripts/sync-boe-mortgage-rate.ts`](scripts/sync-boe-mortgage-rate.ts)), then configure a monthly cron job to run it.
 
    TIP: You can use Supabase MCP to do this easily
 
-4. **Email ingestion**
+4. **Set up Telegram bot**
+   - Create a new bot by messaging @BotFather
+   - Copy the API token and chat ID to environment variables
+
+   ```
+   TELEGRAM_BOT_TOKEN=
+   TELEGRAM_CHAT_ID=
+   ```
+
+5. **Set up email ingestion**
 
 - Create a [Cloudmailin](https://www.cloudmailin.com) email account
 - Set up email alerts from property websites to your new email address
@@ -58,16 +67,11 @@ A Telegram bot that helps you find and evaluate properties. It parses property a
 https://cloudmailin:<CLOUDMAILIN_SECRET>@<your-tunnel-or-deoployed-url>/api/ingest
 ```
 
-5. **Deploy**
+6. **Deploy**
 
-- Deploy to [Vercel](https://vercel.com)
-- Copy environment variables to Vercel
-
-```
-npm run env:push
-```
-
-- Point Telegram bot to deployed Vercel URL
+- Deploy to [Vercel](https://vercel.com) and copy the public url
+- Point `NEXT_PUBLIC_APP_URL` environment variable to deployed URL
+- Configure Vercel project and the Telegram bot
 
 ```
 npm run use:prod
