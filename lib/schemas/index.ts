@@ -3,18 +3,12 @@ import { z } from "zod";
 export const PropertyEvalSchema = z.object({
   price_score: z
     .number()
-    .min(1)
-    .max(10)
     .describe("Price value score 1-10 (10 = great value)"),
   size_score: z
     .number()
-    .min(1)
-    .max(10)
     .describe("Size/space score 1-10 (10 = very spacious for price)"),
   fit_score: z
     .number()
-    .min(1)
-    .max(10)
     .describe("Overall fit against must-haves and preferences 1-10"),
   deal_breaker_flags: z
     .array(z.string())
@@ -29,8 +23,6 @@ export const PropertyEvalSchema = z.object({
 export const AreaEvalSchema = z.object({
   area_score: z
     .number()
-    .min(1)
-    .max(10)
     .describe("Area desirability score 1-10"),
   area_summary: z
     .string()

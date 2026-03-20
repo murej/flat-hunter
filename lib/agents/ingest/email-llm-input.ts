@@ -107,10 +107,12 @@ export async function buildLlmContextFromRaw(
     const processed = preprocessString(rawMessage);
     let context = toLlmContext(processed);
 
-    // Also extract listing URLs from the raw message
+    // Extract direct listing URLs and all hrefs from the raw message
     const urls = extractListingUrls(rawMessage);
-    if (urls.length > 0) {
-      context += `\n\nDetected listing URLs:\n${urls.join("\n")}`;
+    const hrefs = extractAllHrefs(rawMessage);
+    const allUrls = [...new Set([...urls, ...hrefs])];
+    if (allUrls.length > 0) {
+      context += `\n\nDetected URLs:\n${allUrls.join("\n")}`;
     }
 
     if (context.length > MAX_INPUT_CHARS) {
