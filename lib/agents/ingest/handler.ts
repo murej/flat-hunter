@@ -14,7 +14,8 @@ function checkAuth(request: Request): boolean {
   if (scheme !== "Basic") return false;
 
   const decoded = atob(credentials);
-  return decoded === secret;
+  const password = decoded.split(":").slice(1).join(":");
+  return password === secret;
 }
 
 export async function handleIngestWebhook(
