@@ -43,16 +43,29 @@ fi
 
 echo ""
 echo "Tunnel URL: $TUNNEL_URL"
+
 echo ""
 
-# Set Telegram webhook
+# Set Telegram webhook (retry up to 5 times — DNS may not have propagated yet)
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   WEBHOOK_URL="$TUNNEL_URL/api/telegram"
   echo "Setting Telegram webhook to $WEBHOOK_URL..."
-  RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-    -H "Content-Type: application/json" \
-    -d "{\"url\": \"${WEBHOOK_URL}\"}")
-  echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
+  for attempt in $(seq 1 5); do
+    RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+      -H "Content-Type: application/json" \
+      -d "{\"url\": \"${WEBHOOK_URL}\"}")
+    if echo "$RESPONSE" | grep -q '"ok":true'; then
+      echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
+      break
+    fi
+    if [ "$attempt" -eq 5 ]; then
+      echo "Failed after 5 attempts:"
+      echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
+    else
+      echo "Attempt $attempt failed, retrying in 3s..."
+      sleep 3
+    fi
+  done
   echo ""
 else
   echo "TELEGRAM_BOT_TOKEN not set — skipping webhook setup"
