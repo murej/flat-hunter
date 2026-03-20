@@ -7,6 +7,7 @@ import {
 } from "./tools";
 import { buildLlmContextFromParts, buildLlmContextFromRaw } from "./email-llm-input";
 import { sendMessage } from "@/lib/telegram";
+import { envBool } from "@/lib/utils/env-utils";
 
 export async function ingestAgent(
   content: string,
@@ -41,6 +42,10 @@ export async function ingestAgent(
   const listings = await parseEmailHtml(llmContent);
   if (listings.length === 0) {
     console.log("No listings found in email.");
+    if (envBool("VERBOSE_TELEGRAM")) {
+      const snippet = llmContent.slice(0, 300);
+      await sendMessage(`📭 No listings found in email.\n\nContent preview:\n${snippet}…`);
+    }
     return { newIds: [] };
   }
 
@@ -48,6 +53,9 @@ export async function ingestAgent(
   const newIds = await deduplicateAndStore(listings);
   if (newIds.length === 0) {
     console.log("All listings were duplicates.");
+    if (envBool("VERBOSE_TELEGRAM")) {
+      await sendMessage(`📭 ${listings.length} listing(s) found but all were duplicates.`);
+    }
     return { newIds: [] };
   }
 
