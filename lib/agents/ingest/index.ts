@@ -19,21 +19,46 @@ export async function ingestAgent(
   html: string,
   subject?: string,
   plain?: string,
+  rawMessage?: string,
 ): Promise<IngestResult> {
-  const key = computeIdempotencyKey(html, subject);
+  const key = computeIdempotencyKey(html, subject, plain);
   const claimed = await claimIdempotencyKey(key);
-  // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/index.ts:ingestAgent',message:'after claimIdempotencyKey',data:{claimed},hypothesisId:'no-msg',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-  // #endregion
   if (!claimed) {
+    // #region agent log
+    fetch(
+      "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "80f195",
+        },
+        body: JSON.stringify({
+          sessionId: "80f195",
+          runId: "post-fix",
+          hypothesisId: "A",
+          location: "ingest/index.ts:idempotency",
+          message: "duplicate idempotency — enqueueing user notice",
+          data: { keyPrefix: key.slice(0, 16) },
+          timestamp: Date.now(),
+        }),
+      },
+    ).catch(() => {});
+    // #endregion
+    await enqueueOneOffMessage(
+      "📬 This email was already processed (same content as before — e.g. a duplicate forward or provider retry). Nothing new was added.",
+      { parse_mode: false },
+    );
     return { done: true };
   }
 
   // Check verification first (saves listing-parse call for verification emails)
-  const verification = await parseVerificationEmail(html, subject, plain);
-  // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/index.ts:ingestAgent',message:'after parseVerificationEmail',data:{isVerification:verification.isVerification},hypothesisId:'no-msg',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-  // #endregion
+  const verification = await parseVerificationEmail(
+    html,
+    subject,
+    plain,
+    rawMessage,
+  );
   if (verification.isVerification) {
     if (verification.verificationUrl) {
       await enqueueOneOffMessage(
@@ -52,10 +77,28 @@ export async function ingestAgent(
     return { done: true };
   }
 
-  const listings = await parseEmailHtml(html);
   // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/index.ts:ingestAgent',message:'after parseEmailHtml',data:{listingsLen:listings.length},hypothesisId:'no-msg',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
+  fetch(
+    "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "80f195",
+      },
+      body: JSON.stringify({
+        sessionId: "80f195",
+        runId: "pre-fix",
+        hypothesisId: "A",
+        location: "ingest/index.ts:after-verification",
+        message: "past verification — parsing listings",
+        data: { htmlLen: html.length },
+        timestamp: Date.now(),
+      }),
+    },
+  ).catch(() => {});
   // #endregion
+  const listings = await parseEmailHtml(html, subject, rawMessage);
 
   if (listings.length === 0) {
     await enqueueOneOffMessage(
@@ -64,10 +107,7 @@ export async function ingestAgent(
     return { done: true };
   }
 
-  const newIds = await deduplicateAndStore(listings, html);
-  // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/index.ts:ingestAgent',message:'after deduplicateAndStore',data:{newIdsLen:newIds.length},hypothesisId:'no-msg',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-  // #endregion
+  const newIds = await deduplicateAndStore(listings, html || plain || "");
 
   if (newIds.length === 0) {
     await enqueueOneOffMessage(

@@ -7,10 +7,13 @@ import {
   getEmailVerificationModel,
   getIngestParseModel,
 } from "@/lib/config/agent-models";
+import { extractRelevantListingHtml } from "@/lib/utils/email-html";
 import {
-  extractTextAndUrlsFromHtml,
-  extractRelevantListingHtml,
-} from "@/lib/utils/email-html";
+  buildLlmContextFromParts,
+  buildLlmContextFromRaw,
+  extractListingUrls,
+  extractAllHrefs,
+} from "@/lib/utils/email-llm-input";
 import {
   EMAIL_PARSER_SYSTEM,
   EMAIL_VERIFICATION_DETECTOR_SYSTEM,
@@ -28,8 +31,6 @@ import {
 import { consumePendingNotifications } from "@/lib/agents/notifications";
 
 export const MAX_LISTINGS_PER_EMAIL = 100;
-
-const MAX_EMAIL_CONTENT_BYTES = 40 * 1024; // 40KB — balance parse quality vs context
 
 export interface RawListing {
   portal_id: string;
@@ -54,16 +55,44 @@ export async function enqueueOneOffMessage(
   options?: { parse_mode?: false },
 ): Promise<void> {
   const batchId = crypto.randomUUID();
-  await supabaseAdmin.from("pending_notifications").insert({
-    batch_id: batchId,
-    sequence: 0,
-    type: "intro",
-    payload: {
-      kind: "one_off",
-      text,
-      ...(options?.parse_mode === false ? { parse_mode: false } : {}),
+  const { error: insertError } = await supabaseAdmin
+    .from("pending_notifications")
+    .insert({
+      batch_id: batchId,
+      sequence: 0,
+      type: "intro",
+      payload: {
+        kind: "one_off",
+        text,
+        ...(options?.parse_mode === false ? { parse_mode: false } : {}),
+      },
+    });
+  // #region agent log
+  fetch(
+    "http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "80f195",
+      },
+      body: JSON.stringify({
+        sessionId: "80f195",
+        runId: "pre-fix",
+        hypothesisId: "D",
+        location: "ingest/tools.ts:enqueueOneOffMessage",
+        message: "pending_notifications insert result",
+        data: {
+          hasError: Boolean(insertError),
+          errCode: insertError?.code ?? null,
+          errMsg: insertError?.message?.slice(0, 120) ?? null,
+          textLen: text.length,
+        },
+        timestamp: Date.now(),
+      }),
     },
-  });
+  ).catch(() => {});
+  // #endregion
   if (process.env.VERCEL) {
     waitUntil(consumePendingNotifications(batchId));
   } else {
@@ -71,9 +100,13 @@ export async function enqueueOneOffMessage(
   }
 }
 
-export function computeIdempotencyKey(html: string, subject?: string): string {
+export function computeIdempotencyKey(
+  html: string,
+  subject?: string,
+  plain?: string,
+): string {
   return createHash("sha256")
-    .update(html + (subject ?? ""))
+    .update((html || plain || "") + (subject ?? ""))
     .digest("hex");
 }
 
@@ -94,30 +127,16 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
   throw error;
 }
 
-function buildEmailParseExtractedContent(html: string): string {
-  let content = extractTextAndUrlsFromHtml(html);
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(content);
-  if (bytes.length > MAX_EMAIL_CONTENT_BYTES) {
-    const decoder = new TextDecoder("utf-8", { fatal: false });
-    content =
-      decoder.decode(bytes.subarray(0, MAX_EMAIL_CONTENT_BYTES)) +
-      "\n\n[... truncated for token limit ...]";
-  }
-  return content;
-}
+export async function parseEmailHtml(
+  html: string,
+  subject?: string,
+  rawMessage?: string,
+): Promise<RawListing[]> {
+  const context = rawMessage
+    ? (await buildLlmContextFromRaw(rawMessage)).context
+    : buildLlmContextFromParts(html, subject);
 
-function buildClaudeEmailParseInput(html: string): string {
-  const content = buildEmailParseExtractedContent(html);
-  return `Parse the following property alert email (text and URLs extracted from HTML) and extract all listings:\n\n${content}`;
-}
-
-export async function parseEmailHtml(html: string): Promise<RawListing[]> {
-  const tParse0 = Date.now();
-  // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'parseEmailHtml entry',data:{tParse0,htmlLen:html.length},hypothesisId:'H1,H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-  // #endregion
-  const claudeInput = buildClaudeEmailParseInput(html);
+  const claudeInput = `Parse the following property alert email and extract all listings:\n\n${context}`;
 
   const result = await retryWithBackoff(() =>
     runAgent({
@@ -129,10 +148,6 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   );
 
   const text = "message" in result ? result.message : "[]";
-  const tParse1 = Date.now();
-  // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'claude parse done',data:{tParse1,claudeMs:tParse1-tParse0},hypothesisId:'H1,H4',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-  // #endregion
 
   function extractFirstValidJsonArrayCandidate(
     input: string,
@@ -271,14 +286,10 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
   // and Claude may fail to return usable listing objects. As a fallback, resolve
   // those tracking links by following redirects to the real /for-sale/details/<id> URL.
   if (listings.length === 0) {
-    const tZoopl0 = Date.now();
-    // #region agent log
-    (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'zoopla fallback entry',data:{tZoopl0},hypothesisId:'H3',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-    // #endregion
     try {
-      const extracted = buildEmailParseExtractedContent(html);
+      // Extract £ prices directly from the raw HTML/text source
       const priceCandidates = Array.from(
-        extracted.matchAll(/£\s*([0-9]{1,3}(?:,[0-9]{3})*)/g),
+        html.matchAll(/£\s*([0-9]{1,3}(?:,[0-9]{3})*)/g),
       )
         .map((m) => {
           const raw = m[1] ?? "";
@@ -288,11 +299,10 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
         })
         .filter((n): n is number => n !== null);
 
-      const trackingUrls = Array.from(
-        extracted.matchAll(
-          /https?:\/\/[^\s<>"']+\/ls\/click\?[^ \n\r\t<>"']+/gi,
-        ),
-      ).map((m) => m[0]);
+      // extractListingUrls captures Zoopla /ls/click? hrefs from the HTML source
+      const trackingUrls = extractListingUrls(html).filter((u) =>
+        /\/ls\/click\?/i.test(u),
+      );
 
       const uniqueTrackingUrls = Array.from(new Set(trackingUrls));
       const toResolve = uniqueTrackingUrls.slice(0, 8);
@@ -313,10 +323,6 @@ export async function parseEmailHtml(html: string): Promise<RawListing[]> {
       const resolved = await Promise.all(
         toResolve.map((u) => resolveRedirect(u)),
       );
-      const tZoopl1 = Date.now();
-      // #region agent log
-      (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseEmailHtml',message:'zoopla fallback redirects done',data:{tZoopl1,zooplaMs:tZoopl1-tZoopl0,toResolve:toResolve.length},hypothesisId:'H3',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-      // #endregion
       const detailUrls = resolved
         .map((finalUrl) => finalUrl ?? "")
         .filter(Boolean)
@@ -434,40 +440,42 @@ export async function parseVerificationEmail(
   html: string,
   subject?: string,
   plain?: string,
+  rawMessage?: string,
 ): Promise<{
   isVerification: boolean;
   verificationUrl?: string;
   verificationCode?: string;
 }> {
-  const parts: string[] = [];
-  if (subject) parts.push(`Subject: ${subject}\n`);
-  if (html)
-    parts.push(
-      `Email content (text and URLs):\n\n${extractTextAndUrlsFromHtml(html)}`,
-    );
-  if (plain && plain !== html) parts.push(`\nPlain text:\n\n${plain}`);
-  const fullContent = parts.join("\n") || "(empty email)";
-
   const safeSubject = typeof subject === "string" ? subject : "";
 
-  if (/verify|confirm|activation/i.test(safeSubject)) {
-    const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-    let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
+  // Extract all URLs from the original HTML source — used by heuristics and
+  // fallbacks throughout this function.  Runs on raw HTML (not LLM context) so
+  // href attributes are still present.
+  const getSourceUrls = (): string[] => {
+    let urls = extractAllHrefs(html);
     if (urls.length === 0) {
-      urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
-        u.replace(/[.,;:!?)]+$/, ""),
-      );
+      urls = (plain || html)
+        .match(/https?:\/\/[^\s<>"']+/gi)
+        ?.map((u) => u.replace(/[.,;:!?)]+$/, "")) ?? [];
     }
-    const verificationUrl =
-      urls.length > 0
-        ? (urls.find((u) =>
-            /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
-              u,
-            ),
-          ) ?? urls[0])
-        : undefined;
-    const codeMatch = fullContent.match(/\b(\d{6})\b/);
-    const verificationCode = codeMatch?.[1];
+    return urls;
+  };
+
+  const getSourceCode = (): string | undefined =>
+    (html + " " + (plain ?? "")).match(/\b(\d{6})\b/)?.[1];
+
+  const pickVerifyUrl = (urls: string[]): string | undefined =>
+    urls.find((u) =>
+      /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
+        u,
+      ),
+    ) ?? urls[0];
+
+  // Fast path: subject clearly indicates verification — no LLM needed
+  if (/verify|confirm|activation/i.test(safeSubject)) {
+    const urls = getSourceUrls();
+    const verificationUrl = urls.length > 0 ? pickVerifyUrl(urls) : undefined;
+    const verificationCode = getSourceCode();
     if (verificationUrl || verificationCode) {
       return {
         isVerification: true,
@@ -477,15 +485,16 @@ export async function parseVerificationEmail(
     }
   }
 
-  const content =
-    fullContent.length > 8000
-      ? fullContent.slice(0, 8000) + "\n\n[... truncated for token limit ...]"
-      : fullContent;
+  // Build LLM context via langmail
+  const llmContext = rawMessage
+    ? (await buildLlmContextFromRaw(rawMessage)).context
+    : buildLlmContextFromParts(html, subject, plain);
 
-  const tVer0 = Date.now();
-  // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:parseVerificationEmail',message:'parseVerificationEmail claude call',data:{tVer0},hypothesisId:'H5',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-  // #endregion
+  const content =
+    llmContext.length > 8000
+      ? llmContext.slice(0, 8000) + "\n\n[... truncated for token limit ...]"
+      : llmContext;
+
   const result = await retryWithBackoff(() =>
     runAgent({
       systemPrompt: EMAIL_VERIFICATION_DETECTOR_SYSTEM,
@@ -518,65 +527,37 @@ export async function parseVerificationEmail(
         ? parsed.verificationCode
         : undefined;
 
-    // Fallback: extract URL or code from content when LLM detects verification but didn't extract both
-    // Always try URL first when missing — LLM may wrongly return only verificationCode for link-based emails
+    // Fallback: LLM detected verification but didn't extract both fields.
+    // Always try URL first — LLM may wrongly return only verificationCode for link-based emails.
     if (Boolean(parsed.isVerification) && !verificationUrl) {
-      const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-      let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
-      if (urls.length === 0) {
-        urls = (fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? []).map((u) =>
-          u.replace(/[.,;:!?)]+$/, ""),
-        );
-      }
-      if (urls.length > 0) {
-        verificationUrl =
-          urls.find((u) =>
-            /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
-              u,
-            ),
-          ) ?? urls[0];
-      }
-      if (!verificationUrl && !verificationCode) {
-        const codeMatch = fullContent.match(/\b(\d{6})\b/);
-        if (codeMatch) verificationCode = codeMatch[1];
-      }
+      const urls = getSourceUrls();
+      if (urls.length > 0) verificationUrl = pickVerifyUrl(urls);
+      if (!verificationUrl && !verificationCode)
+        verificationCode = getSourceCode();
     }
 
     let isVerification = Boolean(parsed.isVerification);
 
-    // Fallback: LLM may return false for verification emails. When subject suggests verification, try URL extraction first, then code.
+    // Fallback: LLM may return false for verification emails. When subject suggests
+    // verification, try URL extraction first, then code.
     if (!isVerification && /verify|confirm|activation/i.test(safeSubject)) {
       if (!verificationUrl) {
-        const hrefRegex = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
-        let urls = Array.from(fullContent.matchAll(hrefRegex), (m) => m[1]);
-        if (urls.length === 0) {
-          urls = fullContent.match(/https?:\/\/[^\s<>"']+/gi) ?? [];
-          urls = urls.map((u) => u.replace(/[.,;:!?)]+$/, ""));
-        }
+        const urls = getSourceUrls();
         if (urls.length > 0) {
-          verificationUrl =
-            urls.find((u) =>
-              /rightmove|zoopla|onthemarket|primelocation|verify|confirm|token|subscription/i.test(
-                u,
-              ),
-            ) ?? urls[0];
+          verificationUrl = pickVerifyUrl(urls);
           isVerification = true;
         }
       }
-      if (!isVerification && fullContent.match(/\b\d{6}\b/)) {
-        const codeMatch = fullContent.match(/\b(\d{6})\b/);
-        if (codeMatch) {
+      if (!isVerification) {
+        const code = getSourceCode();
+        if (code) {
           isVerification = true;
-          verificationCode = verificationCode ?? codeMatch[1];
+          verificationCode = verificationCode ?? code;
         }
       }
     }
 
-    return {
-      isVerification,
-      verificationUrl,
-      verificationCode,
-    };
+    return { isVerification, verificationUrl, verificationCode };
   } catch {
     console.error("Failed to parse verification JSON from Claude response");
     return { isVerification: false };
@@ -586,10 +567,6 @@ export async function parseVerificationEmail(
 export type IngestResult = { done: true } | { done: false; newIds: string[] };
 
 export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
-  const tEval0 = Date.now();
-  // #region agent log
-  (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:runEvaluationsAndNotify',message:'runEvaluationsAndNotify entry',data:{tEval0,newIdsLen:newIds.length},hypothesisId:'H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-  // #endregion
   try {
     const batchId = crypto.randomUUID();
     const preferences = await getPreferences();
@@ -632,10 +609,6 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
         ),
       ),
     );
-    const tEval1 = Date.now();
-    // #region agent log
-    (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:runEvaluationsAndNotify',message:'eval pipeline completed',data:{tEval1,evalPipelineMs:tEval1-tEval0,idsProcessed:idsToProcess.length},hypothesisId:'H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-    // #endregion
 
     const results = evalResults.filter(
       (r): r is EvaluationPipelineResult => r !== null && typeof r === "object",
@@ -732,10 +705,6 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     });
 
     await supabaseAdmin.from("pending_notifications").insert(rows);
-    const tEval2 = Date.now();
-    // #region agent log
-    (()=>{const p={sessionId:'c2b00b',location:'lib/agents/ingest/tools.ts:runEvaluationsAndNotify',message:'runEvaluationsAndNotify exit',data:{tEval2,totalEvalMs:tEval2-tEval0},hypothesisId:'H2',timestamp:Date.now()};fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'c2b00b'},body:JSON.stringify(p)}).catch(()=>{});if(process.env.VERCEL)console.log('[debug c2b00b]',JSON.stringify(p));})();
-    // #endregion
     if (process.env.VERCEL) {
       waitUntil(consumePendingNotifications(batchId));
     } else {
