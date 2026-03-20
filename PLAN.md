@@ -397,13 +397,13 @@ AREA_PROFILE_BATCH=false
 ## Local development
 
 ```
-npm run dev -- start cloudflared tunnel, point CloudMailin and Telegram bot to url
+npm run dev -- start server, cloudflared tunnel, point Telegram bot to url
 ```
 
 ## Deploying
 
 ```
-npm run use:prod -- point CloudMailin and Telegram bot to Vercel
+npm run use:prod -- point Telegram bot to Vercel
 ```
 
 ## Notes
