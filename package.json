@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "set-commands": "npx tsx scripts/set-telegram-commands.ts",
-    "sync-rate": "npx tsx scripts/sync-boe-mortgage-rate.ts"
+    "sync-rate": "npx tsx scripts/sync-boe-mortgage-rate.ts",
+    "dev:tunnel": "bash scripts/dev-tunnel.sh",
+    "use:prod": "bash scripts/use-prod.sh"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
