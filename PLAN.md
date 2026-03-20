@@ -4,9 +4,9 @@ Personal UK property search assistant. Email alerts (Rightmove, Zoopla) → Clou
 
 ## Stack
 
-Next.js 16 (App Router, API routes only) on **Vercel Hobby** (free tier). TypeScript 5, strict mode. **Vercel AI SDK** (`ai` + `@ai-sdk/anthropic`) with Zod schemas. Supabase Postgres (service-role, no RLS). Telegram Bot API (raw `fetch`). CloudMailin webhook. `langmail` + `postal-mime` for email preprocessing. `p-limit` for concurrency.
+Next.js (App Router, API routes only) on **Vercel Hobby** (free tier). TypeScript, strict mode. **Vercel AI SDK** (`ai` + `@ai-sdk/anthropic`) with Zod schemas. Supabase Postgres (service-role, no RLS). Telegram Bot API (raw `fetch`). CloudMailin webhook. `langmail` + `postal-mime` for email preprocessing. `p-limit` for concurrency.
 
-**Dependencies**: `ai`, `@ai-sdk/anthropic`, `zod`, `@supabase/supabase-js`, `@vercel/functions`, `langmail`, `postal-mime`, `p-limit`, `next`, `react`, `react-dom`
+**Dependencies**: `ai`, `@ai-sdk/anthropic`, `zod`, `@supabase/supabase-js`, `@vercel/functions`, `langmail`, `postal-mime`, `p-limit`, `next`, `react`, `react-dom` (latest compatible versions)
 
 ---
 
@@ -96,9 +96,12 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
     stopWhen: stepCountIs(input.maxSteps ?? 5),
     maxTokens: 4096,
     maxRetries: 4, // AI SDK retries 429/529 with exponential backoff
-    onStepFinish({ usage }) { logLlmUsage(input.telemetryTag, input.model, usage); },
+    onStepFinish({ usage }) {
+      logLlmUsage(input.telemetryTag, input.model, usage);
+    },
   });
-  if (input.output && result.output) return { message: JSON.stringify(result.output) };
+  if (input.output && result.output)
+    return { message: JSON.stringify(result.output) };
   return { message: result.text };
 }
 ```
@@ -286,15 +289,15 @@ Zod schemas for `Output.object()`:
 
 Every agent directory contains a `config.ts` — the single place to tune that agent's behaviour. All constants have JSDoc comments. Every registered agent exports `AGENT_NAME` (registry key) and `TELEMETRY_TAG` (usage log label). Additional constants per agent:
 
-| Agent | Constant | Default | Purpose |
-|---|---|---|---|
-| preference | `PREFERENCE_MAX_STEPS` | `5` | Max LLM tool-use rounds |
-| ingest | `TELEMETRY_TAG_VERIFICATION` | `"email_verification"` | Verification parse log label |
-| ingest | `TELEMETRY_TAG_PARSE` | `"ingest_parse"` | Listing parse log label |
-| ingest | `MAX_PARSE_STEPS` | `1` | One-shot structured output |
-| conversation | `TELEMETRY_TAG_WHY` | `"why_explanation"` | Why-chain log label |
-| conversation | `TELEMETRY_TAG_COMPARISON` | `"comparison"` | Comparison-chain log label |
-| conversation | `SUB_AGENT_MAX_STEPS` | `1` | Steps for why/comparison sub-agents |
+| Agent        | Constant                     | Default                | Purpose                             |
+| ------------ | ---------------------------- | ---------------------- | ----------------------------------- |
+| preference   | `PREFERENCE_MAX_STEPS`       | `5`                    | Max LLM tool-use rounds             |
+| ingest       | `TELEMETRY_TAG_VERIFICATION` | `"email_verification"` | Verification parse log label        |
+| ingest       | `TELEMETRY_TAG_PARSE`        | `"ingest_parse"`       | Listing parse log label             |
+| ingest       | `MAX_PARSE_STEPS`            | `1`                    | One-shot structured output          |
+| conversation | `TELEMETRY_TAG_WHY`          | `"why_explanation"`    | Why-chain log label                 |
+| conversation | `TELEMETRY_TAG_COMPARISON`   | `"comparison"`         | Comparison-chain log label          |
+| conversation | `SUB_AGENT_MAX_STEPS`        | `1`                    | Steps for why/comparison sub-agents |
 
 Shared constants live in `lib/config/`: `EXPERT_MAX_STEPS=8` (expert-web-search.ts), `CONVERSATION_MAX_STEPS=3` / `RE_EVAL_COOLDOWN_HOURS=24` (conversation-llm.ts). `SCORECARD_DELAY_MS=500` lives at top of notifications.ts.
 
