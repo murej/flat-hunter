@@ -22,29 +22,26 @@ export async function conversationAgent(
   messageId: number,
   listingId?: number,
 ): Promise<void> {
-  // Log inbound
-  await logConversation({
-    telegram_message_id: messageId,
-    direction: "inbound",
-    message: text,
-    listing_id: listingId ?? null,
-    intent: null,
-  });
+  // Fire all pre-LLM queries in parallel
+  const [, prefs, activeId, history] = await Promise.all([
+    logConversation({
+      telegram_message_id: messageId,
+      direction: "inbound",
+      message: text,
+      listing_id: listingId ?? null,
+      intent: null,
+    }),
+    getPreferences(),
+    listingId ? Promise.resolve(listingId) : getActiveListingId(),
+    getConversationHistory(),
+  ]);
 
-  // Check preferences exist
-  const prefs = await getPreferences();
   if (!prefs) {
     await sendMessage(
       "You haven't set up your preferences yet. Use /start to get started!",
     );
     return;
   }
-
-  // Resolve active listing
-  const activeId = listingId ?? (await getActiveListingId());
-
-  // Get conversation history
-  const history = await getConversationHistory();
 
   // Build tools
   const { tools, getCaptured } = buildConversationTools(activeId);

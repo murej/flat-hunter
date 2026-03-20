@@ -42,15 +42,16 @@ export async function handleTelegramUpdate(input: {
     !/^(save|skip|unsave|why|scorecard):/.test(text) &&
     text !== "/start"
   ) {
-    await logConversation({
-      telegram_message_id: messageId,
-      direction: "inbound",
-      message: text,
-      intent: "preference_reply",
-    });
-
-    const prefsBefore = await getPreferences();
-    const history = await getConversationHistory();
+    const [, prefsBefore, history] = await Promise.all([
+      logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        intent: "preference_reply",
+      }),
+      getPreferences(),
+      getConversationHistory(),
+    ]);
     const result = await runPreferenceAgent(text + prefsContext(prefsBefore), history);
     const prefsAfter = await getPreferences();
 
