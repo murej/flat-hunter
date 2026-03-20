@@ -6,7 +6,7 @@
     "dev": "next dev",
     "dev:tunnel": "bash scripts/dev-tunnel.sh",
     "set-commands": "tsx scripts/set-telegram-commands.ts",
-    "use:prod": "bash scripts/use-prod.sh",
+    "use:prod": "npm run env:push && bash scripts/use-prod.sh",
     "build": "next build",
     "start": "npm run use:prod && next start",
     "lint": "eslint .",
