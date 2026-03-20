@@ -28,7 +28,7 @@ export function buildConversationTools(activeListingId: number | null) {
   const domainTools = {
     show_preferences: tool({
       description: "Show the user's current search preferences",
-      parameters: z.object({}),
+      inputSchema: z.object({}),
       execute: async () => {
         const text = await getFormattedPreferences();
         captured = { type: "direct", message: text, payload: { parse_mode: "Markdown" } as TelegramPayload };
@@ -38,7 +38,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     show_saved_properties: tool({
       description: "Show all saved/shortlisted properties",
-      parameters: z.object({}),
+      inputSchema: z.object({}),
       execute: async () => {
         const text = await getFormattedSavedList();
         captured = { type: "direct", message: text, payload: { parse_mode: "Markdown" } as TelegramPayload };
@@ -48,7 +48,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     save_listing: tool({
       description: "Save/shortlist a property listing",
-      parameters: z.object({
+      inputSchema: z.object({
         listing_id: z.number().describe("The listing ID to save"),
       }),
       execute: async ({ listing_id }) => {
@@ -60,7 +60,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     skip_listing: tool({
       description: "Dismiss/skip a property listing",
-      parameters: z.object({
+      inputSchema: z.object({
         listing_id: z.number().describe("The listing ID to skip"),
       }),
       execute: async ({ listing_id }) => {
@@ -72,7 +72,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     show_property_scorecard: tool({
       description: "Show the full scorecard for a property",
-      parameters: z.object({
+      inputSchema: z.object({
         listing_id: z.number().describe("The listing ID"),
       }),
       execute: async ({ listing_id }) => {
@@ -89,7 +89,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     evaluate_listing: tool({
       description: "Trigger re-evaluation of a listing (respects cooldown)",
-      parameters: z.object({
+      inputSchema: z.object({
         listing_id: z.number().describe("The listing ID to re-evaluate"),
       }),
       execute: async ({ listing_id }) => {
@@ -125,7 +125,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     get_property_evaluation: tool({
       description: "Get evaluation data for a property to explain scores (triggers Why explanation chain)",
-      parameters: z.object({
+      inputSchema: z.object({
         listing_id: z.number().describe("The listing ID"),
       }),
       execute: async ({ listing_id }) => {
@@ -138,7 +138,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     get_comparison_data: tool({
       description: "Get data for comparing multiple properties",
-      parameters: z.object({
+      inputSchema: z.object({
         listing_ids: z.array(z.number()).describe("Array of listing IDs to compare"),
       }),
       execute: async ({ listing_ids }) => {
@@ -151,7 +151,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
     update_preferences: tool({
       description: "Start preference update flow",
-      parameters: z.object({
+      inputSchema: z.object({
         category: z.string().optional().describe("Specific category to update, or empty for full update"),
       }),
       execute: async ({ category }) => {

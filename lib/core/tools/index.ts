@@ -1,4 +1,4 @@
-import type { CoreTool } from "ai";
+import type { Tool } from "ai";
 import { buildDbReadTool, buildDbWriteTool, type DbToolConfig } from "./db";
 import { buildCallAgentTool } from "./call-agent";
 import { buildWebSearchTool } from "./web-search";
@@ -12,8 +12,8 @@ type BuildToolsConfig = {
 export function buildTools(
   sets: ToolSet[],
   config?: BuildToolsConfig,
-): Record<string, CoreTool> {
-  const tools: Record<string, CoreTool> = {};
+): Record<string, Tool> {
+  const tools: Record<string, Tool> = {};
 
   if (sets.includes("db") && config?.db) {
     tools.db_read = buildDbReadTool(config.db);
@@ -31,8 +31,7 @@ export function buildProviderTools(sets: ToolSet[]): unknown[] {
   const tools: unknown[] = [];
 
   if (sets.includes("web_search")) {
-    const ws = buildWebSearchTool();
-    if (ws) tools.push(ws);
+    tools.push(buildWebSearchTool());
   }
 
   return tools;

@@ -1,9 +1,9 @@
-import type { CoreTool } from "ai";
+import type { Tool } from "ai";
 
 export type RunAgentInput = {
   systemPrompt: string;
   prompt?: string;
-  tools?: Record<string, CoreTool>;
+  tools?: Record<string, Tool>;
   providerTools?: unknown[];
   model?: string;
   messages?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -32,7 +32,7 @@ export type ToolResult = DirectToolResult | DataToolResult;
 
 export type AgentConfig = {
   systemPrompt: string;
-  tools?: Record<string, CoreTool>;
+  tools?: Record<string, Tool>;
   providerTools?: unknown[];
   model: string;
   maxSteps: number;

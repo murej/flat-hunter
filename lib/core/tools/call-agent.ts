@@ -8,7 +8,7 @@ export function buildCallAgentTool() {
   return tool({
     description:
       "Delegate a task to a registered specialist agent. Use when you need expert help on a specific topic.",
-    parameters: z.object({
+    inputSchema: z.object({
       agent: z
         .string()
         .describe("The name of the registered agent to call"),

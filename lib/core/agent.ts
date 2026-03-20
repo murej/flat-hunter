@@ -1,5 +1,5 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { envBool } from "@/lib/utils/env-utils";
 import type { RunAgentInput, RunAgentOutput } from "./types";
 
@@ -10,11 +10,11 @@ function getDefaultModel(): string {
 function logLlmUsage(
   tag: string | undefined,
   model: string | undefined,
-  usage: { promptTokens: number; completionTokens: number },
+  usage: { inputTokens?: number; outputTokens?: number },
 ) {
   if (!envBool("LLM_USAGE_LOG")) return;
   console.log(
-    `[LLM] ${tag ?? "unknown"} model=${model ?? getDefaultModel()} in=${usage.promptTokens} out=${usage.completionTokens}`,
+    `[LLM] ${tag ?? "unknown"} model=${model ?? getDefaultModel()} in=${usage.inputTokens ?? 0} out=${usage.outputTokens ?? 0}`,
   );
 }
 
@@ -28,10 +28,10 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
     messages: input.messages,
     prompt: input.prompt,
     tools: input.tools,
-    maxSteps: input.maxSteps ?? 5,
+    stopWhen: stepCountIs(input.maxSteps ?? 5),
     maxTokens: 4096,
     maxRetries: 4,
-    onStepFinish({ usage }: { usage: { promptTokens: number; completionTokens: number } }) {
+    onStepFinish({ usage }: { usage: { inputTokens?: number; outputTokens?: number } }) {
       logLlmUsage(input.telemetryTag, model, usage);
     },
   };
@@ -41,14 +41,14 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
   }
 
   if (input.output) {
-    opts.experimental_output = input.output;
+    opts.output = input.output;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (generateText as any)(opts);
 
-  if (input.output && result.experimental_output) {
-    return { message: JSON.stringify(result.experimental_output) };
+  if (input.output && result.output) {
+    return { message: JSON.stringify(result.output) };
   }
   return { message: result.text };
 }

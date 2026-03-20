@@ -21,7 +21,7 @@ export function buildDbReadTool(config: DbToolConfig) {
   return tool({
     description:
       "Read rows from the database. Returns JSON array of matching rows.",
-    parameters: z.object({
+    inputSchema: z.object({
       table: z.string().describe("Table name to query"),
       columns: z
         .string()
@@ -78,7 +78,7 @@ export function buildDbWriteTool(config: DbToolConfig) {
   return tool({
     description:
       "Insert or update a row in the database. Returns the affected row.",
-    parameters: z.object({
+    inputSchema: z.object({
       table: z.string().describe("Table name"),
       operation: z
         .enum(["insert", "update"])

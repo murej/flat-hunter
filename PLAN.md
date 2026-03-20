@@ -6,7 +6,7 @@ Personal UK property search assistant. Email alerts (Rightmove, Zoopla) → Clou
 
 Next.js (App Router, API routes only) on **Vercel Hobby** (free tier). TypeScript, strict mode. **Vercel AI SDK** (`ai` + `@ai-sdk/anthropic`) with Zod schemas. Supabase Postgres (service-role, no RLS). Telegram Bot API (raw `fetch`). CloudMailin webhook. `langmail` + `postal-mime` for email preprocessing. `p-limit` for concurrency.
 
-**Dependencies**: `ai`, `@ai-sdk/anthropic`, `zod`, `@supabase/supabase-js`, `@vercel/functions`, `langmail`, `postal-mime`, `p-limit`, `next`, `react`, `react-dom` (latest compatible versions)
+**Dependencies**: `ai`, `@ai-sdk/anthropic`, `zod`, `@supabase/supabase-js`, `@vercel/functions`, `langmail`, `postal-mime`, `p-limit`, `next`, `react`, `react-dom` (latest compatible versions - search the web!)
 
 ---
 
@@ -405,6 +405,10 @@ npm run dev -- start cloudflared tunnel, point CloudMailin and Telegram bot to u
 ```
 npm run use:prod -- point CloudMailin and Telegram bot to Vercel
 ```
+
+## Notes
+
+When you finish implementing, go through this plan again step by step to identify any todos, and implment those. Once you've finished that, do this again.
 
 ---
 
