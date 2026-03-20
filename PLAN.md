@@ -257,7 +257,7 @@ Zod schemas for `Output.object()`:
 
 **`lib/supabase.ts`** — `supabaseAdmin`. Helpers: `getPreferences()`, `getListing(id)`, `updateListingStatus()`, `logConversation()` (deduped via 23505), `getConversationHistory(limit=8)` → `{ role, content }[]` truncated ~1600 chars, `getActiveListingId(lookback=10)`.
 
-**`lib/telegram.ts`** — `sendMessage()`, `sendWithButtons()`, `sendWithReplyKeyboard()`, `parseInbound()` → `{ text, messageId, callbackQueryId? }`, `answerCallbackQuery()`.
+**`lib/telegram.ts`** — `sendMessage()`, `sendWithButtons()`, `sendWithReplyKeyboard()`, `parseInbound()` → `{ text, messageId, callbackQueryId? }`, `answerCallbackQuery()`. `callTelegram()` throws on non-OK responses so errors propagate to callers.
 
 ## Domain Tools
 
@@ -343,7 +343,7 @@ Not registered — Telegram webhook entry point.
 
 ## API Routes
 
-**`/api/telegram`** — POST. Imports agents for registration, `handleTelegramUpdate(parseInbound(body))`. Returns 200. `maxDuration = 60`.
+**`/api/telegram`** — POST. Imports agents for registration, `handleTelegramUpdate(parseInbound(body))`. Returns 200 always (prevents Telegram retries). `maxDuration = 60`. Catch block forwards error to user via `sendMessage()`. When `VERBOSE_TELEGRAM=true`, sends full error message; otherwise sends generic "Something went wrong" without details.
 
 **`/api/ingest`** — POST. HTTP Basic auth. `handleIngestWebhook(request)`. `waitUntil()` for background eval + notify. `maxDuration = 60`.
 
@@ -366,6 +366,9 @@ Not registered — Telegram webhook entry point.
 ## Environment Variables
 
 ```env
+# Deployed URL
+NEXT_PUBLIC_APP_URL=
+
 # Layer 1
 ANTHROPIC_API_KEY=
 LLM_DEFAULT_MODEL=claude-haiku-4-5
@@ -377,6 +380,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
+VERBOSE_TELEGRAM=false
 
 # Layer 2 — optional services
 CLOUDMAILIN_SECRET=
