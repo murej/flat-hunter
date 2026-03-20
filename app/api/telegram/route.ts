@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("Telegram webhook error:", err);
     try {
-      const verbose = envBool("VERBOSE_TELEGRAM");
+      const verbose = envBool("TELEGRAM_VERBOSE_MODE");
       const detail = err instanceof Error ? err.message : "Unknown error";
       const text = verbose
         ? `Error: ${detail}`

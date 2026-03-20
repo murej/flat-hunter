@@ -343,7 +343,7 @@ Not registered — Telegram webhook entry point.
 
 ## API Routes
 
-**`/api/telegram`** — POST. Imports agents for registration, `handleTelegramUpdate(parseInbound(body))`. Returns 200 always (prevents Telegram retries). `maxDuration = 60`. Catch block forwards error to user via `sendMessage()`. When `VERBOSE_TELEGRAM=true`, sends full error message; otherwise sends generic "Something went wrong" without details.
+**`/api/telegram`** — POST. Imports agents for registration, `handleTelegramUpdate(parseInbound(body))`. Returns 200 always (prevents Telegram retries). `maxDuration = 60`. Catch block forwards error to user via `sendMessage()`. When `TELEGRAM_VERBOSE_MODE=true`, sends full error message; otherwise sends generic "Something went wrong" without details.
 
 **`/api/ingest`** — POST. HTTP Basic auth. `handleIngestWebhook(request)`. `waitUntil()` for background eval + notify. `maxDuration = 60`.
 
@@ -380,7 +380,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
-VERBOSE_TELEGRAM=false
+TELEGRAM_VERBOSE_MODE=false
 
 # Layer 2 — optional services
 CLOUDMAILIN_SECRET=

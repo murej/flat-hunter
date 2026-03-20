@@ -42,7 +42,7 @@ export async function ingestAgent(
   const listings = await parseEmailHtml(llmContent);
   if (listings.length === 0) {
     console.log("No listings found in email.");
-    if (envBool("VERBOSE_TELEGRAM")) {
+    if (envBool("TELEGRAM_VERBOSE_MODE")) {
       const snippet = llmContent.slice(0, 300);
       await sendMessage(`📭 No listings found in email.\n\nContent preview:\n${snippet}…`);
     }
@@ -53,7 +53,7 @@ export async function ingestAgent(
   const newIds = await deduplicateAndStore(listings);
   if (newIds.length === 0) {
     console.log("All listings were duplicates.");
-    if (envBool("VERBOSE_TELEGRAM")) {
+    if (envBool("TELEGRAM_VERBOSE_MODE")) {
       await sendMessage(`📭 ${listings.length} listing(s) found but all were duplicates.`);
     }
     return { newIds: [] };
