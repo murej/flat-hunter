@@ -58,7 +58,7 @@ export async function consumePendingNotifications(
           Array<{ text: string; callback_data: string }>
         >;
         if (scorecardText && buttons) {
-          await sendWithButtons(scorecardText, buttons);
+          await sendWithButtons(scorecardText, buttons, { parse_mode: "HTML" });
           const listingId = payload.listingId as string | undefined;
           if (listingId) {
             await logConversation({

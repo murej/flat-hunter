@@ -98,7 +98,16 @@ export async function handleIngestWebhook(
       return NextResponse.json({ ok: true });
     }
 
-    waitUntil(runEvaluationsAndNotify(result.newIds));
+    const notifyPromise = runEvaluationsAndNotify(result.newIds).catch(
+      (err) => {
+        console.error("runEvaluationsAndNotify failed:", err);
+      },
+    );
+    if (process.env.VERCEL) {
+      waitUntil(notifyPromise);
+    } else {
+      await notifyPromise;
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     // #region agent log

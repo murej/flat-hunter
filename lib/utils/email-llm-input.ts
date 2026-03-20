@@ -11,12 +11,14 @@ const MAX_LLM_BYTES = 32 * 1024;
 // Cap raw input to langmail to avoid pathological processing of huge emails.
 const MAX_RAW_INPUT_CHARS = 256_000;
 
-// href-based URL extraction — most reliable source for portal listing URLs
+// href-based URL extraction — direct portal URLs only (host starts with portal domain).
+// Excludes tracking redirects like url9467.comms-2.zoopla.co.uk which also contain "zoopla.co.uk".
 const PORTAL_HREF_RE =
-  /href\s*=\s*["'](https?:\/\/[^"']*(?:rightmove\.co\.uk|zoopla\.co\.uk|onthemarket\.com|primelocation\.com)[^"']*)["']/gi;
-// Zoopla tracking links (resolved later to real listing URLs)
-const TRACKING_HREF_RE =
-  /href\s*=\s*["'](https?:\/\/[^"']+\/ls\/click\?[^"']*)["']/gi;
+  /href\s*=\s*["'](https?:\/\/(?:www\.)?(?:rightmove\.co\.uk|zoopla\.co\.uk|onthemarket\.com|primelocation\.com)[^"']*)["']/gi;
+// Zoopla tracking CTA links — only anchors whose content is visible text, not purely an <img>.
+// Captures the href AND the first part of the anchor's inner content for filtering.
+const TRACKING_HREF_WITH_TEXT_RE =
+  /href\s*=\s*["'](https?:\/\/[^"']+\/ls\/click\?[^"']*)["'][^>]*>((?!<img)[^<]{2,})/gi;
 // Bare portal listing URL patterns for plain-text emails
 const PORTAL_BARE_URL_RE =
   /https?:\/\/(?:www\.)?(?:rightmove\.co\.uk\/properties\/\d+|zoopla\.co\.uk\/for-sale\/details\/\d+|onthemarket\.com\/details\/[^\s<>"'&]+|primelocation\.com\/for-sale\/details\/\d+)[^\s<>"'&]*/gi;
@@ -138,8 +140,14 @@ export function extractListingUrls(source: string): string[] {
   )) {
     add(m[1] ?? "");
   }
+  // Only include tracking links whose anchor wraps visible text (not pure image links).
+  // This filters out image-thumbnail tracking URLs (duplicates of the CTA link)
+  // and prevents the LLM from seeing ~12 indistinguishable tracking URLs.
   for (const m of source.matchAll(
-    new RegExp(TRACKING_HREF_RE.source, TRACKING_HREF_RE.flags),
+    new RegExp(
+      TRACKING_HREF_WITH_TEXT_RE.source,
+      TRACKING_HREF_WITH_TEXT_RE.flags,
+    ),
   )) {
     add(m[1] ?? "");
   }

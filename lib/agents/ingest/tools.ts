@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import pLimit from "p-limit";
+import { envIntClamped } from "@/lib/config/env-utils";
 import { waitUntil } from "@vercel/functions";
 import { supabaseAdmin, getPreferences } from "@/lib/supabase";
 import { retryWithBackoff } from "@/lib/utils/retry";
@@ -31,6 +32,148 @@ import {
 import { consumePendingNotifications } from "@/lib/agents/notifications";
 
 export const MAX_LISTINGS_PER_EMAIL = 100;
+
+/** LLM replies often wrap JSON in ```json fences; parsing the raw string fails and bracket-scanning can latch onto `image_urls: []`. */
+function stripMarkdownJsonFence(s: string): string {
+  const t = s.trim();
+  if (!/^```(?:json)?/i.test(t)) return t;
+  return t
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
+}
+
+/** LLMs sometimes emit curly/smart quotes; our bracket scanner only understands ASCII `"`. */
+function normalizeJsonQuotes(s: string): string {
+  return s
+    .replace(/\u201C|\u201D|\u201E|\u2033/g, '"')
+    .replace(/\u2018|\u2019|\u2032/g, "'");
+}
+
+/** First `[` … matching `]` at depth 0 — ignores trailing ```/prose after the array. */
+function sliceFirstTopLevelJsonArray(input: string): string | null {
+  const start = input.indexOf("[");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < input.length; i++) {
+    const ch = input[i];
+    if (inString) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "[") depth++;
+    if (ch === "]") {
+      depth--;
+      if (depth === 0) return input.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function tryParseJsonArray(s: string): unknown[] | null {
+  const attempt = (raw: string): unknown[] | null => {
+    try {
+      const v = JSON.parse(raw);
+      return Array.isArray(v) ? v : null;
+    } catch {
+      return null;
+    }
+  };
+  const sanitize = (raw: string) =>
+    raw.replace(/,\s*]/g, "]").replace(/,\s*}/g, "}");
+  const trimmed = s.trim();
+  const sliced = sliceFirstTopLevelJsonArray(trimmed);
+  const g0 = trimmed.indexOf("[");
+  const g1 = trimmed.lastIndexOf("]");
+  const greedy =
+    g0 !== -1 && g1 > g0 ? trimmed.slice(g0, g1 + 1) : null;
+
+  const variants: string[] = [];
+  if (sliced && sliced.length < trimmed.length) {
+    variants.push(sliced, trimmed);
+  } else if (sliced) {
+    variants.push(sliced);
+  } else {
+    variants.push(trimmed);
+  }
+  if (greedy && !variants.includes(greedy)) variants.push(greedy);
+
+  for (const raw of variants) {
+    const ok = attempt(raw) ?? attempt(sanitize(raw));
+    if (ok) return ok;
+  }
+  return null;
+}
+
+/** Resale pages use /for-sale/details/; many alerts redirect to /new-homes/details/. */
+const ZOOPLA_DETAILS_ID_RE = /\/(?:for-sale|new-homes)\/details\/(\d+)/i;
+
+function zooplaDetailsNumericId(url: string): string | null {
+  const m = url.match(ZOOPLA_DETAILS_ID_RE);
+  return m?.[1] ?? null;
+}
+
+function decodeBasicHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+async function fetchZooplaListingTitle(url: string): Promise<string> {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (compatible; FlatHunter/1.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return "";
+    const html = (await res.text()).slice(0, 120_000);
+    let m = html.match(
+      /<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
+    );
+    if (!m) {
+      m = html.match(
+        /<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:title["']/i,
+      );
+    }
+    if (m?.[1]) {
+      return decodeBasicHtmlEntities(m[1].trim());
+    }
+    const t = html.match(/<title[^>]*>([^<]{1,500})<\/title>/i);
+    if (t?.[1]) {
+      return decodeBasicHtmlEntities(
+        t[1].replace(/\s*\|\s*Zoopla.*$/i, "").trim(),
+      );
+    }
+  } catch {
+    /* ignore */
+  } finally {
+    clearTimeout(tid);
+  }
+  return "";
+}
 
 export interface RawListing {
   portal_id: string;
@@ -111,6 +254,10 @@ export function computeIdempotencyKey(
 }
 
 export async function claimIdempotencyKey(key: string): Promise<boolean> {
+  if (/^(1|true|yes)$/i.test(process.env.INGEST_BYPASS_IDEMPOTENCY ?? "")) {
+    return true;
+  }
+
   const { error } = await supabaseAdmin
     .from("ingest_idempotency")
     .insert({ idempotency_key: key });
@@ -136,6 +283,10 @@ export async function parseEmailHtml(
     ? (await buildLlmContextFromRaw(rawMessage)).context
     : buildLlmContextFromParts(html, subject);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce757f'},body:JSON.stringify({sessionId:'ce757f',location:'tools.ts:parseEmailHtml:context',message:'LLM context built',data:{contextLen:context.length,contextHead:context.slice(0,300),contextTail:context.slice(-500)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   const claudeInput = `Parse the following property alert email and extract all listings:\n\n${context}`;
 
   const result = await retryWithBackoff(() =>
@@ -147,13 +298,18 @@ export async function parseEmailHtml(
     }),
   );
 
-  const text = "message" in result ? result.message : "[]";
+  const rawLlmText = "message" in result ? result.message : "[]";
+  const text = normalizeJsonQuotes(stripMarkdownJsonFence(rawLlmText));
+
+  // #region agent log
+  fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce757f'},body:JSON.stringify({sessionId:'ce757f',runId:'post-fix',hypothesisId:'H_fence',location:'tools.ts:parseEmailHtml:llmResponse',message:'raw LLM response',data:{responseLen:rawLlmText.length,hadFence:rawLlmText.trim()!==text.trim(),strippedLen:text.length,responseHead:text.slice(0,600)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   function extractFirstValidJsonArrayCandidate(
     input: string,
     startIndices: number[],
   ): string | null {
-    for (const start of startIndices) {
+    nextStart: for (const start of startIndices) {
       let depth = 0;
       let inString = false;
 
@@ -182,6 +338,8 @@ export async function parseEmailHtml(
 
             try {
               const parsed = JSON.parse(candidate);
+              // Skip inner `image_urls: []` etc.; the real listing array is non-empty or is the sole `[]` in a no-results reply.
+              if (Array.isArray(parsed) && parsed.length === 0) continue nextStart;
               if (Array.isArray(parsed)) return candidate;
             } catch {
               // fall through to sanitization
@@ -192,6 +350,7 @@ export async function parseEmailHtml(
               .replace(/,\s*}/g, "}");
             try {
               const parsed = JSON.parse(sanitized);
+              if (Array.isArray(parsed) && parsed.length === 0) continue nextStart;
               if (Array.isArray(parsed)) return sanitized;
             } catch {
               // try next start index
@@ -210,35 +369,51 @@ export async function parseEmailHtml(
     if (text[i] === "[") jsonStartIndices.push(i);
   }
 
-  const jsonArrayCandidate = extractFirstValidJsonArrayCandidate(
-    text,
-    jsonStartIndices,
-  );
-  if (!jsonArrayCandidate) return [];
+  const trimmedForSlice = text.trim();
+  const arraySlice = sliceFirstTopLevelJsonArray(trimmedForSlice);
+  const directParsed = tryParseJsonArray(text);
+  // #region agent log
+  fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce757f'},body:JSON.stringify({sessionId:'ce757f',runId:'post-fix-v3',hypothesisId:'H_trailing',location:'tools.ts:parseEmailHtml:directParse',message:'JSON array parse',data:{ok:directParsed!==null,len:directParsed?.length??null,sliceFound:arraySlice!==null,sliceVsTrim:arraySlice?arraySlice.length-trimmedForSlice.length:null,hadSmartQuoteRaw:/[\u201C\u201D\u2018\u2019]/.test(rawLlmText),firstBracket:trimmedForSlice.indexOf('['),lastBracket:trimmedForSlice.lastIndexOf(']'),tailTrimmed:trimmedForSlice.slice(-80)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonArrayCandidate);
-  } catch (e) {
-    const sanitized = jsonArrayCandidate
-      .replace(/,\s*]/g, "]")
-      .replace(/,\s*}/g, "}");
-    try {
-      parsed = JSON.parse(sanitized);
-    } catch {
-      console.error(
-        "Failed to parse listings JSON from Claude response (even after sanitization):",
-        e,
-      );
-      return [];
+  if (directParsed !== null) {
+    parsed = directParsed;
+  } else {
+    const jsonArrayCandidate = extractFirstValidJsonArrayCandidate(
+      text,
+      jsonStartIndices,
+    );
+    // #region agent log
+    fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce757f'},body:JSON.stringify({sessionId:'ce757f',runId:'post-fix-v2',hypothesisId:'H_scan',location:'tools.ts:parseEmailHtml:candidateExtracted',message:'json array candidate',data:{candidateNull:jsonArrayCandidate===null,candidateLen:jsonArrayCandidate?.length??0,candidateHead:jsonArrayCandidate?.slice(0,80),candidateTail:jsonArrayCandidate?.slice(-80)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (!jsonArrayCandidate) {
+      parsed = [];
+    } else {
+      try {
+        parsed = JSON.parse(jsonArrayCandidate);
+      } catch (e) {
+        const sanitized = jsonArrayCandidate
+          .replace(/,\s*]/g, "]")
+          .replace(/,\s*}/g, "}");
+        try {
+          parsed = JSON.parse(sanitized);
+        } catch {
+          console.error(
+            "Failed to parse listings JSON from Claude response (even after sanitization):",
+            e,
+          );
+          parsed = [];
+        }
+      }
     }
   }
 
   if (!Array.isArray(parsed)) return [];
 
   function derivePortalIdFromUrl(url: string): string {
-    const detailsMatch = url.match(/\/for-sale\/details\/(\d+)/i);
-    if (detailsMatch?.[1]) return `zoopla:${detailsMatch[1]}`;
+    const id = zooplaDetailsNumericId(url);
+    if (id) return `zoopla:${id}`;
     return `generated:${createHash("sha256").update(url).digest("hex")}`;
   }
 
@@ -282,9 +457,49 @@ export async function parseEmailHtml(
     });
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce757f'},body:JSON.stringify({sessionId:'ce757f',location:'tools.ts:parseEmailHtml:listings',message:'listings after LLM parse',data:{count:listings.length,listings:listings.slice(0,5).map(l=>({url:l.url?.slice(0,80),title:l.title,price:l.price,address:l.address?.slice(0,60)}))},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
+  // If the LLM returned listings but with tracking/redirect URLs, resolve them to
+  // canonical portal URLs so deduplication by portal_id works across re-sends.
+  const resolveRedirect = async (u: string): Promise<string | null> => {
+    try {
+      const res = await fetch(u, {
+        method: "GET",
+        redirect: "follow",
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (compatible; FlatHunter/1.0; +https://flat-hunter) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+      });
+      return res.url ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  if (listings.length > 0) {
+    const toResolve = listings.filter((l) => /\/ls\/click\?/i.test(l.url));
+    if (toResolve.length > 0) {
+      const resolved = await Promise.all(
+        toResolve.map((l) => resolveRedirect(l.url)),
+      );
+      for (let i = 0; i < toResolve.length; i++) {
+        const finalUrl = resolved[i];
+        if (finalUrl && zooplaDetailsNumericId(finalUrl)) {
+          toResolve[i].url = finalUrl;
+          toResolve[i].portal_id = derivePortalIdFromUrl(finalUrl);
+        }
+      }
+    }
+  }
+
   // Zoopla alert emails often provide only tracking links (e.g. /ls/click?upn=...),
   // and Claude may fail to return usable listing objects. As a fallback, resolve
-  // those tracking links by following redirects to the real /for-sale/details/<id> URL.
+  // those tracking links by following redirects to Zoopla /for-sale/details/ or /new-homes/details/.
   if (listings.length === 0) {
     try {
       // Extract £ prices directly from the raw HTML/text source
@@ -305,20 +520,12 @@ export async function parseEmailHtml(
       );
 
       const uniqueTrackingUrls = Array.from(new Set(trackingUrls));
+      // Try a few extras so we still land on a Zoopla details URL if the first
+      // hrefs are images or non-property CTAs (cap how many we persist below).
       const toResolve = uniqueTrackingUrls.slice(0, 8);
-
-      const resolveRedirect = async (u: string): Promise<string | null> => {
-        try {
-          const res = await fetch(u, {
-            method: "GET",
-            redirect: "follow",
-            headers: { "user-agent": "flat-hunter/ingest" },
-        });
-          return res.url ?? null;
-        } catch {
-          return null;
-        }
-      };
+      // #region agent log
+      fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce757f'},body:JSON.stringify({sessionId:'ce757f',runId:'post-fix-v3',hypothesisId:'H_fb_in',location:'tools.ts:parseEmailHtml:fallback',message:'Zoopla fallback running',data:{trackingUrlCount:uniqueTrackingUrls.length,toResolveCount:toResolve.length,priceCandidates:priceCandidates.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       const resolved = await Promise.all(
         toResolve.map((u) => resolveRedirect(u)),
@@ -326,21 +533,29 @@ export async function parseEmailHtml(
       const detailUrls = resolved
         .map((finalUrl) => finalUrl ?? "")
         .filter(Boolean)
-        .filter((finalUrl) => /\/for-sale\/details\//i.test(finalUrl));
+        .filter((finalUrl) => zooplaDetailsNumericId(finalUrl) !== null)
+        .slice(0, 6);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce757f'},body:JSON.stringify({sessionId:'ce757f',runId:'post-fix-v4',hypothesisId:'H_fb_out',location:'tools.ts:parseEmailHtml:fallbackResult',message:'Zoopla fallback resolved',data:{resolvedOkCount:resolved.filter(Boolean).length,detailUrlsCount:detailUrls.length,resolvedSample:resolved.slice(0,4).map((u)=>u?u.slice(0,72):null)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
+      const pageTitles = await Promise.all(
+        detailUrls.map((u) => fetchZooplaListingTitle(u)),
+      );
 
       const derivedListings: RawListing[] = detailUrls.map((detailUrl, idx) => {
-        const m = detailUrl.match(/\/for-sale\/details\/(\d+)/i);
-        const id = m?.[1];
-        const portal_id = id
-          ? `zoopla:${id}`
-          : `generated:${createHash("sha256").update(detailUrl).digest("hex")}`;
-
+        const portal_id = derivePortalIdFromUrl(detailUrl);
         const price = priceCandidates[idx] ?? null;
+        const zid = zooplaDetailsNumericId(detailUrl);
+        const title =
+          pageTitles[idx]?.trim() ||
+          (zid ? `Zoopla #${zid}` : "Zoopla listing");
 
         return {
           portal_id,
           url: detailUrl,
-          title: "",
+          title,
           price,
           address: "",
           postcode: "",
@@ -572,13 +787,22 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     const preferences = await getPreferences();
 
     if (!preferences) {
-      const text = `I have *${newIds.length}* new ${newIds.length === 1 ? "listing" : "listings"} — set your preferences via Telegram to get scorecards.`;
-      await supabaseAdmin.from("pending_notifications").insert({
-        batch_id: batchId,
-        sequence: 0,
-        type: "intro",
-        payload: { kind: "no_prefs", text },
-      });
+      const text = `I have ${newIds.length} new ${newIds.length === 1 ? "listing" : "listings"} — set your preferences via Telegram to get scorecards.`;
+      const { error: noPrefsInsertError } = await supabaseAdmin
+        .from("pending_notifications")
+        .insert({
+          batch_id: batchId,
+          sequence: 0,
+          type: "intro",
+          payload: { kind: "no_prefs", text, parse_mode: false },
+        });
+      if (noPrefsInsertError) {
+        console.error(
+          "pending_notifications insert failed (no prefs):",
+          noPrefsInsertError,
+        );
+        throw noPrefsInsertError;
+      }
       if (process.env.VERCEL) {
         waitUntil(consumePendingNotifications(batchId));
       } else {
@@ -598,7 +822,14 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     }> = [];
     let seq = 0;
 
-    const limit = pLimit(5);
+    const ingestConcurrency = envIntClamped(
+      process.env.EVALUATION_INGEST_CONCURRENCY,
+      1,
+      1,
+      8,
+      "EVALUATION_INGEST_CONCURRENCY",
+    );
+    const limit = pLimit(ingestConcurrency);
     const evalResults = await Promise.all(
       idsToProcess.map((id) =>
         limit(() =>
@@ -616,11 +847,11 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
 
     const rateLimitHit = results.some((r) => r.rateLimitHit);
     const introText = truncated
-      ? `I have *${newIds.length}* new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`
+      ? `I have ${newIds.length} new listings — processing first ${MAX_LISTINGS_PER_EMAIL}. Will get back to you if there's anything worth checking out.`
       : "I have new listings, will get back to you if there's anything worth checking out.";
     const introWithRateLimit =
       rateLimitHit
-        ? `${introText}\n\n⚠️ _Rate limit hit — some evaluations used fallback scores. Try again in a few minutes._`
+        ? `${introText}\n\n⚠️ Rate limit hit — some evaluations used fallback scores. Try again in a few minutes.`
         : introText;
     rows.push({
       batch_id: batchId,
@@ -629,6 +860,7 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
       payload: {
         kind: truncated ? "truncated" : "new_listings",
         text: introWithRateLimit,
+        parse_mode: false,
         ...(truncated ? { truncatedTotal: newIds.length } : {}),
       },
     });
@@ -671,24 +903,25 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
     const rejectedDetails =
       rejected.length > 0
         ? rejected
-            .map(
-              (r) =>
-                `[${r.listing.title}](${r.listing.url}) (${r.overall_score}/10)`,
-            )
-            .join(", ")
+            .map((r) => {
+              const t = r.listing.title || "Listing";
+              const u = r.listing.url ? ` — ${r.listing.url}` : "";
+              return `${t}${u} (${r.overall_score}/10)`;
+            })
+            .join("\n")
         : "";
 
     const processedCount = idsToProcess.length;
     const summaryText =
       suppressedCount > 0
-        ? `📬 Email alert processed: *${processedCount}* new ${
+        ? `📬 Email alert processed: ${processedCount} new ${
             processedCount === 1 ? "property" : "properties"
-          }${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${
+          }${truncated ? ` (of ${newIds.length})` : ""} — showing ${sentCount} scorecard${
             sentCount === 1 ? "" : "s"
-          }, plus *${suppressedCount}* more that scored 7/10 or below: ${rejectedDetails}.`
-        : `📬 Email alert processed: *${processedCount}* new ${
+          }, plus ${suppressedCount} more that scored 7/10 or below:\n${rejectedDetails}`
+        : `📬 Email alert processed: ${processedCount} new ${
             processedCount === 1 ? "property" : "properties"
-          }${truncated ? ` (of ${newIds.length})` : ""} — showing *${sentCount}* scorecard${
+          }${truncated ? ` (of ${newIds.length})` : ""} — showing ${sentCount} scorecard${
             sentCount === 1 ? "" : "s"
           }.`;
 
@@ -698,13 +931,20 @@ export async function runEvaluationsAndNotify(newIds: string[]): Promise<void> {
       type: "summary",
       payload: {
         text: summaryText,
+        parse_mode: false,
         ...(suppressedCount > 0
           ? { link_preview_options: { is_disabled: true } }
           : {}),
       },
     });
 
-    await supabaseAdmin.from("pending_notifications").insert(rows);
+    const { error: notifyInsertError } = await supabaseAdmin
+      .from("pending_notifications")
+      .insert(rows);
+    if (notifyInsertError) {
+      console.error("pending_notifications batch insert failed:", notifyInsertError);
+      throw notifyInsertError;
+    }
     if (process.env.VERCEL) {
       waitUntil(consumePendingNotifications(batchId));
     } else {

@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { isRateLimitError } from "@/lib/utils/retry";
 import { fetchAreaContext } from "@/lib/tools/area";
@@ -79,69 +78,64 @@ export async function runEvaluationPipeline(
     getAgentContext("area_expert", "postcode", areaScopeValue || "general"),
   ]);
 
-  const limit = pLimit(3);
+  // Property + area each burn Anthropic TPM; run them one after another. Commute
+  // and finance are non-LLM and can run together after experts (or in parallel with each other only).
+  const propertyResult = await runPropertyExpert(
+    listing as unknown as Record<string, unknown>,
+    preferences as unknown as Record<string, unknown>,
+    propertyPrior,
+  ).catch((e) => {
+    console.error("Property expert failed:", e);
+    return {
+      price_score: 0,
+      size_score: 0,
+      fit_score: 0,
+      deal_breaker_flags: [] as string[],
+      property_summary: "Evaluation unavailable",
+      property_unknown: true as const,
+      _rateLimitHit: isRateLimitError(e),
+    };
+  });
 
-  const [propertyResult, areaResult, commuteResult, financeResult] =
-    await Promise.all([
-      limit(() =>
-        runPropertyExpert(
-          listing as unknown as Record<string, unknown>,
-          preferences as unknown as Record<string, unknown>,
-          propertyPrior,
-        ).catch((e) => {
-          console.error("Property expert failed:", e);
-          return {
-            price_score: 0,
-            size_score: 0,
-            fit_score: 0,
-            deal_breaker_flags: [] as string[],
-            property_summary: "Evaluation unavailable",
-            property_unknown: true as const,
-            _rateLimitHit: isRateLimitError(e),
-          };
-        }),
-      ),
-      limit(() =>
-        runAreaExpert(areaContextBlock, areaPrior        ).catch((e) => {
-          console.error("Area expert failed:", e);
-          return {
-            area_score: 0,
-            area_summary: "Evaluation unavailable",
-            notable_flags: [] as string[],
-            area_unknown: true as const,
-            _rateLimitHit: isRateLimitError(e),
-          };
-        }),
-      ),
-      limit(() =>
-        evaluateCommute(
-          listing.postcode ?? "",
-          preferences.commute_anchor_postcode ?? "",
-          preferences.max_commute_minutes ?? 60,
-          listing.address,
-        ).catch((e) => {
-          console.error("Commute evaluation failed:", e);
-          return {
-            commute_minutes: 0,
-            commute_route: "Commute data unavailable",
-            commute_score: 0,
-            commute_unknown: true as const,
-          };
-        }),
-      ),
-      limit(() =>
-        evaluateFinance(listing.price, preferences.deposit ?? 0).catch((e) => {
-          console.error("Finance evaluation failed:", e);
-          return {
-            monthly_mortgage: 0,
-            monthly_interest_only: 0,
-            stamp_duty: 0,
-            estimated_monthly_total: 0,
-            raw: {},
-          };
-        }),
-      ),
-    ]);
+  const areaResult = await runAreaExpert(areaContextBlock, areaPrior).catch(
+    (e) => {
+      console.error("Area expert failed:", e);
+      return {
+        area_score: 0,
+        area_summary: "Evaluation unavailable",
+        notable_flags: [] as string[],
+        area_unknown: true as const,
+        _rateLimitHit: isRateLimitError(e),
+      };
+    },
+  );
+
+  const [commuteResult, financeResult] = await Promise.all([
+    evaluateCommute(
+      listing.postcode ?? "",
+      preferences.commute_anchor_postcode ?? "",
+      preferences.max_commute_minutes ?? 60,
+      listing.address,
+    ).catch((e) => {
+      console.error("Commute evaluation failed:", e);
+      return {
+        commute_minutes: 0,
+        commute_route: "Commute data unavailable",
+        commute_score: 0,
+        commute_unknown: true as const,
+      };
+    }),
+    evaluateFinance(listing.price, preferences.deposit ?? 0).catch((e) => {
+      console.error("Finance evaluation failed:", e);
+      return {
+        monthly_mortgage: 0,
+        monthly_interest_only: 0,
+        stamp_duty: 0,
+        estimated_monthly_total: 0,
+        raw: {},
+      };
+    }),
+  ]);
 
   await Promise.all([
     dbWrite("agent_context", "upsert", {
@@ -290,8 +284,13 @@ export async function runEvaluationPipeline(
     ("_rateLimitHit" in propertyResult && propertyResult._rateLimitHit) ||
     ("_rateLimitHit" in areaResult && areaResult._rateLimitHit);
 
+  // When experts hit 429, overall_score often falls below threshold but the user
+  // should still get a scorecard (N/A / partial) instead of silence.
   const result: EvaluationPipelineResult = {
-    sent: components.length === 0 || overall_score > SCORE_THRESHOLD,
+    sent:
+      components.length === 0 ||
+      overall_score > SCORE_THRESHOLD ||
+      rateLimitHit,
     evaluation,
     listing,
     overall_score,

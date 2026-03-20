@@ -14,6 +14,129 @@ function isAllowlisted(table: string): table is AllowlistedTable {
   return ALLOWLISTED_TABLES.includes(table as AllowlistedTable);
 }
 
+/** Avoid select("*") for tables with huge columns (e.g. raw_email_html). */
+function selectColumnsForAgentRead(table: AllowlistedTable): string {
+  switch (table) {
+    case "listings":
+      return [
+        "id",
+        "created_at",
+        "portal_id",
+        "url",
+        "title",
+        "price",
+        "address",
+        "postcode",
+        "bedrooms",
+        "bathrooms",
+        "sqft",
+        "description",
+        "image_urls",
+        "floorplan_url",
+        "agent_name",
+        "agent_email",
+        "listed_date",
+        "status",
+      ].join(",");
+    case "evaluations":
+      return [
+        "id",
+        "listing_id",
+        "created_at",
+        "price_score",
+        "size_score",
+        "fit_score",
+        "area_score",
+        "commute_score",
+        "overall_score",
+        "deal_breaker_flags",
+        "commute_minutes",
+        "commute_route",
+        "monthly_mortgage",
+        "monthly_interest_only",
+        "stamp_duty",
+        "estimated_monthly_total",
+        "property_summary",
+        "area_summary",
+        "property_scores_unknown",
+        "area_score_unknown",
+        "commute_score_unknown",
+      ].join(",");
+    case "preferences":
+      return [
+        "id",
+        "created_at",
+        "updated_at",
+        "areas",
+        "max_price",
+        "min_bedrooms",
+        "must_haves",
+        "deal_breakers",
+        "commute_anchor",
+        "commute_anchor_postcode",
+        "max_commute_minutes",
+        "style_notes",
+        "freeform_notes",
+        "deposit",
+        "area_preferences",
+      ].join(",");
+    default:
+      return "*";
+  }
+}
+
+const MAX_LISTING_DESCRIPTION_AGENT_CHARS = 3500;
+const MAX_CONVERSATION_MESSAGE_AGENT_CHARS = 1500;
+const MAX_AGENT_CONTEXT_FINDINGS_CHARS = 2500;
+
+function shapeRowsForAgentRead(
+  table: AllowlistedTable,
+  rows: unknown[],
+): unknown[] {
+  if (table === "listings") {
+    return rows.map((r) => {
+      if (!r || typeof r !== "object") return r;
+      const row = { ...(r as Record<string, unknown>) };
+      const d = row.description;
+      if (typeof d === "string" && d.length > MAX_LISTING_DESCRIPTION_AGENT_CHARS) {
+        row.description = `${d.slice(0, MAX_LISTING_DESCRIPTION_AGENT_CHARS - 1)}…`;
+      }
+      return row;
+    });
+  }
+  if (table === "conversations") {
+    return rows.map((r) => {
+      if (!r || typeof r !== "object") return r;
+      const row = { ...(r as Record<string, unknown>) };
+      const m = row.message;
+      if (typeof m === "string" && m.length > MAX_CONVERSATION_MESSAGE_AGENT_CHARS) {
+        row.message = `${m.slice(0, MAX_CONVERSATION_MESSAGE_AGENT_CHARS - 1)}…`;
+      }
+      return row;
+    });
+  }
+  if (table === "agent_context") {
+    return rows.map((r) => {
+      if (!r || typeof r !== "object") return r;
+      const row = { ...(r as Record<string, unknown>) };
+      const c = row.content;
+      if (c && typeof c === "object") {
+        const content = { ...(c as Record<string, unknown>) };
+        const findings = content.findings;
+        if (
+          typeof findings === "string" &&
+          findings.length > MAX_AGENT_CONTEXT_FINDINGS_CHARS
+        ) {
+          content.findings = `${findings.slice(0, MAX_AGENT_CONTEXT_FINDINGS_CHARS - 1)}…`;
+        }
+        row.content = content;
+      }
+      return row;
+    });
+  }
+  return rows;
+}
+
 function sanitizeFilters(
   filters: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -39,7 +162,8 @@ export async function dbRead(
   }
 
   try {
-    let query = supabaseAdmin.from(table).select("*");
+    const columns = selectColumnsForAgentRead(table);
+    let query = supabaseAdmin.from(table).select(columns);
 
     if (filters && Object.keys(filters).length > 0) {
       const sanitized = sanitizeFilters(filters);
@@ -62,7 +186,8 @@ export async function dbRead(
       return { ok: false, error: error.message };
     }
 
-    return { ok: true, data: data ?? [] };
+    const shaped = shapeRowsForAgentRead(table, data ?? []);
+    return { ok: true, data: shaped };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: msg };
@@ -150,7 +275,8 @@ export const DB_READ_TOOL = {
       },
       limit: {
         type: "number",
-        description: "Max rows to return (default 100)",
+        description:
+          "Max rows to return (default 100, capped at 100). Listings omit raw_email_html; evaluations omit raw_* json blobs; preferences omit raw_json — use the Property/Preferences JSON in the user message for full prefs.",
       },
     },
     required: ["table"],

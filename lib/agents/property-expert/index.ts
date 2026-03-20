@@ -7,7 +7,11 @@ import {
   createPropertyExpertExecuteTool,
 } from "./tools";
 import { registerAgent } from "@/lib/core/registry";
-import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
+import {
+  clampScore,
+  expertOutputParseHint,
+  tryExtractJsonObject,
+} from "@/lib/utils/agent-output";
 import { truncatePriorFindings } from "@/lib/utils/tool-result";
 
 const executeTool = createPropertyExpertExecuteTool();
@@ -90,6 +94,7 @@ export type PropertyExpertResult = {
   fit_score: number;
   deal_breaker_flags: string[];
   property_summary: string;
+  property_unknown?: true;
 };
 
 export async function runPropertyExpert(
@@ -113,7 +118,20 @@ export async function runPropertyExpert(
   });
 
   const text = "message" in result ? result.message : "";
-  const parsed = extractJsonObject(text, "property expert response");
+  const parsed = tryExtractJsonObject(text);
+  if (!parsed) {
+    console.warn(
+      `Property expert: no parseable JSON (${expertOutputParseHint(text)}); preview=${JSON.stringify(text.slice(0, 220))}`,
+    );
+    return {
+      price_score: 0,
+      size_score: 0,
+      fit_score: 0,
+      deal_breaker_flags: [] as string[],
+      property_summary: "Evaluation unavailable",
+      property_unknown: true as const,
+    };
+  }
 
   return {
     price_score: clampScore(parsed.price_score, 5),

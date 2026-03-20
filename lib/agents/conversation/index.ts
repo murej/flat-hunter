@@ -4,6 +4,7 @@ import {
   logConversation,
   getActiveListingId,
   getConversationHistory,
+  hasOutboundAfterInbound,
 } from "@/lib/supabase";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { collectPreferences } from "@/lib/agents/preference";
@@ -87,13 +88,25 @@ export async function conversationAgent(
     direction: "inbound",
     message: text,
   });
-  if (!inserted) return;
+
+  if (!inserted) {
+    const alreadyReplied = await hasOutboundAfterInbound(messageId);
+    if (alreadyReplied) return;
+  }
 
   try {
     const preferences = await getPreferences();
+
     if (!preferences) {
       const result = await collectPreferences(text, messageId);
-      if (result.message) await sendMessage(result.message);
+      if (result.message) {
+        await sendMessage(result.message);
+        await logConversation({
+          direction: "outbound",
+          message: result.message,
+          intent: "preferences",
+        });
+      }
       return;
     }
 
@@ -106,16 +119,16 @@ export async function conversationAgent(
       });
       const result = await executeTool("show_preferences", {});
       if (result.type === "direct") {
-        await logConversation({
-          direction: "outbound",
-          message: result.message,
-          intent: "preferences",
-        });
         if (result.buttons && result.buttons.length > 0) {
           await sendWithButtons(result.message, result.buttons);
         } else {
           await sendMessage(result.message);
         }
+        await logConversation({
+          direction: "outbound",
+          message: result.message,
+          intent: "preferences",
+        });
       }
       return;
     }
@@ -129,11 +142,6 @@ export async function conversationAgent(
       });
       const result = await executeTool("show_saved_properties", {});
       if (result.type === "direct") {
-        await logConversation({
-          direction: "outbound",
-          message: result.message,
-          intent: "other",
-        });
         if (result.buttons && result.buttons.length > 0) {
           await sendWithButtons(result.message, result.buttons, {
             disable_web_page_preview: true,
@@ -143,6 +151,11 @@ export async function conversationAgent(
             disable_web_page_preview: true,
           });
         }
+        await logConversation({
+          direction: "outbound",
+          message: result.message,
+          intent: "other",
+        });
       }
       return;
     }
@@ -203,6 +216,8 @@ export async function conversationAgent(
     const message = "message" in result ? result.message : "";
     const buttons = "buttons" in result ? result.buttons : undefined;
     const metadata = "metadata" in result ? result.metadata : undefined;
+    const parseMode =
+      "parse_mode" in result ? result.parse_mode : undefined;
 
     const listingId = metadata?.listingId ?? activeListingId;
     const intent =
@@ -210,20 +225,22 @@ export async function conversationAgent(
       (dataToolName ? EXPLANATION_AGENTS[dataToolName]?.intent : null) ??
       "other";
 
+    if (message) {
+      const tgOpts =
+        parseMode != null ? { parse_mode: parseMode } : {};
+      if (buttons && buttons.length > 0) {
+        await sendWithButtons(message, buttons, tgOpts);
+      } else {
+        await sendMessage(message, tgOpts);
+      }
+    }
+
     await logConversation({
       direction: "outbound",
       message,
       listing_id: listingId,
       intent,
     });
-
-    if (message) {
-      if (buttons && buttons.length > 0) {
-        await sendWithButtons(message, buttons);
-      } else {
-        await sendMessage(message);
-      }
-    }
   } catch (e) {
     if (isAnthropicOutOfCredits(e)) {
       await sendMessage(ANTHROPIC_OUT_OF_CREDITS_MSG);

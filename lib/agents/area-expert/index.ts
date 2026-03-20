@@ -10,7 +10,11 @@ import {
   evaluatePreferredAreas,
 } from "./tools";
 import { registerAgent } from "@/lib/core/registry";
-import { clampScore, extractJsonObject } from "@/lib/utils/agent-output";
+import {
+  clampScore,
+  expertOutputParseHint,
+  tryExtractJsonObject,
+} from "@/lib/utils/agent-output";
 
 const executeTool = createAreaExpertExecuteTool();
 
@@ -32,6 +36,7 @@ export type AreaExpertResult = {
   area_score: number;
   area_summary: string;
   notable_flags: string[];
+  area_unknown?: true;
 };
 
 export async function runAreaExpert(
@@ -53,7 +58,18 @@ export async function runAreaExpert(
   });
 
   const text = "message" in result ? result.message : "";
-  const parsed = extractJsonObject(text, "area expert response");
+  const parsed = tryExtractJsonObject(text);
+  if (!parsed) {
+    console.warn(
+      `Area expert: no parseable JSON (${expertOutputParseHint(text)}); preview=${JSON.stringify(text.slice(0, 220))}`,
+    );
+    return {
+      area_score: 0,
+      area_summary: "Evaluation unavailable",
+      notable_flags: [] as string[],
+      area_unknown: true as const,
+    };
+  }
 
   return {
     area_score: clampScore(parsed.area_score, 5),

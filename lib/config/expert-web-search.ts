@@ -27,13 +27,18 @@ export function getAreaExpertToolSets(): ToolSet[] {
   return sets;
 }
 
-/** Clamped 1–5. Default 3. */
+/**
+ * Assistant turns including the final JSON-only turn after tools.
+ * Default 8 — db_read → db_write → optional web_search → final JSON needs headroom
+ * (default 3 caused frequent "Max tool iterations reached" in logs).
+ * Clamped 1–12.
+ */
 export function getExpertMaxToolIterations(): number {
   return envIntClamped(
     process.env.EXPERT_MAX_TOOL_ITERATIONS,
-    3,
+    8,
     1,
-    5,
+    12,
     "EXPERT_MAX_TOOL_ITERATIONS",
   );
 }

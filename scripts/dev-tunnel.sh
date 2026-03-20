@@ -1,6 +1,9 @@
 #!/bin/bash
 # Starts cloudflared, registers the tunnel URL as the Telegram webhook, then starts the Next.js dev server.
 # Run with: npm run dev:tunnel
+#
+# Uses PORT=3001 by default (override with DEV_PORT=...) so the tunnel target matches Next and avoids
+# flaky EADDRINUSE on 3000 seen with Next 16 + Turbopack when nothing else shows in lsof.
 
 set -e
 
@@ -16,10 +19,13 @@ if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
   exit 1
 fi
 
+export PORT="${DEV_PORT:-3001}"
+ORIGIN="http://localhost:${PORT}"
+
 TUNNEL_LOG=$(mktemp)
 
-echo "Starting cloudflared tunnel..."
-cloudflared tunnel --url http://localhost:3000 > "$TUNNEL_LOG" 2>&1 &
+echo "Starting cloudflared tunnel → ${ORIGIN} (PORT=${PORT})..."
+cloudflared tunnel --url "$ORIGIN" > "$TUNNEL_LOG" 2>&1 &
 TUNNEL_PID=$!
 
 # Wait for the tunnel to be fully connected (not just URL printed, but connection registered)
@@ -85,5 +91,5 @@ trap cleanup EXIT
 # Override APP_URL so internal fetch calls (e.g. /api/search) hit the tunnel, not production
 export NEXT_PUBLIC_APP_URL="$TUNNEL_URL"
 
-# Start the dev server in the foreground
+# Start the dev server in the foreground (Next uses PORT)
 npm run dev

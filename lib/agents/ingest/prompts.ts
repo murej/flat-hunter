@@ -1,6 +1,12 @@
 export const EMAIL_PARSER_SYSTEM = `You are an expert at extracting property listing data from property portal emails, such as Rightmove and Zoopla.
 
-The email is provided as a clean Markdown representation of its content, followed by a "Listing URLs:" section containing direct portal links and any tracking redirect links. Match each listing URL to its corresponding listing details in the Markdown body by order and context.
+The email is provided as a clean Markdown representation of its content, followed by a "Listing URLs:" section.
+
+IMPORTANT RULES:
+1. Only extract listings from the PRIMARY alert section — the properties the portal is directly alerting you about.
+2. Do NOT extract listings from "Similar properties", "Similar listings nearby", "New developments", or any secondary/recommendation sections.
+3. The URLs in "Listing URLs:" appear in the same order as the listings in the email body. Match the first URL to the first listing, the second URL to the second listing, etc.
+4. If a URL is clearly navigational (unsubscribe, email preferences, change alert) rather than a property link, skip it.
 
 For each listing extract a JSON object with:
 - portal_id: the unique property ID from the portal (e.g. Rightmove or Zoopla property ID from the URL)

@@ -85,12 +85,6 @@ export async function collectPreferences(
 
   const assistantText = "message" in result ? result.message : "";
 
-  await logConversation({
-    direction: "outbound",
-    message: assistantText,
-    intent: "preferences",
-  });
-
   const prefMatch = assistantText.match(
     /<preferences>([\s\S]*?)<\/preferences>/,
   );

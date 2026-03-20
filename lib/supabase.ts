@@ -65,6 +65,39 @@ export async function logConversation(params: {
 }
 
 /**
+ * True if any outbound row was logged after the latest inbound row for this
+ * Telegram message id. Used when inbound insert hits a duplicate key (23505):
+ * skip only if we already completed the turn; otherwise retry after a failed
+ * first attempt that logged inbound but never sent.
+ */
+export async function hasOutboundAfterInbound(
+  telegramMessageId: string,
+): Promise<boolean> {
+  if (!telegramMessageId) return false;
+
+  const { data: inboundRows, error: inboundError } = await supabaseAdmin
+    .from("conversations")
+    .select("created_at")
+    .eq("telegram_message_id", telegramMessageId)
+    .eq("direction", "inbound")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (inboundError) throw inboundError;
+  const inboundCreated = inboundRows?.[0]?.created_at;
+  if (!inboundCreated) return false;
+
+  const { count, error: countError } = await supabaseAdmin
+    .from("conversations")
+    .select("*", { count: "exact", head: true })
+    .eq("direction", "outbound")
+    .gt("created_at", inboundCreated);
+
+  if (countError) throw countError;
+  return (count ?? 0) > 0;
+}
+
+/**
  * Returns the listing_id from the most recent conversation row that has one,
  * looking back through the last `lookback` rows. Used to resolve "it" / "that
  * property" references when no UUID appears in the user's message.

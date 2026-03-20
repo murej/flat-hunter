@@ -387,6 +387,7 @@ export function createConversationExecuteTool(
         message: result.message,
         metadata: { listingId: result.listingId, intent: result.intent },
         buttons,
+        parse_mode: result.scorecard ? "HTML" : undefined,
       };
     }
     return result;

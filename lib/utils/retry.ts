@@ -10,6 +10,34 @@ export function isRateLimitError(e: unknown): boolean {
   return false;
 }
 
+/** True when `messages.create` should be retried after a short wait (Tier 1 TPM/RPM). */
+export function isAnthropicRateOrOverloadError(e: unknown): boolean {
+  const s = (e as { status?: number })?.status;
+  if (s === 429 || s === 529) return true;
+  const msg = String((e as Error)?.message ?? e);
+  if (/rate_limit_error|overloaded_error|529/i.test(msg)) return true;
+  if (/rate.?limit/i.test(msg) && /429|529/.test(msg)) return true;
+  return false;
+}
+
+/** Prefer API `retry-after` (seconds); else backoff from attempt index. */
+export function sleepMsFromAnthropicRetryAfter(
+  e: unknown,
+  attemptIndex: number,
+): number {
+  const headers = (e as { headers?: Headers })?.headers;
+  if (headers && typeof headers.get === "function") {
+    const raw = headers.get("retry-after");
+    if (raw) {
+      const sec = Number.parseFloat(raw);
+      if (Number.isFinite(sec) && sec > 0) {
+        return Math.min(120_000, Math.max(1_500, sec * 1000));
+      }
+    }
+  }
+  return Math.min(60_000, 3_000 * (attemptIndex + 1));
+}
+
 function isRetryable(e: unknown): boolean {
   if (e instanceof TypeError) return true;
 

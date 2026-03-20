@@ -45,7 +45,14 @@ export async function handleTelegramUpdate(
         "I'd like to set up my property search preferences.",
         messageId,
       );
-      if (result.message) await sendMessage(result.message);
+      if (result.message) {
+        await sendMessage(result.message);
+        await logConversation({
+          direction: "outbound",
+          message: result.message,
+          intent: "preferences",
+        });
+      }
     }
     return;
   }
@@ -94,13 +101,13 @@ export async function handleTelegramUpdate(
         });
         const message = "message" in explanation ? explanation.message : "";
         if (message) {
+          await sendMessage(message);
           await logConversation({
             direction: "outbound",
             message,
             listing_id: listingId,
             intent: "why",
           });
-          await sendMessage(message);
         }
       }
     }
@@ -113,13 +120,15 @@ export async function handleTelegramUpdate(
       await answerCallback();
       const result = await getScorecard(listingId);
       if (result.ok) {
+        await sendWithButtons(result.scorecardText, result.buttons, {
+          parse_mode: "HTML",
+        });
         await logConversation({
           direction: "outbound",
           message: result.scorecardText,
           listing_id: result.listingId,
           intent: null,
         });
-        await sendWithButtons(result.scorecardText, result.buttons);
       } else {
         await sendMessage(result.message);
       }
@@ -130,12 +139,12 @@ export async function handleTelegramUpdate(
   if (text === "update preferences") {
     await answerCallback();
     const updatePrompt = "What would you like to update?";
+    await sendWithButtons(updatePrompt, UPDATE_PREFERENCES_BUTTONS);
     await logConversation({
       direction: "outbound",
       message: updatePrompt,
       intent: "preferences",
     });
-    await sendWithButtons(updatePrompt, UPDATE_PREFERENCES_BUTTONS);
     return;
   }
 
@@ -155,7 +164,14 @@ export async function handleTelegramUpdate(
       messageMap[part] ?? "I want to update my preferences";
     const dedupId = callbackQueryId ?? messageId;
     const result = await collectPreferences(naturalMessage, dedupId);
-    if (result.message) await sendMessage(result.message);
+    if (result.message) {
+      await sendMessage(result.message);
+      await logConversation({
+        direction: "outbound",
+        message: result.message,
+        intent: "preferences",
+      });
+    }
     return;
   }
 
