@@ -15,7 +15,7 @@ async function callTelegram(method: string, body: Record<string, unknown>) {
   });
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Telegram ${method} error:`, text);
+    throw new Error(`Telegram ${method} failed (${res.status}): ${text}`);
   }
   return res;
 }

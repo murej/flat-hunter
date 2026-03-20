@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { parseInbound } from "@/lib/telegram";
+import { parseInbound, sendMessage } from "@/lib/telegram";
 import { handleTelegramUpdate } from "@/lib/agents/conversation/handler";
+import { envBool } from "@/lib/utils/env-utils";
 
 // Import agents to trigger registration
 import "@/lib/agents/property-expert";
@@ -22,6 +23,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Telegram webhook error:", err);
+    try {
+      const verbose = envBool("VERBOSE_TELEGRAM");
+      const detail = err instanceof Error ? err.message : "Unknown error";
+      const text = verbose
+        ? `⚠️ Error: ${detail}`
+        : "⚠️ Something went wrong.";
+      await sendMessage(text);
+    } catch { /* best effort */ }
     return NextResponse.json({ ok: true }); // Always 200 to prevent Telegram retries
   }
 }
