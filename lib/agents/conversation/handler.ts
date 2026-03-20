@@ -7,6 +7,12 @@ import { getWhyExplanationModel } from "@/lib/config/agent-models";
 import { WHY_EXPLANATION_SYSTEM } from "./prompts";
 import { TELEMETRY_TAG_WHY, SUB_AGENT_MAX_STEPS } from "./config";
 import { conversationAgent } from "./index";
+import type { Preferences } from "@/types";
+
+function prefsContext(prefs: Preferences | null): string {
+  if (!prefs) return "\n\n[No preferences saved yet]";
+  return `\n\n[Current saved preferences: ${JSON.stringify(prefs)}]`;
+}
 
 export async function handleTelegramUpdate(input: {
   text: string;
@@ -45,7 +51,7 @@ export async function handleTelegramUpdate(input: {
 
     const prefsBefore = await getPreferences();
     const history = await getConversationHistory();
-    const result = await runPreferenceAgent(text, history);
+    const result = await runPreferenceAgent(text + prefsContext(prefsBefore), history);
     const prefsAfter = await getPreferences();
 
     const prefsSaved =
@@ -79,7 +85,7 @@ export async function handleTelegramUpdate(input: {
       await sendMessage("Welcome back! Your preferences are already set up. Type anything to chat, or say 'update preferences' to change them.");
     } else {
       await setSessionMode("preference");
-      const result = await runPreferenceAgent("The user just started. Begin collecting their property search preferences.");
+      const result = await runPreferenceAgent("The user just started. Begin collecting their property search preferences.\n\n[No preferences saved yet]");
       await sendMarkdown(result.message);
     }
     await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Welcome", intent: "start" });
@@ -157,10 +163,11 @@ export async function handleTelegramUpdate(input: {
     await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "update_preferences" });
     await setSessionMode("preference");
 
+    const prefs = await getPreferences();
     const prompt = category
-      ? `The user wants to update their ${category} preferences. Read current preferences first, then ask what they'd like to change.`
-      : "The user wants to update their preferences. Read current preferences and ask what they'd like to change.";
-    const result = await runPreferenceAgent(prompt);
+      ? `The user wants to update their ${category} preferences. Ask what they'd like to change.`
+      : "The user wants to update their preferences. Ask what they'd like to change.";
+    const result = await runPreferenceAgent(prompt + prefsContext(prefs));
     await sendMarkdown(result.message);
     await logConversation({ telegram_message_id: messageId, direction: "outbound", message: result.message, intent: "update_preferences" });
     return;
