@@ -5,7 +5,6 @@
 import { envModel } from "@/lib/config/env-utils";
 
 const HAIKU_DEFAULT = "claude-haiku-4-5";
-const SONNET_DEFAULT = "claude-sonnet-4-6";
 
 /** When `runAgent` omits `model` (e.g. simple text turns). */
 export function getRunAgentDefaultModel(): string {
@@ -13,11 +12,11 @@ export function getRunAgentDefaultModel(): string {
 }
 
 export function getPropertyExpertModel(): string {
-  return envModel(process.env.PROPERTY_EXPERT_MODEL, SONNET_DEFAULT);
+  return envModel(process.env.PROPERTY_EXPERT_MODEL, HAIKU_DEFAULT);
 }
 
 export function getAreaExpertModel(): string {
-  return envModel(process.env.AREA_EXPERT_MODEL, SONNET_DEFAULT);
+  return envModel(process.env.AREA_EXPERT_MODEL, HAIKU_DEFAULT);
 }
 
 /** Telegram conversation router (tools + Haiku-class tasks). */

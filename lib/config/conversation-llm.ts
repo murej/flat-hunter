@@ -9,7 +9,7 @@ export {
   getEmailVerificationModel,
 } from "@/lib/config/agent-models";
 
-/** Default true — set CONVERSATION_CALL_AGENT=false to avoid nested Sonnet experts from chat. */
+/** Default true — set CONVERSATION_CALL_AGENT=false to avoid nested property/area experts from chat. */
 export function isConversationCallAgentEnabled(): boolean {
   return envBool(
     process.env.CONVERSATION_CALL_AGENT,
