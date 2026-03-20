@@ -172,12 +172,15 @@ lib/
     db-config.ts                  # Stath-specific DbToolConfig
   agents/
     conversation/                 # Telegram chat router
-      index.ts, handler.ts, prompts.ts, tools.ts
+      config.ts, index.ts, handler.ts, prompts.ts, tools.ts
     ingest/                       # Email parsing + listing ingestion
-      index.ts, handler.ts, prompts.ts, tools.ts, email-llm-input.ts
-    property-expert/              # Property fit scoring (index.ts, prompts.ts, tools.ts)
-    area-expert/                  # Area scoring (index.ts, prompts.ts, tools.ts, context.ts)
-    preference/                   # Preference collection (index.ts, prompts.ts, tools.ts)
+      config.ts, index.ts, handler.ts, prompts.ts, tools.ts, email-llm-input.ts
+    property-expert/              # Property fit scoring
+      config.ts, index.ts, prompts.ts, tools.ts
+    area-expert/                  # Area scoring
+      config.ts, index.ts, prompts.ts, tools.ts, context.ts
+    preference/                   # Preference collection
+      config.ts, index.ts, prompts.ts, tools.ts
     notifications.ts              # Notification queue consumer
   tools/
     area.ts                       # fetchAreaContext() — postcodes.io, Police API, ArcGIS IMD
@@ -279,6 +282,22 @@ Zod schemas for `Output.object()`:
 
 ## Agents
 
+### Agent `config.ts` Convention
+
+Every agent directory contains a `config.ts` — the single place to tune that agent's behaviour. All constants have JSDoc comments. Every registered agent exports `AGENT_NAME` (registry key) and `TELEMETRY_TAG` (usage log label). Additional constants per agent:
+
+| Agent | Constant | Default | Purpose |
+|---|---|---|---|
+| preference | `PREFERENCE_MAX_STEPS` | `5` | Max LLM tool-use rounds |
+| ingest | `TELEMETRY_TAG_VERIFICATION` | `"email_verification"` | Verification parse log label |
+| ingest | `TELEMETRY_TAG_PARSE` | `"ingest_parse"` | Listing parse log label |
+| ingest | `MAX_PARSE_STEPS` | `1` | One-shot structured output |
+| conversation | `TELEMETRY_TAG_WHY` | `"why_explanation"` | Why-chain log label |
+| conversation | `TELEMETRY_TAG_COMPARISON` | `"comparison"` | Comparison-chain log label |
+| conversation | `SUB_AGENT_MAX_STEPS` | `1` | Steps for why/comparison sub-agents |
+
+Shared constants live in `lib/config/`: `EXPERT_MAX_STEPS=8` (expert-web-search.ts), `CONVERSATION_MAX_STEPS=3` / `RE_EVAL_COOLDOWN_HOURS=24` (conversation-llm.ts). `SCORECARD_DELAY_MS=500` lives at top of notifications.ts.
+
 ### Preference — `lib/agents/preference/`
 
 Registered as `"preference"`. Tools: `db`. Model: Haiku. Max steps: 5. Multi-turn preference collection (areas, price, deposit, bedrooms, commute, must-haves, deal-breakers, style). On save with `AREA_PROFILE_BATCH=true`: iterate target areas → `runAreaExpert()` per area via `getPostcodeContextForArea()` to pre-populate agent_context.
@@ -371,8 +390,6 @@ CONVERSATION_CALL_AGENT=true
 CONVERSATION_ALLOW_RE_EVALUATION=true
 AREA_PROFILE_BATCH=false
 ```
-
-Hardcoded constants: `EXPERT_MAX_STEPS=8`, `CONVERSATION_MAX_STEPS=3`, `RE_EVAL_COOLDOWN_HOURS=24`, `PREFERENCE_MAX_STEPS=5`, `SCORECARD_DELAY_MS=500`.
 
 ---
 
