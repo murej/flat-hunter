@@ -28,7 +28,7 @@ export function buildDbReadTool(config: DbToolConfig) {
         .optional()
         .describe("Comma-separated columns to select (default: *)"),
       filters: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .optional()
         .describe("Key-value equality filters"),
       order_by: z
@@ -83,9 +83,9 @@ export function buildDbWriteTool(config: DbToolConfig) {
       operation: z
         .enum(["insert", "update"])
         .describe("insert or update"),
-      data: z.record(z.unknown()).describe("Row data as key-value pairs"),
+      data: z.record(z.string(), z.unknown()).describe("Row data as key-value pairs"),
       filters: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .optional()
         .describe("Equality filters for update (required for update)"),
     }),
