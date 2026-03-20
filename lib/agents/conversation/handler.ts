@@ -2,6 +2,10 @@ import { sendMessage, sendWithButtons, answerCallbackQuery } from "@/lib/telegra
 import { logConversation, getPreferences } from "@/lib/supabase";
 import { saveListing, skipListing, getScorecard, getWhyContext } from "@/lib/tools/listing";
 import { runPreferenceAgent } from "@/lib/agents/preference";
+import { runAgent } from "@/lib/core/agent";
+import { getWhyExplanationModel } from "@/lib/config/agent-models";
+import { WHY_EXPLANATION_SYSTEM } from "./prompts";
+import { TELEMETRY_TAG_WHY, SUB_AGENT_MAX_STEPS } from "./config";
 import { conversationAgent } from "./index";
 
 export async function handleTelegramUpdate(input: {
@@ -66,9 +70,21 @@ export async function handleTelegramUpdate(input: {
       return;
     }
 
-    // Use conversation agent to generate explanation
-    const prompt = `Explain why listing ${id} received its scores. Here's the context:\n${JSON.stringify(context, null, 2)}`;
-    const result = await conversationAgent(prompt, messageId, id);
+    const explanation = await runAgent({
+      systemPrompt: WHY_EXPLANATION_SYSTEM,
+      prompt: `Explain these evaluation scores:\n${JSON.stringify(context, null, 2)}`,
+      model: getWhyExplanationModel(),
+      maxSteps: SUB_AGENT_MAX_STEPS,
+      telemetryTag: TELEMETRY_TAG_WHY,
+    });
+    await sendMessage(explanation.message, { parse_mode: "Markdown" });
+    await logConversation({
+      telegram_message_id: messageId,
+      direction: "outbound",
+      message: explanation.message,
+      listing_id: id,
+      intent: "why_explanation",
+    });
     return;
   }
 

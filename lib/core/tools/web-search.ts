@@ -1,17 +1,13 @@
-// Web search provider tool placeholder.
-// The Anthropic AI SDK's built-in web search tool requires a model that supports it.
-// This is a no-op in SDK versions without native web search support.
-// When available, it would be: anthropic.tools.webSearch({ maxUses: 3 })
+// Web search provider tool.
+// Requires @ai-sdk/anthropic with webSearch support (not yet available in ^1.2.0).
+// When the SDK adds webSearch, update this to return the tool.
+
+import { anthropic } from "@ai-sdk/anthropic";
 
 export function buildWebSearchTool(): unknown | null {
-  try {
-    // Dynamic check for web search support
-    const { anthropic } = require("@ai-sdk/anthropic");
-    if (anthropic.tools && "webSearch" in anthropic.tools) {
-      return (anthropic.tools as Record<string, Function>).webSearch({ maxUses: 3 });
-    }
-  } catch {
-    // Not available
+  const tools = anthropic.tools as Record<string, unknown>;
+  if ("webSearch" in tools && typeof tools.webSearch === "function") {
+    return (tools.webSearch as (opts: { maxUses: number }) => unknown)({ maxUses: 3 });
   }
   return null;
 }

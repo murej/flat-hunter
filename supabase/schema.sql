@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS preferences (
   style_notes TEXT,
   freeform_notes TEXT,
   area_preferences TEXT[] NOT NULL DEFAULT '{}',
+  score_weights JSONB,
   raw_json JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

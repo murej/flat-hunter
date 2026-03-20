@@ -6,6 +6,7 @@ import { getIngestParseModel, getEmailVerificationModel } from "@/lib/config/age
 import { ListingSchema, VerificationResultSchema } from "@/lib/schemas";
 import type { VerificationResultOutput, ListingOutput } from "@/lib/schemas";
 import { INGEST_PARSE_SYSTEM, EMAIL_VERIFICATION_SYSTEM } from "./prompts";
+import { TELEMETRY_TAG_VERIFICATION, TELEMETRY_TAG_PARSE, MAX_PARSE_STEPS } from "./config";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
 import { buildScorecardButtons } from "@/lib/tools/scorecard";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
@@ -34,8 +35,8 @@ export async function parseVerificationEmail(
     systemPrompt: EMAIL_VERIFICATION_SYSTEM,
     prompt: content,
     model: getEmailVerificationModel(),
-    maxSteps: 1,
-    telemetryTag: "email_verification",
+    maxSteps: MAX_PARSE_STEPS,
+    telemetryTag: TELEMETRY_TAG_VERIFICATION,
     output: Output.object({ schema: VerificationResultSchema }),
   });
   return JSON.parse(result.message);
@@ -48,8 +49,8 @@ export async function parseEmailHtml(
     systemPrompt: INGEST_PARSE_SYSTEM,
     prompt: content,
     model: getIngestParseModel(),
-    maxSteps: 1,
-    telemetryTag: "ingest_parse",
+    maxSteps: MAX_PARSE_STEPS,
+    telemetryTag: TELEMETRY_TAG_PARSE,
     output: Output.object({ schema: z.array(ListingSchema) }),
   });
   return JSON.parse(result.message);

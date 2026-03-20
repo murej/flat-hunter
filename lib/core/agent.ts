@@ -36,6 +36,10 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
     },
   };
 
+  if (input.providerTools?.length) {
+    opts.providerOptions = { anthropic: { tools: input.providerTools } };
+  }
+
   if (input.output) {
     opts.experimental_output = input.output;
   }

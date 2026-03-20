@@ -8,10 +8,11 @@ import { getAreaExpertTools } from "./tools";
 import { slimAreaContext } from "./context";
 import type { AreaEvalResult } from "@/types";
 import { clampScore } from "@/lib/utils/agent-output";
+import { AGENT_NAME, TELEMETRY_TAG } from "./config";
 
 const { tools, providerTools, maxSteps } = getAreaExpertTools();
 
-registerAgent("area_expert", {
+registerAgent(AGENT_NAME, {
   systemPrompt: AREA_EXPERT_SYSTEM,
   tools,
   providerTools,
@@ -34,7 +35,7 @@ export async function runAreaExpert(
     providerTools,
     model: getAreaExpertModel(),
     maxSteps,
-    telemetryTag: "area_expert",
+    telemetryTag: TELEMETRY_TAG,
     output: Output.object({ schema: AreaEvalSchema }),
   });
 

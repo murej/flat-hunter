@@ -1,14 +1,25 @@
 import type { FinanceEvalResult } from "@/types";
 import { getLatestMortgageRate } from "./mortgage-rate";
 
-function calculateSDLT(price: number): number {
-  // Standard SDLT bands (non-FTB for now, simplified)
-  const bands = [
-    { threshold: 250_000, rate: 0 },
-    { threshold: 925_000, rate: 0.05 },
-    { threshold: 1_500_000, rate: 0.1 },
-    { threshold: Infinity, rate: 0.12 },
-  ];
+const MORTGAGE_TERM_YEARS = 25;
+const STRESS_TEST_MARGIN = 2;
+const SERVICE_CHARGE_MONTHLY = 200;
+
+const FTB_PRICE_CAP = 625_000;
+const FTB_BANDS = [
+  { threshold: 425_000, rate: 0 },
+  { threshold: 625_000, rate: 0.05 },
+];
+const STANDARD_BANDS = [
+  { threshold: 250_000, rate: 0 },
+  { threshold: 925_000, rate: 0.05 },
+  { threshold: 1_500_000, rate: 0.1 },
+  { threshold: Infinity, rate: 0.12 },
+];
+
+function calculateSDLT(price: number, firstTimeBuyer = true): number {
+  const ftbEligible = firstTimeBuyer && price <= FTB_PRICE_CAP;
+  const bands = ftbEligible ? FTB_BANDS : STANDARD_BANDS;
 
   let tax = 0;
   let prev = 0;
@@ -42,16 +53,15 @@ export async function evaluateFinance(
   const rate = await getLatestMortgageRate();
   const loanAmount = price - deposit;
 
-  const mortgageMonthly = calculateMonthlyRepayment(loanAmount, rate, 25);
+  const mortgageMonthly = calculateMonthlyRepayment(loanAmount, rate, MORTGAGE_TERM_YEARS);
   const interestOnlyMonthly = Math.round((loanAmount * rate) / 100 / 12);
   const stampDuty = calculateSDLT(price);
   const stressTestMonthly = calculateMonthlyRepayment(
     loanAmount,
-    rate + 2,
-    25,
+    rate + STRESS_TEST_MARGIN,
+    MORTGAGE_TERM_YEARS,
   );
-  const serviceCharge = 200;
-  const totalMonthly = mortgageMonthly + serviceCharge;
+  const totalMonthly = mortgageMonthly + SERVICE_CHARGE_MONTHLY;
 
   return {
     mortgage_monthly: mortgageMonthly,

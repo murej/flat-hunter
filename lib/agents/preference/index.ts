@@ -9,11 +9,11 @@ import { getPostcodeContextForArea } from "@/lib/tools/area";
 import { runAreaExpert } from "@/lib/agents/area-expert";
 import { AREA_PROFILE_PROMPT } from "@/lib/prompts/area";
 import type { RunAgentOutput } from "@/lib/core/types";
+import { AGENT_NAME, TELEMETRY_TAG, PREFERENCE_MAX_STEPS } from "./config";
 
 const tools = getPreferenceTools();
-const PREFERENCE_MAX_STEPS = 5;
 
-registerAgent("preference", {
+registerAgent(AGENT_NAME, {
   systemPrompt: PREFERENCE_COLLECTOR_SYSTEM,
   tools,
   model: getPreferenceCollectorModel(),
@@ -33,7 +33,7 @@ export async function runPreferenceAgent(
     tools,
     model: getPreferenceCollectorModel(),
     maxSteps: PREFERENCE_MAX_STEPS,
-    telemetryTag: "preference",
+    telemetryTag: TELEMETRY_TAG,
   });
 
   // After saving preferences, optionally batch-profile target areas

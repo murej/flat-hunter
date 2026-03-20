@@ -9,6 +9,7 @@ import { runAreaExpert } from "@/lib/agents/area-expert";
 import type {
   Listing,
   Preferences,
+  ScoreWeights,
   PropertyEvalResult,
   AreaEvalResult,
   CommuteEvalResult,
@@ -22,11 +23,12 @@ function computeOverallScore(
   property: PropertyEvalResult,
   area: AreaEvalResult,
   commute: CommuteEvalResult,
-  finance: FinanceEvalResult,
-  _preferences: Preferences,
+  _finance: FinanceEvalResult,
+  preferences: Preferences,
 ): number {
-  // Default equal weights
-  const weights = { fit: 1, price: 1, size: 1, area: 1, commute: 1 };
+  const defaults: Required<ScoreWeights> = { fit: 1, price: 1, size: 1, area: 1, commute: 1 };
+  const w = preferences.score_weights ?? {};
+  const weights = { ...defaults, ...w };
   const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
 
   const weighted =

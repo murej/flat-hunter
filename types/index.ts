@@ -12,6 +12,7 @@ export type Preferences = {
   style_notes: string | null;
   freeform_notes: string | null;
   area_preferences: string[];
+  score_weights: ScoreWeights | null;
   raw_json: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;

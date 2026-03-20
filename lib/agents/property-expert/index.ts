@@ -7,10 +7,11 @@ import { PROPERTY_EXPERT_SYSTEM } from "./prompts";
 import { getPropertyExpertTools } from "./tools";
 import type { PropertyEvalResult } from "@/types";
 import { clampScore } from "@/lib/utils/agent-output";
+import { AGENT_NAME, TELEMETRY_TAG } from "./config";
 
 const { tools, providerTools, maxSteps } = getPropertyExpertTools();
 
-registerAgent("property_expert", {
+registerAgent(AGENT_NAME, {
   systemPrompt: PROPERTY_EXPERT_SYSTEM,
   tools,
   providerTools,
@@ -28,7 +29,7 @@ export async function runPropertyExpert(
     providerTools,
     model: getPropertyExpertModel(),
     maxSteps,
-    telemetryTag: "property_expert",
+    telemetryTag: TELEMETRY_TAG,
     output: Output.object({ schema: PropertyEvalSchema }),
   });
 

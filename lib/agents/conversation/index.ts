@@ -1,6 +1,7 @@
 import { runAgent } from "@/lib/core/agent";
 import { getConversationModel, getWhyExplanationModel } from "@/lib/config/agent-models";
 import { CONVERSATION_MAX_STEPS } from "@/lib/config/conversation-llm";
+import { TELEMETRY_TAG, TELEMETRY_TAG_WHY, TELEMETRY_TAG_COMPARISON, SUB_AGENT_MAX_STEPS } from "./config";
 import {
   CONVERSATION_AGENT_SYSTEM,
   WHY_EXPLANATION_SYSTEM,
@@ -63,7 +64,7 @@ export async function conversationAgent(
     tools,
     model: getConversationModel(),
     maxSteps: CONVERSATION_MAX_STEPS,
-    telemetryTag: "conversation",
+    telemetryTag: TELEMETRY_TAG,
   });
 
   const captured = getCaptured();
@@ -77,8 +78,8 @@ export async function conversationAgent(
         systemPrompt: WHY_EXPLANATION_SYSTEM,
         prompt: `Explain these evaluation scores:\n${JSON.stringify(dataResult.data, null, 2)}`,
         model: getWhyExplanationModel(),
-        maxSteps: 1,
-        telemetryTag: "why_explanation",
+        maxSteps: SUB_AGENT_MAX_STEPS,
+        telemetryTag: TELEMETRY_TAG_WHY,
       });
       await sendMessage(explanation.message, { parse_mode: "Markdown" });
       await logConversation({
@@ -96,8 +97,8 @@ export async function conversationAgent(
         systemPrompt: COMPARISON_SYSTEM,
         prompt: `Compare these properties:\n${JSON.stringify(dataResult.data, null, 2)}`,
         model: getWhyExplanationModel(),
-        maxSteps: 1,
-        telemetryTag: "comparison",
+        maxSteps: SUB_AGENT_MAX_STEPS,
+        telemetryTag: TELEMETRY_TAG_COMPARISON,
       });
       await sendMessage(comparison.message, { parse_mode: "Markdown" });
       await logConversation({
