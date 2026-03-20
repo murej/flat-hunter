@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+source "$(dirname "$0")/load-env.sh"
+
 PORT=${1:-3000}
 LOGFILE=$(mktemp)
 CF_PID=""
@@ -47,14 +49,21 @@ echo ""
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
   WEBHOOK_URL="$TUNNEL_URL/api/telegram"
   echo "Setting Telegram webhook to $WEBHOOK_URL..."
-  curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook?url=$WEBHOOK_URL" | python3 -m json.tool 2>/dev/null || true
+  RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+    -H "Content-Type: application/json" \
+    -d "{\"url\": \"${WEBHOOK_URL}\"}")
+  echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
   echo ""
 else
   echo "TELEGRAM_BOT_TOKEN not set — skipping webhook setup"
 fi
 
-echo "Ingest URL: $TUNNEL_URL/api/ingest"
-echo "(Set this in CloudMailin dashboard if needed)"
+if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
+  echo "Ingest URL: https://cloudmailin:${CLOUDMAILIN_SECRET}@${TUNNEL_URL#https://}/api/ingest"
+else
+  echo "Ingest URL: $TUNNEL_URL/api/ingest"
+fi
+echo "(Set this in CloudMailin dashboard)"
 echo ""
 echo "Tunnel running. Press Ctrl+C to stop."
 
