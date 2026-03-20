@@ -41,44 +41,47 @@ if [ -z "$TUNNEL_URL" ]; then
   cleanup
 fi
 
-echo ""
-echo "Tunnel URL: $TUNNEL_URL"
+echo "Tunnel: $TUNNEL_URL"
 
-echo ""
+# Wait for public DNS resolution
+TUNNEL_HOST="${TUNNEL_URL#https://}"
+DNS_OK=false
+for attempt in $(seq 1 15); do
+  if dig +short @8.8.8.8 "$TUNNEL_HOST" 2>/dev/null | grep -q .; then
+    DNS_OK=true
+    break
+  fi
+  sleep 2
+done
 
-# Set Telegram webhook (retry up to 5 times — DNS may not have propagated yet)
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
-  WEBHOOK_URL="$TUNNEL_URL/api/telegram"
-  echo "Setting Telegram webhook to $WEBHOOK_URL..."
-  for attempt in $(seq 1 5); do
+if [ "$DNS_OK" = false ]; then
+  echo "DNS not resolving. Restart to get a new subdomain."
+fi
+
+# Set Telegram webhook
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "$DNS_OK" = true ]; then
+  for attempt in $(seq 1 3); do
     RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
       -H "Content-Type: application/json" \
-      -d "{\"url\": \"${WEBHOOK_URL}\"}")
+      -d "{\"url\": \"${TUNNEL_URL}/api/telegram\"}")
     if echo "$RESPONSE" | grep -q '"ok":true'; then
-      echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
+      echo "Telegram webhook set."
       break
     fi
-    if [ "$attempt" -eq 5 ]; then
-      echo "Failed after 5 attempts:"
-      echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
-    else
-      echo "Attempt $attempt failed, retrying in 3s..."
-      sleep 3
-    fi
+    [ "$attempt" -lt 3 ] && sleep 3 || echo "setWebhook failed: $RESPONSE"
   done
-  echo ""
-else
-  echo "TELEGRAM_BOT_TOKEN not set — skipping webhook setup"
+elif [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+  echo "TELEGRAM_BOT_TOKEN not set — skipping webhook."
 fi
 
+# CloudMailin ingest URL
 if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
-  echo "Ingest URL: https://cloudmailin:${CLOUDMAILIN_SECRET}@${TUNNEL_URL#https://}/api/ingest"
+  echo "Ingest:  https://cloudmailin:${CLOUDMAILIN_SECRET}@${TUNNEL_HOST}/api/ingest (set in CloudMailin dashboard)"
 else
-  echo "Ingest URL: $TUNNEL_URL/api/ingest"
+  echo "Ingest:  $TUNNEL_URL/api/ingest"
 fi
-echo "(Set this in CloudMailin dashboard)"
-echo ""
-echo "Tunnel running. Press Ctrl+C to stop."
+
+echo "Ready. Ctrl+C to stop."
 
 # Wait for cloudflared to exit
 wait "$CF_PID"
