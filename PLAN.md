@@ -394,6 +394,18 @@ CONVERSATION_ALLOW_RE_EVALUATION=true
 AREA_PROFILE_BATCH=false
 ```
 
+## Local development
+
+```
+npm run dev -- start cloudflared tunnel, point CloudMailin and Telegram bot to url
+```
+
+## Deploying
+
+```
+npm run use:prod -- point CloudMailin and Telegram bot to Vercel
+```
+
 ---
 
 ## Verification
