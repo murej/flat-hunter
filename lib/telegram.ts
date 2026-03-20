@@ -81,6 +81,26 @@ export function parseInbound(body: Record<string, unknown>): {
   };
 }
 
+/** Send with Markdown parse_mode, falling back to plain text on failure. */
+export async function sendMarkdown(
+  text: string,
+  opts?: Omit<SendOptions, "parse_mode">,
+): Promise<void> {
+  try {
+    await sendMessage(text, { ...opts, parse_mode: "Markdown" });
+  } catch {
+    await sendMessage(text, opts);
+  }
+}
+
+/** Send plain text with no parse_mode — safe for arbitrary error strings. */
+export async function sendPlainText(text: string): Promise<void> {
+  await callTelegram("sendMessage", {
+    chat_id: CHAT_ID(),
+    text: text.slice(0, 4096), // Telegram limit
+  });
+}
+
 export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,

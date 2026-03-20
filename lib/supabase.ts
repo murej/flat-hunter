@@ -87,6 +87,49 @@ export async function getConversationHistory(
     }));
 }
 
+const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+export async function getSessionMode(): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("agent_context")
+    .select("content")
+    .eq("agent_id", "session")
+    .eq("scope", "mode")
+    .eq("scope_value", "current")
+    .single();
+  if (!data) return null;
+  const content = data.content as { mode?: string; entered_at?: string };
+  if (content.entered_at) {
+    const elapsed = Date.now() - new Date(content.entered_at).getTime();
+    if (elapsed > SESSION_TIMEOUT_MS) {
+      await clearSessionMode();
+      return null;
+    }
+  }
+  return content.mode ?? null;
+}
+
+export async function setSessionMode(mode: string): Promise<void> {
+  await supabaseAdmin.from("agent_context").upsert(
+    {
+      agent_id: "session",
+      scope: "mode",
+      scope_value: "current",
+      content: { mode, entered_at: new Date().toISOString() },
+    },
+    { onConflict: "agent_id,scope,scope_value" },
+  );
+}
+
+export async function clearSessionMode(): Promise<void> {
+  await supabaseAdmin
+    .from("agent_context")
+    .delete()
+    .eq("agent_id", "session")
+    .eq("scope", "mode")
+    .eq("scope_value", "current");
+}
+
 export async function getActiveListingId(
   lookback = 10,
 ): Promise<number | null> {

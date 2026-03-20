@@ -14,7 +14,7 @@ import {
   logConversation,
   getPreferences,
 } from "@/lib/supabase";
-import { sendMessage, sendWithButtons } from "@/lib/telegram";
+import { sendMessage, sendMarkdown, sendWithButtons } from "@/lib/telegram";
 import type { TelegramPayload } from "@/types";
 
 export async function conversationAgent(
@@ -81,7 +81,7 @@ export async function conversationAgent(
         maxSteps: SUB_AGENT_MAX_STEPS,
         telemetryTag: TELEMETRY_TAG_WHY,
       });
-      await sendMessage(explanation.message, { parse_mode: "Markdown" });
+      await sendMarkdown(explanation.message);
       await logConversation({
         telegram_message_id: messageId,
         direction: "outbound",
@@ -100,7 +100,7 @@ export async function conversationAgent(
         maxSteps: SUB_AGENT_MAX_STEPS,
         telemetryTag: TELEMETRY_TAG_COMPARISON,
       });
-      await sendMessage(comparison.message, { parse_mode: "Markdown" });
+      await sendMarkdown(comparison.message);
       await logConversation({
         telegram_message_id: messageId,
         direction: "outbound",
@@ -135,7 +135,7 @@ export async function conversationAgent(
   }
 
   // Default: send agent text response
-  await sendMessage(result.message);
+  await sendMarkdown(result.message);
   await logConversation({
     telegram_message_id: messageId,
     direction: "outbound",

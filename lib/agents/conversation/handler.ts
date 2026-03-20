@@ -1,5 +1,5 @@
-import { sendMessage, sendWithButtons, answerCallbackQuery } from "@/lib/telegram";
-import { logConversation, getPreferences } from "@/lib/supabase";
+import { sendMessage, sendMarkdown, sendWithButtons, answerCallbackQuery } from "@/lib/telegram";
+import { logConversation, getPreferences, getConversationHistory, getSessionMode, setSessionMode, clearSessionMode } from "@/lib/supabase";
 import { saveListing, skipListing, getScorecard, getWhyContext } from "@/lib/tools/listing";
 import { runPreferenceAgent } from "@/lib/agents/preference";
 import { runAgent } from "@/lib/core/agent";
@@ -22,6 +22,55 @@ export async function handleTelegramUpdate(input: {
     await answerCallbackQuery(callbackQueryId);
   }
 
+  // /cancel — exit preference mode
+  if (text === "/cancel") {
+    await clearSessionMode();
+    await sendMessage("Cancelled. Type anything to chat.");
+    return;
+  }
+
+  // Check preference mode (skip for action callbacks)
+  const sessionMode = await getSessionMode();
+  if (
+    sessionMode === "preference" &&
+    !/^(save|skip|unsave|why|scorecard):/.test(text) &&
+    text !== "/start"
+  ) {
+    await logConversation({
+      telegram_message_id: messageId,
+      direction: "inbound",
+      message: text,
+      intent: "preference_reply",
+    });
+
+    const prefsBefore = await getPreferences();
+    const history = await getConversationHistory();
+    const result = await runPreferenceAgent(text, history);
+    const prefsAfter = await getPreferences();
+
+    const prefsSaved =
+      (!prefsBefore && prefsAfter) ||
+      (prefsBefore &&
+        prefsAfter &&
+        prefsAfter.updated_at !== prefsBefore.updated_at);
+
+    if (prefsSaved) {
+      await clearSessionMode();
+    } else {
+      // Refresh timeout
+      await setSessionMode("preference");
+    }
+
+    await sendMarkdown(result.message);
+    await logConversation({
+      telegram_message_id: messageId,
+      direction: "outbound",
+      message: result.message,
+      intent: "preference_reply",
+    });
+    return;
+  }
+
   // Route: /start
   if (text === "/start") {
     await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "start" });
@@ -29,8 +78,9 @@ export async function handleTelegramUpdate(input: {
     if (prefs) {
       await sendMessage("Welcome back! Your preferences are already set up. Type anything to chat, or say 'update preferences' to change them.");
     } else {
+      await setSessionMode("preference");
       const result = await runPreferenceAgent("The user just started. Begin collecting their property search preferences.");
-      await sendMessage(result.message);
+      await sendMarkdown(result.message);
     }
     await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Welcome", intent: "start" });
     return;
@@ -77,7 +127,7 @@ export async function handleTelegramUpdate(input: {
       maxSteps: SUB_AGENT_MAX_STEPS,
       telemetryTag: TELEMETRY_TAG_WHY,
     });
-    await sendMessage(explanation.message, { parse_mode: "Markdown" });
+    await sendMarkdown(explanation.message);
     await logConversation({
       telegram_message_id: messageId,
       direction: "outbound",
@@ -105,12 +155,13 @@ export async function handleTelegramUpdate(input: {
   if (text === "update preferences" || text.startsWith("update:")) {
     const category = text.startsWith("update:") ? text.split(":")[1] : undefined;
     await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "update_preferences" });
+    await setSessionMode("preference");
 
     const prompt = category
       ? `The user wants to update their ${category} preferences. Read current preferences first, then ask what they'd like to change.`
       : "The user wants to update their preferences. Read current preferences and ask what they'd like to change.";
     const result = await runPreferenceAgent(prompt);
-    await sendMessage(result.message);
+    await sendMarkdown(result.message);
     await logConversation({ telegram_message_id: messageId, direction: "outbound", message: result.message, intent: "update_preferences" });
     return;
   }
