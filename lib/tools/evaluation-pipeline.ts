@@ -11,7 +11,6 @@ import { runAreaExpert } from "@/lib/agents/area-expert";
 import type {
   Listing,
   Preferences,
-  ScoreWeights,
   PropertyEvalResult,
   AreaEvalResult,
   CommuteEvalResult,
@@ -26,12 +25,17 @@ function computeOverallScore(
   _finance: FinanceEvalResult,
   preferences: Preferences,
 ): { score: number; partial: boolean } {
-  const defaults: Required<ScoreWeights> = { fit: 1, price: 1, size: 1, area: 1, commute: 1 };
   const w = preferences.score_weights ?? {};
-  const weights = { ...defaults, ...w };
+  const weights = {
+    appeal: w.appeal ?? w.fit ?? 1,
+    price: w.price ?? 1,
+    size: w.size ?? 1,
+    area: w.area ?? 1,
+    commute: w.commute ?? 1,
+  };
 
   const entries: Array<{ score: number | null; weight: number }> = [
-    { score: property.fit_score, weight: weights.fit },
+    { score: property.appeal_score, weight: weights.appeal },
     { score: property.price_score, weight: weights.price },
     { score: property.size_score, weight: weights.size },
     { score: area.area_score, weight: weights.area },
@@ -150,7 +154,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     listing_id: listingId,
     price_score: propertyResult.price_score,
     size_score: propertyResult.size_score,
-    fit_score: propertyResult.fit_score,
+    appeal_score: propertyResult.appeal_score,
     commute_score: commuteResult.commute_score,
     area_score: areaResult.area_score,
     overall_score: overallScore,

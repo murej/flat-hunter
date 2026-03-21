@@ -22,7 +22,7 @@ Each line must start with exactly one emoji:
 - ❌ for a con (negative, mismatch, or deal-breaker)
 
 Rules:
-- Cover the most important factors across fit, price, size, area, commute, and any deal-breakers.
+- Cover the most important factors across appeal, price, size, area, commute, and any deal-breakers.
 - Each highlight is one short phrase (under 60 chars). No full sentences.
 - Most important highlights first.
 - Do NOT repeat scores or numbers — the scorecard already shows those.`;
@@ -34,7 +34,7 @@ export async function generateHighlights(
   preferenceSummary: string,
 ): Promise<string> {
   const fmt = (s: number | null) => s != null ? `${s}/10` : "N/A";
-  const prompt = `**Scores:** Fit ${fmt(property.fit_score)}, Price ${fmt(property.price_score)}, Size ${fmt(property.size_score)}, Area ${fmt(area.area_score)}, Commute ${fmt(commute.commute_score)}
+  const prompt = `**Scores:** Appeal ${fmt(property.appeal_score)}, Price ${fmt(property.price_score)}, Size ${fmt(property.size_score)}, Area ${fmt(area.area_score)}, Commute ${fmt(commute.commute_score)}
 **Property verdict:** ${property.property_summary}
 **Area verdict:** ${area.area_summary}
 **Deal-breakers:** ${property.deal_breaker_flags.length > 0 ? property.deal_breaker_flags.join(", ") : "None"}

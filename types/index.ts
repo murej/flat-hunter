@@ -54,7 +54,7 @@ export type Evaluation = {
   listing_id: string;
   price_score: number | null;
   size_score: number | null;
-  fit_score: number | null;
+  appeal_score: number | null;
   commute_score: number | null;
   area_score: number | null;
   overall_score: number;
@@ -86,6 +86,8 @@ export type Conversation = {
 };
 
 export type ScoreWeights = {
+  appeal?: number;
+  /** Legacy JSON key; used if `appeal` is unset */
   fit?: number;
   commute?: number;
   price?: number;
@@ -96,7 +98,7 @@ export type ScoreWeights = {
 export type PropertyEvalResult = {
   price_score: number | null;
   size_score: number | null;
-  fit_score: number | null;
+  appeal_score: number | null;
   deal_breaker_flags: string[];
   property_summary: string;
   property_unknown?: string;

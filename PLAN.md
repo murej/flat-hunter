@@ -179,7 +179,7 @@ lib/
       config.ts, index.ts, handler.ts, prompts.ts, tools.ts
     ingest/                       # Email parsing + listing ingestion
       config.ts, index.ts, handler.ts, prompts.ts, tools.ts
-    property-expert/              # Property fit scoring
+    property-expert/              # Property appeal scoring
       config.ts, index.ts, prompts.ts, tools.ts
     area-expert/                  # Area scoring
       config.ts, index.ts, prompts.ts, tools.ts, context.ts
@@ -231,7 +231,7 @@ agent_context        -- agent_id, scope, scope_value (unique triple), content js
 ## Domain Types (`types/index.ts`)
 
 - **Preferences, Listing, Evaluation, Conversation** — mirror tables
-- **ScoreWeights** — `{ fit?, commute?, price?, size?, area? }` (0-5, default 1)
+- **ScoreWeights** — `{ appeal?, fit? (legacy JSON), commute?, price?, size?, area? }` (0-5, default 1)
 - **PropertyEvalResult, AreaEvalResult, CommuteEvalResult, FinanceEvalResult** — scores, summary, `*_unknown`, `raw` jsonb
 - **TelegramPayload** — `{ buttons?, parse_mode?, metadata? }` typed shape for `DirectToolResult.payload`
 
@@ -239,7 +239,7 @@ agent_context        -- agent_id, scope, scope_value (unique triple), content js
 
 Zod schemas for `Output.object()`:
 
-- **PropertyEvalSchema**: `{ price_score, size_score, fit_score }` (1-10), `deal_breaker_flags[]`, `property_summary`
+- **PropertyEvalSchema**: `{ price_score, size_score, appeal_score }` (1-10), `deal_breaker_flags[]`, `property_summary`
 - **AreaEvalSchema**: `{ area_score }` (1-10), `area_summary`, `notable_flags[]`
 - **VerificationResultSchema**: `{ isVerification, verificationUrl?, verificationCode? }`
 - **ListingSchema**: all listing fields
@@ -276,7 +276,7 @@ Zod schemas for `Output.object()`:
 
 1. Fetch listing + preferences + area context + prior agent_context
 2. Run evaluators: `evaluateCommute`, `evaluateFinance`, and `runPropertyExpert` in parallel; then `runAreaExpert` (property and area experts never overlap — Sonnet TPM).
-   - `runPropertyExpert` → price/size/fit scores
+   - `runPropertyExpert` → price/size/appeal scores
    - `runAreaExpert` → area score + notable flags
    - `evaluateCommute` → commute score (no LLM)
    - `evaluateFinance` → monthly costs (no LLM)
@@ -311,7 +311,7 @@ Registered as `"preference"`. Tools: `db`. Model: Haiku. Max steps: 5. Multi-tur
 
 ### Property Expert — `lib/agents/property-expert/`
 
-Registered as `"property_expert"`. Tools: `db` + `web_search` (toggleable, default off). Model: Haiku (env override to Sonnet). Structured output: `Output.object({ schema: PropertyEvalSchema })`. Scores listing against preferences — price, size, fit.
+Registered as `"property_expert"`. Tools: `db` + `web_search` (toggleable, default off). Model: Haiku (env override to Sonnet). Structured output: `Output.object({ schema: PropertyEvalSchema })`. Scores listing against preferences — price, size, appeal.
 
 ### Area Expert — `lib/agents/area-expert/`
 

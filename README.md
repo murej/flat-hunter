@@ -137,7 +137,7 @@ select vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
 1. Property alert email arrives at CloudMailin
 2. `/api/ingest` parses email, deduplicates listings, stores them as `pending_evaluation`
 3. Evaluation pipeline runs (background via `waitUntil`):
-   - Property Expert scores price/size/fit
+   - Property Expert scores price/size/appeal
    - Area Expert scores neighbourhood (crime, IMD, area profiles)
    - Commute calculator scores travel time (TfL/Nominatim)
    - Finance calculator computes mortgage, SDLT, monthly costs

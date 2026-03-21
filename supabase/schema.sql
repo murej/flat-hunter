@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
   listing_id INTEGER NOT NULL UNIQUE REFERENCES listings(id) ON DELETE CASCADE,
   price_score INTEGER,
   size_score INTEGER,
-  fit_score INTEGER,
+  appeal_score INTEGER,
   commute_score INTEGER,
   area_score INTEGER,
   overall_score NUMERIC(3,1) NOT NULL,

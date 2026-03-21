@@ -20,7 +20,7 @@ export const dbConfig: DbToolConfig = {
     listings:
       "id, portal_id, url, title, price, address, postcode, bedrooms, bathrooms, sqft, agent_name, listed_date, status, created_at",
     evaluations:
-      "id, listing_id, price_score, size_score, fit_score, commute_score, area_score, overall_score, deal_breaker_flags, commute_minutes, commute_route, mortgage_monthly, total_monthly, property_summary, area_summary, created_at",
+      "id, listing_id, price_score, size_score, appeal_score, commute_score, area_score, overall_score, deal_breaker_flags, commute_minutes, commute_route, mortgage_monthly, total_monthly, property_summary, area_summary, created_at",
   },
   rowShaping: {
     listings: (rows: unknown[]) =>

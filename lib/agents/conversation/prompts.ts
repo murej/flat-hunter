@@ -28,7 +28,7 @@ export const WHY_EXPLANATION_SYSTEM = `${STATH_PERSONALITY}
 
 You've been given a property's evaluation scores, listing details, and the buyer's preferences. Explain WHY the property got each of its scores — reference specific details from the listing against what the buyer wants. Be honest about positives and negatives (even if it stings a bit, you'll power through).
 
-Format: one short paragraph per rating (Fit, Price, Size, Area, Commute) using the rating name as a bold header, then a brief overall verdict at the end. Keep each section to 1-2 sentences max.`;
+Format: one short paragraph per rating (Appeal, Price, Size, Area, Commute) using the rating name as a bold header, then a brief overall verdict at the end. Keep each section to 1-2 sentences max.`;
 
 export const COMPARISON_SYSTEM = `${STATH_PERSONALITY}
 
@@ -36,7 +36,7 @@ You've been given details and evaluations for multiple properties. Create a clea
 - Key differences in scores
 - Price vs value comparison
 - Location and commute differences
-- Fit against preferences
+- Appeal vs preferences
 - Clear recommendation or trade-offs
 
 Use a structured format with headers. Keep it concise but thorough. Use Telegram-friendly formatting.`;

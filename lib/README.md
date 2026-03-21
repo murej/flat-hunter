@@ -18,7 +18,7 @@ Multi-turn preference collection (areas, price, deposit, bedrooms, commute, must
 
 ### Property Expert (`agents/property-expert/`)
 
-Registered as `"property_expert"`. Scores listings against preferences — price, size, fit (1-10). Structured output via `Output.object()`. Web search toggleable via env.
+Registered as `"property_expert"`. Scores listings against preferences — price, size, appeal (1-10). Structured output via `Output.object()`. Web search toggleable via env.
 
 ### Area Expert (`agents/area-expert/`)
 

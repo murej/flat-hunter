@@ -7,9 +7,9 @@ export const PropertyEvalSchema = z.object({
   size_score: z
     .number()
     .describe("Space adequacy score 1-10 (10 = very spacious for buyer needs: bedrooms, sqft, layout). Excludes style and price."),
-  fit_score: z
+  appeal_score: z
     .number()
-    .describe("Lifestyle fit score 1-10 (10 = perfect match on design, style, character, light, outdoor space, condition). Excludes size and price."),
+    .describe("Appeal score 1-10 (10 = strong draw — design, style, character, light, outdoor space, condition). Excludes size and price."),
   deal_breaker_flags: z
     .array(z.string())
     .describe("List of deal-breaker preferences that this property violates"),

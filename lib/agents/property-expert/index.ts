@@ -41,7 +41,7 @@ export async function runPropertyExpert(
   return {
     price_score: clampScore(parsed.price_score as number),
     size_score: clampScore(parsed.size_score as number),
-    fit_score: clampScore(parsed.fit_score as number),
+    appeal_score: clampScore(parsed.appeal_score as number),
     deal_breaker_flags: (parsed.deal_breaker_flags as string[] | undefined) || [],
     property_summary: parsed.property_summary as string,
     raw: parsed,
