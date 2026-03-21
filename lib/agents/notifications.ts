@@ -1,5 +1,5 @@
 import { reportError } from "@/lib/core/reporting";
-import { supabaseAdmin, storeMessageListing } from "@/lib/supabase";
+import { getSupabaseAdmin, storeMessageListing } from "@/lib/supabase";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { sleep } from "@/lib/utils/retry";
 
@@ -16,7 +16,7 @@ type NotificationRow = {
 export async function consumePendingNotifications(
   batchId: string,
 ): Promise<void> {
-  const { data: notifications } = await supabaseAdmin
+  const { data: notifications } = await getSupabaseAdmin()
     .from("pending_notifications")
     .select("*")
     .eq("batch_id", batchId)
@@ -45,7 +45,7 @@ export async function consumePendingNotifications(
         });
       }
 
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from("pending_notifications")
         .update({ consumed_at: new Date().toISOString() })
         .eq("id", notif.id);

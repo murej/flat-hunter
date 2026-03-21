@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import type { DbToolConfig } from "@/lib/core/tools";
 
 function truncateField(val: string, max: number): string {
@@ -8,7 +8,7 @@ function truncateField(val: string, max: number): string {
 type Row = Record<string, unknown>;
 
 export const dbConfig: DbToolConfig = {
-  supabaseClient: supabaseAdmin,
+  supabaseClient: getSupabaseAdmin(),
   allowlistedTables: [
     "preferences",
     "listings",

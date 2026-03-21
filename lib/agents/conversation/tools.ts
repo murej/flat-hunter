@@ -12,7 +12,7 @@ import {
   getFormattedPreferences,
   UPDATE_PREFERENCES_BUTTONS,
 } from "@/lib/tools/listing";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import type { ToolResult } from "@/lib/core/types";
 import type { TelegramPayload } from "@/types";
 
@@ -85,7 +85,7 @@ export function buildConversationTools(activeListingId: string | null) {
         }
 
         // Check cooldown
-        const { data: existing } = await supabaseAdmin
+        const { data: existing } = await getSupabaseAdmin()
           .from("evaluations")
           .select("created_at")
           .eq("listing_id", listing_id)
@@ -100,7 +100,7 @@ export function buildConversationTools(activeListingId: string | null) {
         }
 
         // Queue for re-evaluation
-        await supabaseAdmin
+        await getSupabaseAdmin()
           .from("listings")
           .update({ status: "pending_evaluation", updated_at: new Date().toISOString() })
           .eq("id", listing_id);

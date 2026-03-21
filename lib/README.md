@@ -59,5 +59,5 @@ Shared prompt fragments. `area.ts` contains reusable area evaluation prompt comp
 
 ## Infrastructure
 
-- `supabase.ts` — `supabaseAdmin` client + helpers: `getPreferences()`, `getListing()`, `updateListingStatus()`, `logConversation()`, `getConversationHistory()`, `getActiveListingId()`
+- `supabase.ts` — `getSupabaseAdmin()` (lazy singleton) + helpers: `getPreferences()`, `getListing()`, `updateListingStatus()`, `logConversation()`, `getConversationHistory()`, `getActiveListingId()`
 - `telegram.ts` — `sendMessage()`, `sendWithButtons()`, `sendWithReplyKeyboard()`, `parseInbound()`, `answerCallbackQuery()`

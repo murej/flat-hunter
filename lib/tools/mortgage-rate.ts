@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export async function getLatestMortgageRate(): Promise<number> {
   // Priority: env > Supabase > default
@@ -8,7 +8,7 @@ export async function getLatestMortgageRate(): Promise<number> {
     if (!isNaN(parsed)) return Math.max(0.5, Math.min(15, parsed));
   }
 
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("agent_context")
     .select("content")
     .eq("agent_id", "system")

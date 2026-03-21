@@ -246,7 +246,7 @@ Zod schemas for `Output.object()`:
 
 ## Config (`lib/config/`)
 
-**`db-config.ts`** — `DbToolConfig` for Layer 1: `supabaseAdmin` client, allowlisted tables (preferences, listings, evaluations, conversations, agent_context), column overrides excluding blobs, row shaping (descriptions 3500, messages 1500, findings 2500 chars).
+**`db-config.ts`** — `DbToolConfig` for Layer 1: `getSupabaseAdmin()` client, allowlisted tables (preferences, listings, evaluations, conversations, agent_context), column overrides excluding blobs, row shaping (descriptions 3500, messages 1500, findings 2500 chars).
 
 **`agent-models.ts`** — Per-agent model getters, all default `claude-haiku-4-5`, overridable via env.
 
@@ -256,7 +256,7 @@ Zod schemas for `Output.object()`:
 
 ## Infrastructure
 
-**`lib/supabase.ts`** — `supabaseAdmin`. Helpers: `getPreferences()`, `getListing(id)`, `updateListingStatus()`, `logConversation()` (deduped via 23505), `getConversationHistory(limit=8)` → `{ role, content }[]` truncated ~1600 chars, `getActiveListingId(lookback=10)`.
+**`lib/supabase.ts`** — `getSupabaseAdmin()` (lazy singleton). Helpers: `getPreferences()`, `getListing(id)`, `updateListingStatus()`, `logConversation()` (deduped via 23505), `getConversationHistory(limit=8)` → `{ role, content }[]` truncated ~1600 chars, `getActiveListingId(lookback=10)`.
 
 **`lib/telegram.ts`** — `sendMessage()`, `sendWithButtons()`, `sendWithReplyKeyboard()`, `parseInbound()` → `{ text, messageId, callbackQueryId? }`, `answerCallbackQuery()`. `callTelegram()` throws on non-OK responses so errors propagate to callers.
 

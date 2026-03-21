@@ -80,7 +80,7 @@ export type Conversation = {
   telegram_message_id: number;
   direction: "inbound" | "outbound";
   message: string;
-  listing_id: string | number | null;
+  listing_id: string | null;
   intent: string | null;
   created_at: string;
 };

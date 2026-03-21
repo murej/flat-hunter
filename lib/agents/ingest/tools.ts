@@ -3,7 +3,7 @@ import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
 import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
 import { reportError } from "@/lib/core/reporting";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { getIngestParseModel, getEmailVerificationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
 import { ListingSchema, VerificationResultSchema } from "@/lib/schemas";
 import type { VerificationResultOutput, ListingOutput } from "@/lib/schemas";
@@ -132,7 +132,7 @@ export function computeIdempotencyKey(content: string): string {
 }
 
 export async function claimIdempotencyKey(key: string): Promise<boolean> {
-  const { error } = await supabaseAdmin
+  const { error } = await getSupabaseAdmin()
     .from("ingest_idempotency")
     .insert({ idempotency_key: key });
   // 23505 = unique_violation → already processed
@@ -185,7 +185,7 @@ export async function deduplicateAndStore(
   let unchangedDuplicateCount = 0;
 
   for (const listing of listings) {
-    const { data: existing } = await supabaseAdmin
+    const { data: existing } = await getSupabaseAdmin()
       .from("listings")
       .select(LISTING_MATERIAL_SELECT)
       .eq("portal_id", listing.portal_id)
@@ -198,7 +198,7 @@ export async function deduplicateAndStore(
         continue;
       }
 
-      const { error: updateError } = await supabaseAdmin
+      const { error: updateError } = await getSupabaseAdmin()
         .from("listings")
         .update({
           ...listing,
@@ -218,7 +218,7 @@ export async function deduplicateAndStore(
       continue;
     }
 
-    const { data: inserted, error } = await supabaseAdmin
+    const { data: inserted, error } = await getSupabaseAdmin()
       .from("listings")
       .insert({
         ...listing,
@@ -296,7 +296,7 @@ export async function runEvaluationsAndNotify(
           continue;
         }
         evaluatedCount++;
-        await supabaseAdmin.from("pending_notifications").insert({
+        await getSupabaseAdmin().from("pending_notifications").insert({
           batch_id: batchId,
           sequence: sequence++,
           type: "scorecard",

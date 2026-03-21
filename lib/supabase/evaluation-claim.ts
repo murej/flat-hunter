@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { envIntClamped } from "@/lib/utils/env-utils";
 
 export function getEvaluatingStaleMinutes(): number {
@@ -9,7 +9,7 @@ export async function claimListingsForEvaluationBatch(
   batchLimit: number,
   staleMinutes: number,
 ): Promise<string[]> {
-  const { data, error } = await supabaseAdmin.rpc("claim_listings_for_evaluation", {
+  const { data, error } = await getSupabaseAdmin().rpc("claim_listings_for_evaluation", {
     p_batch_limit: batchLimit,
     p_stale_minutes: staleMinutes,
   });
@@ -22,7 +22,7 @@ export async function claimListingForEvaluation(
   id: string,
   staleMinutes: number,
 ): Promise<boolean> {
-  const { data, error } = await supabaseAdmin.rpc("claim_listing_for_evaluation", {
+  const { data, error } = await getSupabaseAdmin().rpc("claim_listing_for_evaluation", {
     p_id: id,
     p_stale_minutes: staleMinutes,
   });
@@ -31,7 +31,7 @@ export async function claimListingForEvaluation(
 }
 
 export async function releaseListingEvaluationClaim(id: string): Promise<void> {
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("listings")
     .update({ status: "pending_evaluation", updated_at: new Date().toISOString() })
     .eq("id", id)

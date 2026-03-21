@@ -13,15 +13,8 @@ export function getSupabaseAdmin(): SupabaseClient {
   return _client;
 }
 
-// Convenience alias for backward compat
-export const supabaseAdmin = new Proxy({} as SupabaseClient, {
-  get(_target, prop) {
-    return (getSupabaseAdmin() as unknown as Record<string | symbol, unknown>)[prop];
-  },
-});
-
 export async function getPreferences(): Promise<Preferences | null> {
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("preferences")
     .select("*")
     .order("created_at", { ascending: false })
@@ -31,11 +24,11 @@ export async function getPreferences(): Promise<Preferences | null> {
 }
 
 export async function deletePreferences(): Promise<void> {
-  await supabaseAdmin.from("preferences").delete().neq("id", 0);
+  await getSupabaseAdmin().from("preferences").delete().neq("id", 0);
 }
 
 export async function getListing(id: string): Promise<Listing | null> {
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("listings")
     .select("*")
     .eq("id", id)
@@ -47,7 +40,7 @@ export async function updateListingStatus(
   id: string,
   status: string,
 ): Promise<void> {
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("listings")
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id);
@@ -57,10 +50,10 @@ export async function logConversation(row: {
   telegram_message_id: number;
   direction: "inbound" | "outbound";
   message: string;
-  listing_id?: string | number | null;
+  listing_id?: string | null;
   intent?: string | null;
 }): Promise<void> {
-  const { error } = await supabaseAdmin.from("conversations").insert(row);
+  const { error } = await getSupabaseAdmin().from("conversations").insert(row);
   // 23505 = unique_violation — dedup
   if (error && error.code !== "23505") {
     console.error("logConversation error:", error.message);
@@ -74,7 +67,7 @@ export async function getConversationHistory(
   const baseExcluded = ["save", "skip", "unsave", "greeting", "stop", "restart", "preferences", "liked"];
   const allExcluded = [...baseExcluded, ...excludeIntents];
   const excludeList = `(${allExcluded.map(i => `"${i}"`).join(",")})`;
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("conversations")
     .select("direction, message")
     .not("intent", "in", excludeList)
@@ -99,7 +92,7 @@ export async function getConversationHistory(
 const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 export async function getSessionMode(): Promise<string | null> {
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("agent_context")
     .select("content")
     .eq("agent_id", "session")
@@ -119,7 +112,7 @@ export async function getSessionMode(): Promise<string | null> {
 }
 
 export async function setSessionMode(mode: string): Promise<void> {
-  await supabaseAdmin.from("agent_context").upsert(
+  await getSupabaseAdmin().from("agent_context").upsert(
     {
       agent_id: "session",
       scope: "mode",
@@ -131,7 +124,7 @@ export async function setSessionMode(mode: string): Promise<void> {
 }
 
 export async function clearSessionMode(): Promise<void> {
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("agent_context")
     .delete()
     .eq("agent_id", "session")
@@ -143,7 +136,7 @@ export async function storeMessageListing(
   telegramMessageId: number,
   listingId: string,
 ): Promise<void> {
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("message_listings")
     .upsert({ telegram_message_id: telegramMessageId, listing_id: listingId });
 }
@@ -151,7 +144,7 @@ export async function storeMessageListing(
 export async function getListingByMessageId(
   telegramMessageId: number,
 ): Promise<string | null> {
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("message_listings")
     .select("listing_id")
     .eq("telegram_message_id", telegramMessageId)
@@ -162,7 +155,7 @@ export async function getListingByMessageId(
 export async function getActiveListingId(
   lookback = 10,
 ): Promise<string | null> {
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("conversations")
     .select("listing_id")
     .not("listing_id", "is", null)
@@ -170,5 +163,6 @@ export async function getActiveListingId(
     .limit(lookback);
 
   if (!data || data.length === 0) return null;
-  return (data[0] as { listing_id: string }).listing_id;
+  const id = (data[0] as { listing_id: string | number | null }).listing_id;
+  return id == null ? null : String(id);
 }

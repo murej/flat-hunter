@@ -1,5 +1,5 @@
 import { reportError } from "@/lib/core/reporting";
-import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
+import { getSupabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { fetchAreaContext } from "./area";
 import { evaluateCommute } from "./commute";
 import { evaluateFinance } from "./finance";
@@ -80,7 +80,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   );
 
   // Check for prior agent_context
-  const { data: priorContext } = await supabaseAdmin
+  const { data: priorContext } = await getSupabaseAdmin()
     .from("agent_context")
     .select("content")
     .eq("agent_id", "area_expert")
@@ -112,7 +112,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
 
   // Store area context for future use
   if (areaContext) {
-    await supabaseAdmin.from("agent_context").upsert(
+    await getSupabaseAdmin().from("agent_context").upsert(
       {
         agent_id: "area_expert",
         scope: "area",
@@ -174,7 +174,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     area_unknown: areaResult.area_unknown ?? null,
   };
 
-  const { data: evaluation, error: upsertError } = await supabaseAdmin
+  const { data: evaluation, error: upsertError } = await getSupabaseAdmin()
     .from("evaluations")
     .upsert(evaluationRow, { onConflict: "listing_id" })
     .select()
@@ -191,7 +191,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     return null;
   }
 
-  const { data: completedRows, error: statusError } = await supabaseAdmin
+  const { data: completedRows, error: statusError } = await getSupabaseAdmin()
     .from("listings")
     .update({ status: "evaluated", updated_at: new Date().toISOString() })
     .eq("id", listingId)

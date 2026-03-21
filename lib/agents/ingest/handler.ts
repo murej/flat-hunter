@@ -28,8 +28,9 @@ export async function handleIngestWebhook(
   let content: string;
   let isRaw = false;
 
+  // CloudMailin supports either target (see README); both remain valid webhook shapes.
   if (contentType.includes("multipart/form-data")) {
-    // CloudMailin raw format — RFC 5322
+    // Raw RFC 5322 message in `message` field
     const formData = await request.formData();
     const raw = formData.get("message");
     if (!raw) {

@@ -1,4 +1,4 @@
-import { supabaseAdmin, getListing } from "@/lib/supabase";
+import { getSupabaseAdmin, getListing } from "@/lib/supabase";
 import type { Listing, Evaluation, Preferences } from "@/types";
 import {
   buildScorecardText,
@@ -22,7 +22,7 @@ export const UPDATE_PREFERENCES_BUTTONS = [
 ];
 
 export async function saveListing(id: string): Promise<string> {
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from("listings")
     .update({ status: "saved", updated_at: new Date().toISOString() })
     .eq("id", id);
@@ -35,7 +35,7 @@ export async function getScorecard(
   const listing = await getListing(id);
   if (!listing) return null;
 
-  const { data: evaluation } = await supabaseAdmin
+  const { data: evaluation } = await getSupabaseAdmin()
     .from("evaluations")
     .select("*")
     .eq("listing_id", id)
@@ -61,14 +61,14 @@ export async function getWhyContext(
   const listing = await getListing(id);
   if (!listing) return null;
 
-  const { data: evaluation } = await supabaseAdmin
+  const { data: evaluation } = await getSupabaseAdmin()
     .from("evaluations")
     .select("*")
     .eq("listing_id", id)
     .single();
   if (!evaluation) return null;
 
-  const { data: preferences } = await supabaseAdmin
+  const { data: preferences } = await getSupabaseAdmin()
     .from("preferences")
     .select("*")
     .order("created_at", { ascending: false })
@@ -92,7 +92,7 @@ export async function getComparisonData(
     const listing = await getListing(id);
     if (!listing) continue;
 
-    const { data: evaluation } = await supabaseAdmin
+    const { data: evaluation } = await getSupabaseAdmin()
       .from("evaluations")
       .select("*")
       .eq("listing_id", id)
@@ -108,7 +108,7 @@ export async function getComparisonData(
 }
 
 export async function getFormattedSavedList(): Promise<string> {
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("listings")
     .select("id, title, price, address, postcode, bedrooms, status")
     .eq("status", "saved")
@@ -126,7 +126,7 @@ export async function getFormattedSavedList(): Promise<string> {
 }
 
 export async function getFormattedPreferences(): Promise<string> {
-  const { data } = await supabaseAdmin
+  const { data } = await getSupabaseAdmin()
     .from("preferences")
     .select("*")
     .order("created_at", { ascending: false })
