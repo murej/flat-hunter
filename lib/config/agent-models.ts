@@ -1,12 +1,13 @@
 import { envModel } from "@/lib/utils/env-utils";
 
 const DEFAULT = "claude-haiku-4-5";
+const EXPERT_DEFAULT = "claude-sonnet-4-6";
 
 export const getPropertyExpertModel = () =>
-  envModel("PROPERTY_EXPERT_MODEL", DEFAULT);
+  envModel("PROPERTY_EXPERT_MODEL", EXPERT_DEFAULT);
 
 export const getAreaExpertModel = () =>
-  envModel("AREA_EXPERT_MODEL", DEFAULT);
+  envModel("AREA_EXPERT_MODEL", EXPERT_DEFAULT);
 
 export const getConversationModel = () =>
   envModel("CONVERSATION_MODEL", DEFAULT);

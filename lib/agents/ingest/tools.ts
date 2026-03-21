@@ -98,7 +98,7 @@ export async function runEvaluationsAndNotify(
 ): Promise<void> {
   if (ids.length === 0) return;
 
-  const batchId = `ingest-${Date.now()}`;
+  const batchId = crypto.randomUUID();
   let sequence = 0;
 
   // Intro notification

@@ -141,11 +141,16 @@ export async function runEvaluationPipeline(listingId: number): Promise<{
     area_unknown: areaResult.area_unknown ?? null,
   };
 
-  const { data: evaluation } = await supabaseAdmin
+  const { data: evaluation, error: upsertError } = await supabaseAdmin
     .from("evaluations")
     .upsert(evaluationRow, { onConflict: "listing_id" })
     .select()
     .single();
+
+  if (upsertError || !evaluation) {
+    console.error("Evaluation upsert failed:", upsertError?.message ?? "no data returned");
+    return null;
+  }
 
   // Update listing status
   await supabaseAdmin
