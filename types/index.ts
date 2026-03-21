@@ -20,6 +20,7 @@ export type Preferences = {
 
 export type ListingStatus =
   | "pending_evaluation"
+  | "evaluating"
   | "evaluated"
   | "saved"
   | "dismissed"

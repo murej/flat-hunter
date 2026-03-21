@@ -20,6 +20,13 @@ import {
 import { preprocessString, toLlmContext } from "langmail";
 import PostalMime from "postal-mime";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
+import { sleep } from "@/lib/utils/retry";
+import { envIntClamped } from "@/lib/utils/env-utils";
+import {
+  claimListingForEvaluation,
+  getEvaluatingStaleMinutes,
+  releaseListingEvaluationClaim,
+} from "@/lib/supabase/evaluation-claim";
 import { sendMarkdown } from "@/lib/telegram";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
 import { z } from "zod";
@@ -238,33 +245,57 @@ export async function deduplicateAndStore(
 
 export async function runEvaluationsAndNotify(
   ids: string[],
+  opts?: { preClaimed?: boolean },
 ): Promise<void> {
   if (ids.length === 0) return;
 
-  try {
-    const intro = await runAgent({
-      systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-      prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
-      model: getIngestNotificationModel(),
-      maxSteps: 1,
-      telemetryTag: TELEMETRY_TAG_NOTIFICATION,
-    });
-    await sendMarkdown(intro.message);
-  } catch (err) {
-    await reportError(err, {
-      source: "ingest/runEvaluationsAndNotify",
-      telemetryTag: "intro",
-    });
+  const preClaimed = opts?.preClaimed ?? false;
+  const staleMinutes = getEvaluatingStaleMinutes();
+
+  if (!preClaimed) {
+    try {
+      const intro = await runAgent({
+        systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+        prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
+        model: getIngestNotificationModel(),
+        maxSteps: 1,
+        telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+      });
+      await sendMarkdown(intro.message);
+    } catch (err) {
+      await reportError(err, {
+        source: "ingest/runEvaluationsAndNotify",
+        telemetryTag: "intro",
+      });
+    }
   }
 
   const batchId = crypto.randomUUID();
   let sequence = 0;
+  let evaluatedCount = 0;
+  const listingGapMs = envIntClamped("EVALUATE_LISTING_GAP_MS", 0, 120_000, 0);
 
   // Process listings sequentially
+  let firstListing = true;
   for (const id of ids) {
+    if (!firstListing && listingGapMs > 0) {
+      await sleep(listingGapMs);
+    }
+    firstListing = false;
+
     try {
-      const result = await runEvaluationPipeline(id);
-      if (result) {
+      if (!preClaimed) {
+        const ok = await claimListingForEvaluation(id, staleMinutes);
+        if (!ok) continue;
+      }
+
+      try {
+        const result = await runEvaluationPipeline(id);
+        if (!result) {
+          await releaseListingEvaluationClaim(id);
+          continue;
+        }
+        evaluatedCount++;
         await supabaseAdmin.from("pending_notifications").insert({
           batch_id: batchId,
           sequence: sequence++,
@@ -275,6 +306,12 @@ export async function runEvaluationsAndNotify(
             buttons: result.scorecardButtons,
             parse_mode: "Markdown",
           },
+        });
+      } catch (err) {
+        await releaseListingEvaluationClaim(id);
+        await reportError(err, {
+          source: "ingest/runEvaluationsAndNotify",
+          telemetryTag: `listing:${id}`,
         });
       }
     } catch (err) {
@@ -294,11 +331,11 @@ export async function runEvaluationsAndNotify(
     });
   }
 
-  if (ids.length > 1) {
+  if (evaluatedCount > 1) {
     try {
       const summary = await runAgent({
         systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-        prompt: `You just finished evaluating ${ids.length} listings and sent scorecards. Write a short wrap-up message reminding the user to react (like) the ones they want to save.`,
+        prompt: `You just finished evaluating ${evaluatedCount} listings and sent scorecards. Write a short wrap-up message reminding the user to react (like) the ones they want to save.`,
         model: getIngestNotificationModel(),
         maxSteps: 1,
         telemetryTag: TELEMETRY_TAG_NOTIFICATION,

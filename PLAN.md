@@ -4,9 +4,9 @@ Personal UK property search assistant. Email alerts (Rightmove, Zoopla) → Clou
 
 ## Stack
 
-Next.js (App Router, API routes only) on **Vercel Hobby** (free tier). TypeScript, strict mode. **Vercel AI SDK** (`ai` + `@ai-sdk/anthropic`) with Zod schemas. Supabase Postgres (service-role, no RLS). Telegram Bot API (raw `fetch`). CloudMailin webhook. `langmail` + `postal-mime` for email preprocessing. `p-limit` for concurrency.
+Next.js (App Router, API routes only) on **Vercel Hobby** (free tier). TypeScript, strict mode. **Vercel AI SDK** (`ai` + `@ai-sdk/anthropic`) with Zod schemas. Supabase Postgres (service-role, no RLS). Telegram Bot API (raw `fetch`). CloudMailin webhook. `langmail` + `postal-mime` for email preprocessing. Listing evaluation keeps **property and area experts sequential** (Sonnet TPM); commute/finance overlap with property only.
 
-**Dependencies**: `ai`, `@ai-sdk/anthropic`, `zod`, `@supabase/supabase-js`, `@vercel/functions`, `langmail`, `postal-mime`, `p-limit`, `next`, `react`, `react-dom` (latest compatible versions - search the web!)
+**Dependencies**: `ai`, `@ai-sdk/anthropic`, `zod`, `@supabase/supabase-js`, `@vercel/functions`, `langmail`, `postal-mime`, `next`, `react`, `react-dom` (latest compatible versions - search the web!)
 
 ---
 
@@ -20,11 +20,12 @@ Next.js (App Router, API routes only) on **Vercel Hobby** (free tier). TypeScrip
 
 **Design response:**
 
-- **50 RPM is the binding constraint.** One listing evaluation = ~6-8 Haiku requests (~10-15s wall time: two experts concurrent via `p-limit(2)`, ~3-4 calls each at ~1-3s). 3 listings from one email ≈ 20-26 requests.
-- Listings evaluated **sequentially** to avoid RPM spikes across concurrent webhooks.
+- **50 RPM is the binding constraint.** One listing evaluation = several Sonnet/Haiku requests (~10–20s+ wall time: property then area expert sequential; commute/finance run in parallel with property only). 3 listings from one email still sequential end-to-end.
+- Listings evaluated **sequentially** to avoid RPM spikes across concurrent webhooks. **Ingest** (`waitUntil`) and **cron** (`/api/cron/evaluate`) can run in parallel on Vercel — they share the same Anthropic org limits but have **no cross-process** throttle. Mitigations: `EVALUATE_CRON_BATCH_SIZE` (default 2), optional `EVALUATE_LISTING_GAP_MS` between listings in `runEvaluationsAndNotify`.
+- **`evaluating` lease:** Cron claims rows via Postgres RPC with `SKIP LOCKED` (`pending_evaluation` or stale `evaluating` past `EVALUATING_STALE_MINUTES`). Ingest claims per id before `runEvaluationPipeline`. Failures release back to `pending_evaluation`; success sets `evaluated` only from `evaluating`.
 - `runAgent()` retries 429/529 via AI SDK `maxRetries: 4`.
 - Nominatim: `retryWithBackoff` with ≥1s base delay.
-- **60s ceiling**: 4 listings ≈ 40-60s fits. 5+ may not finish — cron job (`/api/cron/evaluate`, every 5 min) picks up `pending_evaluation` stragglers. All listings guaranteed processed.
+- **60s ceiling**: cron default batch 2 listings per tick; overflow picked up on the next cron run. All listings still processed eventually.
 - 100 GB-hours easily covers ~10 listings/day.
 
 **Token cost minimization:**
@@ -274,14 +275,14 @@ Zod schemas for `Output.object()`:
 **`evaluation-pipeline.ts`** — `runEvaluationPipeline(listingId)`:
 
 1. Fetch listing + preferences + area context + prior agent_context
-2. Run 4 evaluators (`p-limit(2)` for LLM calls):
+2. Run evaluators: `evaluateCommute`, `evaluateFinance`, and `runPropertyExpert` in parallel; then `runAreaExpert` (property and area experts never overlap — Sonnet TPM).
    - `runPropertyExpert` → price/size/fit scores
    - `runAreaExpert` → area score + notable flags
    - `evaluateCommute` → commute score (no LLM)
    - `evaluateFinance` → monthly costs (no LLM)
 3. Upsert agent_context, compute weighted `overall_score`, insert evaluation, build scorecard, status → "evaluated"
 
-`runEvaluationsAndNotify(ids)` processes listings **sequentially** (~10-15s each). Overflow caught by cron within 5 min.
+`runEvaluationsAndNotify(ids, { preClaimed? })` processes listings **sequentially** (~10-15s each). Cron passes `preClaimed: true` after batch claim RPC; ingest claims each id first. Overflow caught by cron within 5 min.
 
 ## Agents
 

@@ -37,9 +37,6 @@ if [ -z "$BOT_TOKEN" ]; then
   exit 1
 fi
 
-APP_HOST="${URL#https://}"
-APP_HOST="${APP_HOST#http://}"
-
 echo "⏳ Setting Telegram webhook to $URL/api/telegram..."
 WEBHOOK_OK=false
 for attempt in $(seq 1 3); do
@@ -58,8 +55,6 @@ if [ "$WEBHOOK_OK" = false ]; then
   exit 1
 fi
 
-if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
-  echo "📬 https://cloudmailin:${CLOUDMAILIN_SECRET}@${APP_HOST}/api/ingest (set in CloudMailin as target URL)"
-else
-  echo "📬 ${URL}/api/ingest"
+if [ -z "${TELEGRAM_WEBHOOK_SKIP_INGEST_HINT:-}" ]; then
+  bash "$SCRIPT_DIR/print-cloudmailin-ingest-url.sh" "$URL"
 fi

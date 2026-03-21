@@ -32,7 +32,7 @@ Queue consumer for `pending_notifications`. Sends intro, scorecards (with 500ms 
 
 | File | Purpose |
 |------|---------|
-| `evaluation-pipeline.ts` | Orchestrates 4 evaluators with `p-limit(2)`, computes weighted overall score, upserts evaluation |
+| `evaluation-pipeline.ts` | Orchestrates evaluators (commute+finance+property parallel, then area expert), computes weighted overall score, upserts evaluation |
 | `area.ts` | `fetchAreaContext()` — postcodes.io, Police API crime data, ArcGIS IMD by LSOA |
 | `commute.ts` | `evaluateCommute()` — TfL Journey Planner + Nominatim geocoding |
 | `finance.ts` | `evaluateFinance()` — mortgage repayment, interest-only, SDLT with FTB relief, stress test |

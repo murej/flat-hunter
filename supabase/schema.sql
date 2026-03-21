@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS listings (
   agent_email TEXT,
   listed_date TEXT,
   status TEXT NOT NULL DEFAULT 'pending_evaluation'
-    CHECK (status IN ('pending_evaluation', 'evaluated', 'saved', 'dismissed', 'viewing_requested')),
+    CHECK (status IN ('pending_evaluation', 'evaluating', 'evaluated', 'saved', 'dismissed', 'viewing_requested')),
   raw_email_html TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

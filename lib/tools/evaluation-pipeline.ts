@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import { reportError } from "@/lib/core/reporting";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { fetchAreaContext } from "./area";
@@ -19,8 +18,6 @@ import type {
   FinanceEvalResult,
   Evaluation,
 } from "@/types";
-
-const llmLimit = pLimit(2);
 
 function computeOverallScore(
   property: PropertyEvalResult,
@@ -91,24 +88,23 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   const propertyPrompt = buildPropertyPrompt(listing, preferences);
   const areaPrompt = buildAreaPrompt(listing, preferences, areaContext);
 
-  // Run 4 evaluators with p-limit(2) for LLM calls
-  const [propertyResult, areaResult, commuteResult, financeResult] =
-    await Promise.all([
-      llmLimit(() => runPropertyExpert(propertyPrompt)),
-      llmLimit(() =>
-        runAreaExpert(
-          areaPrompt,
-          priorContext?.content as Record<string, unknown> | undefined,
-        ),
-      ),
-      evaluateCommute(
-        listing.postcode,
-        preferences.commute_postcode,
-        preferences.commute_max_minutes,
-        listing.address,
-      ),
-      evaluateFinance(listing.price, preferences.deposit),
-    ]);
+  // Property and area experts are Sonnet (TPM); never run concurrently.
+  // Commute + finance overlap with property only (non-Anthropic).
+  const [commuteResult, financeResult, propertyResult] = await Promise.all([
+    evaluateCommute(
+      listing.postcode,
+      preferences.commute_postcode,
+      preferences.commute_max_minutes,
+      listing.address,
+    ),
+    evaluateFinance(listing.price, preferences.deposit),
+    runPropertyExpert(propertyPrompt),
+  ]);
+
+  const areaResult = await runAreaExpert(
+    areaPrompt,
+    priorContext?.content as Record<string, unknown> | undefined,
+  );
 
   // Store area context for future use
   if (areaContext) {
@@ -191,11 +187,31 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     return null;
   }
 
-  // Update listing status
-  await supabaseAdmin
+  const { data: completedRows, error: statusError } = await supabaseAdmin
     .from("listings")
     .update({ status: "evaluated", updated_at: new Date().toISOString() })
-    .eq("id", listingId);
+    .eq("id", listingId)
+    .eq("status", "evaluating")
+    .select("id");
+
+  if (statusError) {
+    await reportError(statusError, {
+      source: "evaluation/listing-status",
+      telemetryTag: `listing:${listingId}`,
+    });
+    return null;
+  }
+
+  if (!completedRows?.length) {
+    await reportError(
+      new Error("Listing was not in evaluating state when marking evaluated"),
+      {
+        source: "evaluation/listing-status",
+        telemetryTag: `listing:${listingId}`,
+      },
+    );
+    return null;
+  }
 
   const eval_ = evaluation as Evaluation;
   const [updatedListing, mortgageRate] = await Promise.all([

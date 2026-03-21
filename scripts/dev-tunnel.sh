@@ -60,28 +60,17 @@ if [ "$DNS_OK" = false ]; then
   echo "❌ DNS not resolving. Restart to get a new subdomain."
 fi
 
-print_ingest_hint() {
-  if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
-    echo "📬 https://cloudmailin:${CLOUDMAILIN_SECRET}@${TUNNEL_HOST}/api/ingest (set in CloudMailin as target URL)"
-  else
-    echo "📬 $TUNNEL_URL/api/ingest"
-  fi
-}
-
-# Set Telegram webhook (+ ingest hint via telegram-webhook.sh on success)
+# Set Telegram webhook (CloudMailin URL printed once below, after Vault sync)
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "$DNS_OK" = true ]; then
-  if bash "$SCRIPT_DIR/telegram-webhook.sh" dev "$TUNNEL_URL"; then
+  if TELEGRAM_WEBHOOK_SKIP_INGEST_HINT=1 bash "$SCRIPT_DIR/telegram-webhook.sh" dev "$TUNNEL_URL"; then
     :
   else
     echo "⚠️  Telegram webhook step failed (tunnel still running)."
-    print_ingest_hint
   fi
 elif [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
   echo "⚠️  TELEGRAM_BOT_TOKEN not set — skipping webhook"
-  print_ingest_hint
 else
   echo "⚠️  DNS not ready — skipping Telegram webhook; fix DNS or run: npm run telegram:dev -- $TUNNEL_URL"
-  print_ingest_hint
 fi
 
 # Point Supabase pg_cron/pg_net at this tunnel (evaluate + BOE crons; same CRON_SECRET as local Next).
@@ -90,6 +79,7 @@ if CRON_APP_BASE_URL="$TUNNEL_URL" bash "$SCRIPT_DIR/sync-evaluate-cron-vault.sh
 else
   echo "⚠️  Supabase Vault sync failed (CRON_SECRET, SUPABASE_DB_PASSWORD, or supabase login?). Cron may still target a previous URL."
 fi
+bash "$SCRIPT_DIR/print-cloudmailin-ingest-url.sh" --block "$TUNNEL_URL"
 
 echo ""
 echo "Ready. Ctrl+C to stop."

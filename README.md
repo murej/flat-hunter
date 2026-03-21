@@ -9,7 +9,7 @@ Personal UK property search assistant. Email alerts from Rightmove, Zoopla, OnTh
 - **Database**: Supabase Postgres (service-role, no RLS)
 - **Messaging**: Telegram Bot API (raw fetch)
 - **Email**: CloudMailin webhook + `langmail` + `postal-mime`
-- **Concurrency**: `p-limit` for LLM rate-limit management
+- **Concurrency**: sequential Sonnet experts per listing; optional `EVALUATE_LISTING_GAP_MS` between listings
 
 ## Architecture
 

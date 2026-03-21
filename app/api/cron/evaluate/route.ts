@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { reportError } from "@/lib/core/reporting";
-import { supabaseAdmin } from "@/lib/supabase";
+import {
+  claimListingsForEvaluationBatch,
+  getEvaluatingStaleMinutes,
+} from "@/lib/supabase/evaluation-claim";
 import { runEvaluationsAndNotify } from "@/lib/agents/ingest/tools";
+import { envIntClamped } from "@/lib/utils/env-utils";
 
 // Import agents to trigger registration
 import "@/lib/agents/property-expert";
@@ -19,20 +23,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: pending } = await supabaseAdmin
-    .from("listings")
-    .select("id")
-    .eq("status", "pending_evaluation")
-    .order("created_at", { ascending: true })
-    .limit(4); // ~4 per invocation within 60s ceiling
+  const batchSize = envIntClamped("EVALUATE_CRON_BATCH_SIZE", 1, 20, 2);
+  const staleMinutes = getEvaluatingStaleMinutes();
 
-  if (!pending || pending.length === 0) {
+  let ids: string[];
+  try {
+    ids = await claimListingsForEvaluationBatch(batchSize, staleMinutes);
+  } catch (err) {
+    await reportError(err, { source: "api/cron/evaluate", telemetryTag: "claim" });
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+
+  if (ids.length === 0) {
     return NextResponse.json({ ok: true, processed: 0 });
   }
 
-  const ids = pending.map((r: { id: string }) => r.id);
   try {
-    await runEvaluationsAndNotify(ids);
+    await runEvaluationsAndNotify(ids, { preClaimed: true });
   } catch (err) {
     await reportError(err, { source: "api/cron/evaluate" });
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
