@@ -4,6 +4,7 @@ import { fetchAreaContext } from "./area";
 import { evaluateCommute } from "./commute";
 import { evaluateFinance } from "./finance";
 import { buildScorecardText, buildScorecardButtons } from "./scorecard";
+import { getLatestMortgageRate } from "./mortgage-rate";
 import { runPropertyExpert } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
 import type {
@@ -159,11 +160,14 @@ export async function runEvaluationPipeline(listingId: number): Promise<{
     .eq("id", listingId);
 
   const eval_ = evaluation as Evaluation;
-  const updatedListing = (await getListing(listingId))!;
+  const [updatedListing, mortgageRate] = await Promise.all([
+    getListing(listingId),
+    getLatestMortgageRate(),
+  ]);
 
   return {
     evaluation: eval_,
-    scorecardText: buildScorecardText(updatedListing, eval_),
+    scorecardText: buildScorecardText(updatedListing!, eval_, mortgageRate),
     scorecardButtons: buildScorecardButtons(listingId, false),
   };
 }

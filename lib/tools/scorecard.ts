@@ -13,11 +13,17 @@ function formatMoney(n: number | null): string {
 export function buildScorecardText(
   listing: Listing,
   evaluation: Evaluation,
+  mortgageRate?: number,
 ): string {
+  let priceLine = `💰 ${formatMoney(listing.price)}`;
+  if (evaluation.mortgage_monthly !== null && mortgageRate != null) {
+    priceLine += ` · ${formatMoney(evaluation.mortgage_monthly)}/mo (at ${mortgageRate}%)`;
+  }
+
   const lines = [
     `🏠 *${listing.title}*`,
     `📍 ${listing.address}`,
-    `💰 ${formatMoney(listing.price)}`,
+    priceLine,
     `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${listing.sqft} sqft` : ""}`,
     "",
     `*Overall: ${evaluation.overall_score}/10*`,
@@ -31,10 +37,6 @@ export function buildScorecardText(
 
   if (evaluation.commute_minutes !== null) {
     lines.push(`🚇 ${evaluation.commute_minutes} min — ${evaluation.commute_route}`);
-  }
-
-  if (evaluation.total_monthly !== null) {
-    lines.push(`💷 ${formatMoney(evaluation.total_monthly)}/mo (mortgage + service)`);
   }
 
   if (evaluation.deal_breaker_flags.length > 0) {

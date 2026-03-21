@@ -5,6 +5,7 @@ import {
   buildScorecardButtons,
   buildNoScoreScorecardText,
 } from "./scorecard";
+import { getLatestMortgageRate } from "./mortgage-rate";
 
 export const UPDATE_PREFERENCES_BUTTONS = [
   [
@@ -56,8 +57,9 @@ export async function getScorecard(
   }
 
   const isSaved = listing.status === "saved";
+  const rate = await getLatestMortgageRate();
   return {
-    text: buildScorecardText(listing, evaluation as Evaluation),
+    text: buildScorecardText(listing, evaluation as Evaluation, rate),
     buttons: buildScorecardButtons(id, isSaved),
   };
 }
