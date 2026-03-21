@@ -179,9 +179,16 @@ export async function handleTelegramUpdate(input: {
       return;
     }
 
-    // Route: update preferences / update:{category}
-    if (text === "update preferences" || text.startsWith("update:")) {
-      const category = text.startsWith("update:") ? text.split(":")[1] : undefined;
+    // Route: update preferences / update:{category} (case-insensitive; Telegram button is lowercase but users often Title Case)
+    const trimmedInbound = text.trim();
+    const lowerInbound = trimmedInbound.toLowerCase();
+    const isUpdatePreferencesPhrase = lowerInbound === "update preferences";
+    const isUpdateCategoryCallback =
+      lowerInbound.startsWith("update:") && trimmedInbound.includes(":");
+    if (isUpdatePreferencesPhrase || isUpdateCategoryCallback) {
+      const category = isUpdateCategoryCallback
+        ? trimmedInbound.slice(trimmedInbound.indexOf(":") + 1) || undefined
+        : undefined;
       await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "update_preferences" });
       await setSessionMode("preference");
 
