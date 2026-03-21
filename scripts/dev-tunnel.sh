@@ -84,9 +84,9 @@ else
   print_ingest_hint
 fi
 
-# Point Supabase pg_cron/pg_net at this tunnel (same CRON_SECRET as local Next).
-if EVALUATE_CRON_URL="${TUNNEL_URL}/api/cron/evaluate" bash "$SCRIPT_DIR/sync-evaluate-cron-vault.sh"; then
-  echo "✅ Supabase Vault evaluate cron URL + secret updated"
+# Point Supabase pg_cron/pg_net at this tunnel (evaluate + BOE crons; same CRON_SECRET as local Next).
+if CRON_APP_BASE_URL="$TUNNEL_URL" bash "$SCRIPT_DIR/sync-evaluate-cron-vault.sh"; then
+  echo "✅ Supabase Vault cron URLs + secret updated"
 else
   echo "⚠️  Supabase Vault sync failed (CRON_SECRET, SUPABASE_DB_PASSWORD, or supabase login?). Cron may still target a previous URL."
 fi

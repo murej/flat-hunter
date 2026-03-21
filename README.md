@@ -100,16 +100,22 @@ npm run deploy
 
 **`CRON_SECRET`** must be in `.env.local` and on Vercel for authenticated cron calls.
 
-**Evaluate cron (Supabase pg_cron, not Vercel):** picks up stuck `pending_evaluation` rows; see [`supabase/migrations/20260321135818_evaluate_cron.sql`](supabase/migrations/20260321135818_evaluate_cron.sql) for **pg_cron** / **pg_net**. Enable in Dashboard if blocked.
+**Supabase crons (pg_cron + pg_net, not Vercel):**
 
-**Vault** (`evaluate_cron_url`, `cron_secret`): dev tunnel updates after cloudflared URL is known; **`migrate:prod`** / **`deploy`** use **`NEXT_PUBLIC_APP_URL`** (strict; fails if misconfigured). Ad hoc: **`npm run sync-evaluate-cron-vault`** or **`EVALUATE_CRON_URL`**. Webhook only: **`telegram:dev`** / **`telegram:prod`**.
+- **`flat_hunter_evaluate_cron`** — every 5 minutes; picks up stuck `pending_evaluation` rows via [`20260321135818_evaluate_cron.sql`](supabase/migrations/20260321135818_evaluate_cron.sql).
+- **`flat_hunter_boe_mortgage_cron`** — `0 6 1 * *` (06:00 UTC on the 1st of each month); calls **`GET /api/cron/sync-boe-mortgage-rate`**, which upserts **`MORTGAGE_RATE`** from env into **`agent_context`** (same as **`npm run sync-rate`**). Defined in [`20260321140000_boe_cron_vault_and_unschedule_legacy.sql`](supabase/migrations/20260321140000_boe_cron_vault_and_unschedule_legacy.sql) (replaces the old Edge Function target).
 
-The job `flat_hunter_evaluate_cron` runs every 5 minutes and calls the route with `Authorization: Bearer …`. Confirm runs under Dashboard → Integrations → Cron; debug failed HTTP via `net._http_response` if needed.
+Enable **pg_cron** / **pg_net** in Dashboard if a migration is blocked.
+
+**Vault** (`evaluate_cron_url`, **`boe_cron_url`**, `cron_secret`): **`NEXT_PUBLIC_APP_URL`** drives both cron targets in prod (**`migrate:prod`** / **`deploy`** / **`npm run sync-evaluate-cron-vault`**). **`npm run dev`** passes the cloudflared origin into the sync script only (not an `.env` variable). Ad hoc: **`npm run sync-evaluate-cron-vault`**. Webhook only: **`telegram:dev`** / **`telegram:prod`**.
+
+Confirm runs under Dashboard → Integrations → Cron; debug failed HTTP via **`net._http_response`** if needed.
 
 Manual SQL fallback (SQL Editor), if ever needed:
 
 ```sql
 select vault.create_secret('https://YOUR_HOST/api/cron/evaluate', 'evaluate_cron_url');
+select vault.create_secret('https://YOUR_HOST/api/cron/sync-boe-mortgage-rate', 'boe_cron_url');
 select vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
 ```
 
@@ -118,13 +124,13 @@ select vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
 | Script                                     | Purpose                                        |
 | ------------------------------------------ | ---------------------------------------------- |
 | `npm run set-commands`                     | Register Telegram bot commands                 |
-| `npm run sync-rate`                        | Sync BoE mortgage rate to Supabase             |
-| `npm run sync-evaluate-cron-vault`         | Upsert Supabase Vault secrets for evaluate cron |
+| `npm run sync-rate`                        | Sync mortgage rate to `agent_context` (same logic as monthly cron route) |
+| `npm run sync-evaluate-cron-vault`         | Upsert Supabase Vault secrets for evaluate + BOE crons |
 | `scripts/dev-tunnel.sh`                    | Start dev tunnel                               |
 | `scripts/push-env-to-vercel.sh`            | Push local env to Vercel                       |
 | `scripts/use-prod.sh`                      | Switch to production endpoints                 |
 | `scripts/apply-evaluate-cron-migration.sh` | `supabase db push --linked` (from npm scripts) |
-| `scripts/sync-evaluate-cron-vault.sh`      | Upsert Vault secrets for evaluate cron (from dev / use:prod / `npm run sync-evaluate-cron-vault`) |
+| `scripts/sync-evaluate-cron-vault.sh`      | Upsert Vault secrets (from dev tunnel / `migrate:*` / `npm run sync-evaluate-cron-vault`) |
 
 ## How it works
 
