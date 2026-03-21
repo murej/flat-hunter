@@ -3,13 +3,13 @@ import { z } from "zod";
 export const PropertyEvalSchema = z.object({
   price_score: z
     .number()
-    .describe("Price value score 1-10 (10 = great value)"),
+    .describe("Price value score 1-10 (10 = great value vs comparable local sales and budget). Excludes size."),
   size_score: z
     .number()
-    .describe("Size/space score 1-10 (10 = very spacious for price)"),
+    .describe("Space adequacy score 1-10 (10 = very spacious for buyer needs: bedrooms, sqft, layout). Excludes style and price."),
   fit_score: z
     .number()
-    .describe("Overall fit against must-haves and preferences 1-10"),
+    .describe("Lifestyle fit score 1-10 (10 = perfect match on design, style, character, light, outdoor space, condition). Excludes size and price."),
   deal_breaker_flags: z
     .array(z.string())
     .describe("List of deal-breaker preferences that this property violates"),
