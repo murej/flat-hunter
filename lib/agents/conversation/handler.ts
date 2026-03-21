@@ -1,6 +1,6 @@
-import { sendMessage, sendMarkdown, sendWithButtons, answerCallbackQuery } from "@/lib/telegram";
-import { logConversation, getPreferences, getConversationHistory, getSessionMode, setSessionMode, clearSessionMode } from "@/lib/supabase";
-import { saveListing, skipListing, getScorecard, getWhyContext } from "@/lib/tools/listing";
+import { sendMessage, sendMarkdown, sendWithButtons, answerCallbackQuery, deleteMessage } from "@/lib/telegram";
+import { logConversation, getPreferences, deletePreferences, getConversationHistory, getSessionMode, setSessionMode, clearSessionMode } from "@/lib/supabase";
+import { saveListing, skipListing, getScorecard, getWhyContext, getFormattedPreferences, getFormattedSavedList } from "@/lib/tools/listing";
 import { runPreferenceAgent } from "@/lib/agents/preference";
 import { runAgent } from "@/lib/core/agent";
 import { getWhyExplanationModel } from "@/lib/config/agent-models";
@@ -28,10 +28,57 @@ export async function handleTelegramUpdate(input: {
     await answerCallbackQuery(callbackQueryId);
   }
 
-  // /cancel — exit preference mode
-  if (text === "/cancel") {
+  // /stop — stop any active flow
+  if (text === "/stop") {
     await clearSessionMode();
-    await sendMessage("Cancelled. Type anything to chat.");
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "cancel" });
+    await sendMessage("Cancelled. What else can I help with?");
+    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Cancelled. What else can I help with?", intent: "cancel" });
+    return;
+  }
+
+  // /restart — reset preferences with confirmation
+  if (text === "/restart") {
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "restart" });
+    await sendWithButtons(
+      "Are you sure? This will delete your preferences and start fresh.",
+      [[
+        { text: "Yes, reset", callback_data: "restart_confirm" },
+        { text: "No, keep", callback_data: "restart_deny" },
+      ]],
+    );
+    return;
+  }
+
+  // restart_confirm / restart_deny callbacks
+  if (text === "restart_confirm") {
+    await deletePreferences();
+    await clearSessionMode();
+    await deleteMessage(messageId);
+    await setSessionMode("preference");
+    const result = await runPreferenceAgent("The user just reset. Begin collecting their property search preferences.\n\n[No preferences saved yet]");
+    await sendMarkdown(result.message);
+    return;
+  }
+  if (text === "restart_deny") {
+    await deleteMessage(messageId);
+    await sendMessage("No worries, preferences kept.");
+    return;
+  }
+
+  // /preferences — show current preferences
+  if (text === "/preferences") {
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "preferences" });
+    const msg = await getFormattedPreferences();
+    await sendMarkdown(msg);
+    return;
+  }
+
+  // /saved — show saved properties
+  if (text === "/saved") {
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "saved" });
+    const msg = await getFormattedSavedList();
+    await sendMarkdown(msg);
     return;
   }
 
@@ -39,8 +86,7 @@ export async function handleTelegramUpdate(input: {
   const sessionMode = await getSessionMode();
   if (
     sessionMode === "preference" &&
-    !/^(save|skip|unsave|why|scorecard):/.test(text) &&
-    text !== "/start"
+    !/^(save|skip|unsave|why|scorecard):/.test(text)
   ) {
     const [, prefsBefore, history] = await Promise.all([
       logConversation({
@@ -78,21 +124,6 @@ export async function handleTelegramUpdate(input: {
     return;
   }
 
-  // Route: /start
-  if (text === "/start") {
-    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "start" });
-    const prefs = await getPreferences();
-    if (prefs) {
-      await sendMessage("Welcome back! Your preferences are already set up. Type anything to chat, or say 'update preferences' to change them.");
-    } else {
-      await setSessionMode("preference");
-      const result = await runPreferenceAgent("The user just started. Begin collecting their property search preferences.\n\n[No preferences saved yet]");
-      await sendMarkdown(result.message);
-    }
-    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Welcome", intent: "start" });
-    return;
-  }
-
   // Route: save:/skip:/unsave: callbacks
   const saveMatch = text.match(/^(save|skip|unsave):(\d+)$/);
   if (saveMatch) {
@@ -102,15 +133,16 @@ export async function handleTelegramUpdate(input: {
 
     if (action === "save") {
       await saveListing(id);
+      await deleteMessage(messageId);
       await sendMessage("💾 Saved!");
     } else if (action === "unsave") {
-      // Reset to evaluated
       const { updateListingStatus } = await import("@/lib/supabase");
       await updateListingStatus(id, "evaluated");
+      await deleteMessage(messageId);
       await sendMessage("📌 Unsaved. Status reset to evaluated.");
     } else {
       await skipListing(id);
-      await sendMessage("⏭ Skipped.");
+      await deleteMessage(messageId);
     }
     return;
   }
@@ -171,6 +203,15 @@ export async function handleTelegramUpdate(input: {
     const result = await runPreferenceAgent(prompt + prefsContext(prefs));
     await sendMarkdown(result.message);
     await logConversation({ telegram_message_id: messageId, direction: "outbound", message: result.message, intent: "update_preferences" });
+    return;
+  }
+
+  // Route: bare greetings — respond without invoking the agent
+  const GREETING_WORDS = /^(h(ello|i|ey|owdy|iya)|yo|sup|morning|evening|afternoon|what'?s up|alright)[!?.]*$/i;
+  if (GREETING_WORDS.test(text.trim())) {
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "greeting" });
+    await sendMessage("Alright! What can I do for you?");
+    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Alright! What can I do for you?", intent: "greeting" });
     return;
   }
 

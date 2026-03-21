@@ -101,6 +101,13 @@ export async function sendPlainText(text: string): Promise<void> {
   });
 }
 
+export async function deleteMessage(messageId: number): Promise<void> {
+  await callTelegram("deleteMessage", {
+    chat_id: CHAT_ID(),
+    message_id: messageId,
+  });
+}
+
 export async function answerCallbackQuery(
   callbackQueryId: string,
   text?: string,

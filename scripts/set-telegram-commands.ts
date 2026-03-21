@@ -1,11 +1,11 @@
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!BOT_TOKEN) {
-  console.error("TELEGRAM_BOT_TOKEN not set");
-  process.exit(1);
-}
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
 const commands = [
-  { command: "start", description: "Set up or reset your search preferences" },
+  { command: "start", description: "Say hello to Stath" },
+  { command: "preferences", description: "Show your search preferences" },
+  { command: "saved", description: "Show your saved properties" },
+  { command: "stop", description: "Stop what you're doing" },
+  { command: "restart", description: "Reset preferences and start fresh" },
 ];
 
 async function main() {

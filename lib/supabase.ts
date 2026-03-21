@@ -30,6 +30,10 @@ export async function getPreferences(): Promise<Preferences | null> {
   return data as Preferences | null;
 }
 
+export async function deletePreferences(): Promise<void> {
+  await supabaseAdmin.from("preferences").delete().neq("id", 0);
+}
+
 export async function getListing(id: number): Promise<Listing | null> {
   const { data } = await supabaseAdmin
     .from("listings")
@@ -65,10 +69,15 @@ export async function logConversation(row: {
 
 export async function getConversationHistory(
   limit = 8,
+  excludeIntents: string[] = [],
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
+  const baseExcluded = ["save", "skip", "unsave", "greeting", "cancel", "restart", "preferences", "saved"];
+  const allExcluded = [...baseExcluded, ...excludeIntents];
+  const excludeList = `(${allExcluded.map(i => `"${i}"`).join(",")})`;
   const { data } = await supabaseAdmin
     .from("conversations")
     .select("direction, message")
+    .not("intent", "in", excludeList)
     .order("created_at", { ascending: false })
     .limit(limit);
 

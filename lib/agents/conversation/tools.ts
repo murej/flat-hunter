@@ -27,7 +27,7 @@ export function buildConversationTools(activeListingId: number | null) {
 
   const domainTools = {
     show_preferences: tool({
-      description: "Show the user's current search preferences",
+      description: "Show the user's search preferences. ONLY call when the user explicitly asks to see their preferences (e.g. 'show my preferences', 'what are my preferences'). NEVER call on greetings, /start, or general conversation.",
       inputSchema: z.object({}),
       execute: async () => {
         const text = await getFormattedPreferences();
@@ -37,7 +37,7 @@ export function buildConversationTools(activeListingId: number | null) {
     }),
 
     show_saved_properties: tool({
-      description: "Show all saved/shortlisted properties",
+      description: "Show saved/shortlisted properties. ONLY call when the user explicitly asks to see their saved list.",
       inputSchema: z.object({}),
       execute: async () => {
         const text = await getFormattedSavedList();

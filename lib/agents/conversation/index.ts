@@ -13,7 +13,9 @@ import {
   getActiveListingId,
   logConversation,
   getPreferences,
+  setSessionMode,
 } from "@/lib/supabase";
+import { runPreferenceAgent } from "@/lib/agents/preference";
 import { sendMessage, sendMarkdown, sendWithButtons } from "@/lib/telegram";
 import type { TelegramPayload } from "@/types";
 
@@ -33,13 +35,21 @@ export async function conversationAgent(
     }),
     getPreferences(),
     listingId ? Promise.resolve(listingId) : getActiveListingId(),
-    getConversationHistory(),
+    getConversationHistory(8, ["preference_reply", "update_preferences"]),
   ]);
 
   if (!prefs) {
-    await sendMessage(
-      "You haven't set up your preferences yet. Use /start to get started!",
+    await setSessionMode("preference");
+    const result = await runPreferenceAgent(
+      "The user just started. Begin collecting their property search preferences.\n\n[No preferences saved yet]",
     );
+    await sendMarkdown(result.message);
+    await logConversation({
+      telegram_message_id: messageId,
+      direction: "outbound",
+      message: result.message,
+      intent: "preference_reply",
+    });
     return;
   }
 
