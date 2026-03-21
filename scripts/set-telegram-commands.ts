@@ -2,9 +2,9 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
 const commands = [
   { command: "start", description: "Say hello to Stath" },
-  { command: "preferences", description: "Show your search preferences" },
-  { command: "saved", description: "Show your saved properties" },
-  { command: "stop", description: "Stop what you're doing" },
+  { command: "preferences", description: "Search preferences" },
+  { command: "saved", description: "Saved properties" },
+  { command: "stop", description: "STOP TALKING" },
   { command: "restart", description: "Reset preferences and start fresh" },
 ];
 

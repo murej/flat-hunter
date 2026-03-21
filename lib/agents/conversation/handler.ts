@@ -24,9 +24,9 @@ export async function handleTelegramUpdate(input: {
 
   if (!text) return;
 
-  // Acknowledge callback query immediately
+  // Acknowledge callback query immediately (non-critical, don't crash on failure)
   if (callbackQueryId) {
-    await answerCallbackQuery(callbackQueryId);
+    try { await answerCallbackQuery(callbackQueryId); } catch {}
   }
 
   // /stop — stop any active flow
@@ -133,33 +133,38 @@ export async function handleTelegramUpdate(input: {
   }
 
   // Route: save:/skip:/unsave: callbacks
-  const saveMatch = text.match(/^(save|skip|unsave):(\d+)$/);
+  const saveMatch = text.match(/^(save|skip|unsave):(.+)$/);
   if (saveMatch) {
-    const [, action, idStr] = saveMatch;
-    const id = parseInt(idStr, 10);
-    await clearSessionMode();
-    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: action });
+    const [, action, id] = saveMatch;
 
-    if (action === "save") {
-      await saveListing(id);
-      await deleteMessage(messageId);
-      await sendMessage("💾 Saved!");
-    } else if (action === "unsave") {
-      const { updateListingStatus } = await import("@/lib/supabase");
-      await updateListingStatus(id, "evaluated");
-      await deleteMessage(messageId);
-      await sendMessage("📌 Unsaved. Status reset to evaluated.");
-    } else {
-      await skipListing(id);
-      await deleteMessage(messageId);
+    try {
+      await clearSessionMode();
+      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: action });
+
+      if (action === "save") {
+        await saveListing(id);
+        await deleteMessage(messageId);
+        await sendMessage("💾 Saved!");
+      } else if (action === "unsave") {
+        const { updateListingStatus } = await import("@/lib/supabase");
+        await updateListingStatus(id, "evaluated");
+        await deleteMessage(messageId);
+        await sendMessage("📌 Unsaved. Status reset to evaluated.");
+      } else {
+        await skipListing(id);
+        await deleteMessage(messageId);
+      }
+    } catch (err) {
+      console.error(`${action} failed for listing ${id}:`, err);
+      try { await deleteMessage(messageId); } catch {}
     }
     return;
   }
 
   // Route: why:{id}
-  const whyMatch = text.match(/^why:(\d+)$/);
+  const whyMatch = text.match(/^why:(.+)$/);
   if (whyMatch) {
-    const id = parseInt(whyMatch[1], 10);
+    const id = whyMatch[1];
     await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: "why" });
 
     const context = await getWhyContext(id);
@@ -187,9 +192,9 @@ export async function handleTelegramUpdate(input: {
   }
 
   // Route: scorecard:{id}
-  const scorecardMatch = text.match(/^scorecard:(\d+)$/);
+  const scorecardMatch = text.match(/^scorecard:(.+)$/);
   if (scorecardMatch) {
-    const id = parseInt(scorecardMatch[1], 10);
+    const id = scorecardMatch[1];
     const scorecard = await getScorecard(id);
     if (scorecard) {
       await sendWithButtons(scorecard.text, scorecard.buttons, "Markdown");

@@ -36,10 +36,12 @@ export async function sendWithButtons(
   buttons: Array<Array<{ text: string; callback_data: string }>>,
   parseMode?: "Markdown" | "HTML",
 ): Promise<void> {
-  await sendMessage(text, {
-    parse_mode: parseMode,
-    reply_markup: { inline_keyboard: buttons },
-  });
+  const markup = { inline_keyboard: buttons };
+  try {
+    await sendMessage(text, { parse_mode: parseMode, reply_markup: markup });
+  } catch {
+    await sendMessage(text, { reply_markup: markup });
+  }
 }
 
 export async function sendWithReplyKeyboard(

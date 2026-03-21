@@ -21,7 +21,7 @@ export const UPDATE_PREFERENCES_BUTTONS = [
   [{ text: "📝 Update all", callback_data: "update preferences" }],
 ];
 
-export async function saveListing(id: number): Promise<string> {
+export async function saveListing(id: string): Promise<string> {
   await supabaseAdmin
     .from("listings")
     .update({ status: "saved", updated_at: new Date().toISOString() })
@@ -29,7 +29,7 @@ export async function saveListing(id: number): Promise<string> {
   return `Listing ${id} saved.`;
 }
 
-export async function skipListing(id: number): Promise<string> {
+export async function skipListing(id: string): Promise<string> {
   await supabaseAdmin
     .from("listings")
     .update({ status: "dismissed", updated_at: new Date().toISOString() })
@@ -38,7 +38,7 @@ export async function skipListing(id: number): Promise<string> {
 }
 
 export async function getScorecard(
-  id: number,
+  id: string,
 ): Promise<{ text: string; buttons: Array<Array<{ text: string; callback_data: string }>> } | null> {
   const listing = await getListing(id);
   if (!listing) return null;
@@ -65,7 +65,7 @@ export async function getScorecard(
 }
 
 export async function getWhyContext(
-  id: number,
+  id: string,
 ): Promise<{ listing: Listing; evaluation: Evaluation; preferences: Preferences } | null> {
   const listing = await getListing(id);
   if (!listing) return null;
@@ -93,7 +93,7 @@ export async function getWhyContext(
 }
 
 export async function getComparisonData(
-  ids: number[],
+  ids: string[],
 ): Promise<Array<{ listing: Listing; evaluation: Evaluation | null }>> {
   const results: Array<{ listing: Listing; evaluation: Evaluation | null }> = [];
 

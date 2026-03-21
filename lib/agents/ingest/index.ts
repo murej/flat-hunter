@@ -12,7 +12,7 @@ import { envBool } from "@/lib/utils/env-utils";
 export async function ingestAgent(
   content: string,
   isRaw: boolean,
-): Promise<{ newIds: number[] }> {
+): Promise<{ newIds: string[] }> {
   // Build LLM-friendly content
   const llmContent = isRaw
     ? await buildLlmContextFromRaw(content)

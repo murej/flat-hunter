@@ -34,7 +34,7 @@ export async function deletePreferences(): Promise<void> {
   await supabaseAdmin.from("preferences").delete().neq("id", 0);
 }
 
-export async function getListing(id: number): Promise<Listing | null> {
+export async function getListing(id: string): Promise<Listing | null> {
   const { data } = await supabaseAdmin
     .from("listings")
     .select("*")
@@ -44,7 +44,7 @@ export async function getListing(id: number): Promise<Listing | null> {
 }
 
 export async function updateListingStatus(
-  id: number,
+  id: string,
   status: string,
 ): Promise<void> {
   await supabaseAdmin
@@ -57,7 +57,7 @@ export async function logConversation(row: {
   telegram_message_id: number;
   direction: "inbound" | "outbound";
   message: string;
-  listing_id?: number | null;
+  listing_id?: string | number | null;
   intent?: string | null;
 }): Promise<void> {
   const { error } = await supabaseAdmin.from("conversations").insert(row);
@@ -141,7 +141,7 @@ export async function clearSessionMode(): Promise<void> {
 
 export async function getActiveListingId(
   lookback = 10,
-): Promise<number | null> {
+): Promise<string | null> {
   const { data } = await supabaseAdmin
     .from("conversations")
     .select("listing_id")
@@ -150,5 +150,5 @@ export async function getActiveListingId(
     .limit(lookback);
 
   if (!data || data.length === 0) return null;
-  return (data[0] as { listing_id: number }).listing_id;
+  return (data[0] as { listing_id: string }).listing_id;
 }

@@ -22,7 +22,7 @@ import type { TelegramPayload } from "@/types";
 export async function conversationAgent(
   text: string,
   messageId: number,
-  listingId?: number,
+  listingId?: string,
 ): Promise<void> {
   // Fire all pre-LLM queries in parallel
   const [, prefs, activeId, history] = await Promise.all([

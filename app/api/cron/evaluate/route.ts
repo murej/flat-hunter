@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, processed: 0 });
   }
 
-  const ids = pending.map((r: { id: number }) => r.id);
+  const ids = pending.map((r: { id: string }) => r.id);
   await runEvaluationsAndNotify(ids);
 
   return NextResponse.json({ ok: true, processed: ids.length });

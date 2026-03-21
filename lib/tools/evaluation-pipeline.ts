@@ -42,7 +42,7 @@ function computeOverallScore(
   return Math.round((weighted / totalWeight) * 10) / 10;
 }
 
-export async function runEvaluationPipeline(listingId: number): Promise<{
+export async function runEvaluationPipeline(listingId: string): Promise<{
   evaluation: Evaluation;
   scorecardText: string;
   scorecardButtons: Array<Array<{ text: string; callback_data: string }>>;

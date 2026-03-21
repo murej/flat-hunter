@@ -26,7 +26,7 @@ export type ListingStatus =
   | "viewing_requested";
 
 export type Listing = {
-  id: number;
+  id: string;
   portal_id: string;
   url: string;
   title: string;
@@ -49,8 +49,8 @@ export type Listing = {
 };
 
 export type Evaluation = {
-  id: number;
-  listing_id: number;
+  id: string;
+  listing_id: string;
   price_score: number;
   size_score: number;
   fit_score: number;
@@ -79,7 +79,7 @@ export type Conversation = {
   telegram_message_id: number;
   direction: "inbound" | "outbound";
   message: string;
-  listing_id: number | null;
+  listing_id: string | number | null;
   intent: string | null;
   created_at: string;
 };

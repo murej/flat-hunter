@@ -56,8 +56,8 @@ export async function parseEmailHtml(
 
 export async function deduplicateAndStore(
   listings: ListingOutput[],
-): Promise<number[]> {
-  const newIds: number[] = [];
+): Promise<string[]> {
+  const newIds: string[] = [];
 
   for (const listing of listings) {
     // Check for existing by portal_id
@@ -85,14 +85,14 @@ export async function deduplicateAndStore(
       continue;
     }
 
-    if (inserted) newIds.push((inserted as { id: number }).id);
+    if (inserted) newIds.push((inserted as { id: string }).id);
   }
 
   return newIds;
 }
 
 export async function runEvaluationsAndNotify(
-  ids: number[],
+  ids: string[],
 ): Promise<void> {
   if (ids.length === 0) return;
 

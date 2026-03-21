@@ -17,7 +17,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import type { ToolResult } from "@/lib/core/types";
 import type { TelegramPayload } from "@/types";
 
-export function buildConversationTools(activeListingId: number | null) {
+export function buildConversationTools(activeListingId: string | null) {
   let captured: ToolResult | null = null;
 
   const coreTools = buildTools(
@@ -49,7 +49,7 @@ export function buildConversationTools(activeListingId: number | null) {
     save_listing: tool({
       description: "Save/shortlist a property listing",
       inputSchema: z.object({
-        listing_id: z.number().describe("The listing ID to save"),
+        listing_id: z.string().describe("The listing ID to save"),
       }),
       execute: async ({ listing_id }) => {
         const msg = await saveListing(listing_id);
@@ -61,7 +61,7 @@ export function buildConversationTools(activeListingId: number | null) {
     skip_listing: tool({
       description: "Dismiss/skip a property listing",
       inputSchema: z.object({
-        listing_id: z.number().describe("The listing ID to skip"),
+        listing_id: z.string().describe("The listing ID to skip"),
       }),
       execute: async ({ listing_id }) => {
         const msg = await skipListing(listing_id);
@@ -73,7 +73,7 @@ export function buildConversationTools(activeListingId: number | null) {
     show_property_scorecard: tool({
       description: "Show the full scorecard for a property",
       inputSchema: z.object({
-        listing_id: z.number().describe("The listing ID"),
+        listing_id: z.string().describe("The listing ID"),
       }),
       execute: async ({ listing_id }) => {
         const scorecard = await getScorecard(listing_id);
@@ -90,7 +90,7 @@ export function buildConversationTools(activeListingId: number | null) {
     evaluate_listing: tool({
       description: "Trigger re-evaluation of a listing (respects cooldown)",
       inputSchema: z.object({
-        listing_id: z.number().describe("The listing ID to re-evaluate"),
+        listing_id: z.string().describe("The listing ID to re-evaluate"),
       }),
       execute: async ({ listing_id }) => {
         if (!isReEvaluationAllowed()) {
@@ -126,7 +126,7 @@ export function buildConversationTools(activeListingId: number | null) {
     get_property_evaluation: tool({
       description: "Get evaluation data for a property to explain scores (triggers Why explanation chain)",
       inputSchema: z.object({
-        listing_id: z.number().describe("The listing ID"),
+        listing_id: z.string().describe("The listing ID"),
       }),
       execute: async ({ listing_id }) => {
         const context = await getWhyContext(listing_id);
@@ -139,7 +139,7 @@ export function buildConversationTools(activeListingId: number | null) {
     get_comparison_data: tool({
       description: "Get data for comparing multiple properties",
       inputSchema: z.object({
-        listing_ids: z.array(z.number()).describe("Array of listing IDs to compare"),
+        listing_ids: z.array(z.string()).describe("Array of listing IDs to compare"),
       }),
       execute: async ({ listing_ids }) => {
         const data = await getComparisonData(listing_ids);

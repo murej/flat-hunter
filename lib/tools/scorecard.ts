@@ -54,7 +54,7 @@ export function buildScorecardText(
 }
 
 export function buildScorecardButtons(
-  listingId: number,
+  listingId: string,
   isSaved: boolean,
 ): Array<Array<{ text: string; callback_data: string }>> {
   return [
