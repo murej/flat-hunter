@@ -3,14 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bash -c 'source scripts/load-env.sh && bash scripts/apply-evaluate-cron-migration.sh'; bash scripts/dev-tunnel.sh & next dev",
+    "dev": "npm run migrate:dev && bash -c 'bash scripts/dev-tunnel.sh & exec next dev'",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "set-commands": "bash -c 'source scripts/load-env.sh && npx tsx scripts/set-telegram-commands.ts'",
     "sync-rate": "bash -c 'source scripts/load-env.sh && npx tsx scripts/sync-boe-mortgage-rate.ts'",
     "sync-evaluate-cron-vault": "bash -c 'source scripts/load-env.sh && bash scripts/sync-evaluate-cron-vault.sh'",
-    "use:prod": "bash scripts/use-prod.sh && bash -c 'source scripts/load-env.sh && bash scripts/apply-evaluate-cron-migration.sh && SYNC_EVALUATE_CRON_VAULT_STRICT=1 bash scripts/sync-evaluate-cron-vault.sh'"
+    "telegram:dev": "bash scripts/telegram-webhook.sh dev",
+    "telegram:prod": "bash scripts/telegram-webhook.sh prod",
+    "migrate:dev": "bash scripts/migrate-dev.sh",
+    "migrate:prod": "bash scripts/migrate-prod.sh",
+    "deploy": "npm run migrate:prod && bash scripts/deploy.sh"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",

@@ -2,7 +2,7 @@
 # Upsert Supabase Vault secrets used by pg_cron evaluate job (evaluate_cron_url, cron_secret).
 # Requires: npx supabase, supabase login, linked project, SUPABASE_DB_PASSWORD, CRON_SECRET.
 # Cron URL: EVALUATE_CRON_URL if set, else ${NEXT_PUBLIC_APP_URL%/}/api/cron/evaluate
-# Set SYNC_EVALUATE_CRON_VAULT_STRICT=1 to exit 1 when prerequisites are missing (use:prod).
+# Set SYNC_EVALUATE_CRON_VAULT_STRICT=1 to exit 1 when prerequisites are missing (migrate:prod / deploy).
 # Set SKIP_SYNC_EVALUATE_CRON_VAULT=1 to no-op.
 
 set -euo pipefail

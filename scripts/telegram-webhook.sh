@@ -1,32 +1,41 @@
-#!/bin/bash
-# Set Telegram webhook to production URL
-# Usage: ./scripts/use-prod.sh [vercel-url]
-# If omitted, uses NEXT_PUBLIC_APP_URL from .env.local (via load-env.sh).
+#!/usr/bin/env bash
+# Point Telegram at this app's /api/telegram and print CloudMailin ingest URL.
+# Usage: telegram-webhook.sh dev [BASE_URL]  — BASE_URL defaults to NEXT_PUBLIC_APP_URL
+#        telegram-webhook.sh prod           — requires NEXT_PUBLIC_APP_URL
 
 set -euo pipefail
 
-source "$(dirname "$0")/load-env.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=load-env.sh
+source "$SCRIPT_DIR/load-env.sh"
 
-URL="${1:-${NEXT_PUBLIC_APP_URL:-}}"
-BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+MODE="${1:-}"
+case "$MODE" in
+  dev)
+    shift
+    URL="${1:-${NEXT_PUBLIC_APP_URL:-}}"
+    ;;
+  prod)
+    URL="${NEXT_PUBLIC_APP_URL:-}"
+    ;;
+  *)
+    echo "Usage: $0 dev [BASE_URL] | $0 prod" >&2
+    exit 1
+    ;;
+esac
 
-if [ -z "$URL" ]; then
-  echo "❌ No app URL. Pass it as the first argument or set NEXT_PUBLIC_APP_URL in .env.local."
-  exit 1
-fi
-
-# Normalise: strip trailing slash
 URL="${URL%/}"
 
-if [ -z "$BOT_TOKEN" ]; then
-  echo "❌ TELEGRAM_BOT_TOKEN not set"
+if [ -z "$URL" ]; then
+  echo "❌ No app base URL. For dev pass a URL or set NEXT_PUBLIC_APP_URL. For prod set NEXT_PUBLIC_APP_URL." >&2
   exit 1
 fi
 
-echo "⏳ Pushing env vars to Vercel..."
-bash "$(dirname "$0")/push-env-to-vercel.sh"
-
-echo "🔗 $URL"
+BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+if [ -z "$BOT_TOKEN" ]; then
+  echo "❌ TELEGRAM_BOT_TOKEN not set" >&2
+  exit 1
+fi
 
 APP_HOST="${URL#https://}"
 APP_HOST="${APP_HOST#http://}"
@@ -49,12 +58,8 @@ if [ "$WEBHOOK_OK" = false ]; then
   exit 1
 fi
 
-# CloudMailin ingest URL (same pattern as dev-tunnel.sh)
 if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
   echo "📬 https://cloudmailin:${CLOUDMAILIN_SECRET}@${APP_HOST}/api/ingest (set in CloudMailin as target URL)"
 else
   echo "📬 ${URL}/api/ingest"
 fi
-
-echo ""
-echo "Ready. Production webhook points at ${URL}/api/telegram."

@@ -43,13 +43,13 @@ Optional:
 - `MORTGAGE_RATE` — Override mortgage rate (default 4.5%)
 - Model overrides (`PROPERTY_EXPERT_MODEL`, `AREA_EXPERT_MODEL`, etc.) — all default to `claude-haiku-4-5`
 - Cost control flags (`PROPERTY_EXPERT_WEB_SEARCH`, `AREA_EXPERT_WEB_SEARCH`, etc.)
-- `SUPABASE_DB_PASSWORD` — optional; enables `npx supabase db push --linked` when you run `npm run dev` / `npm run use:prod` (see Deployment). Never commit real secrets. This key is **not** pushed to Vercel by `scripts/push-env-to-vercel.sh` (local CLI only).
+- `SUPABASE_DB_PASSWORD` — optional; enables `supabase db push --linked` from `npm run dev`, migrate, or deploy (see below). Not pushed to Vercel.
 
 ### 2. Database
 
 Run `supabase/schema.sql` against your Supabase project to create the 7 tables.
 
-**Supabase CLI (migrations + Vault):** One-time: `npx supabase login`. Put **`SUPABASE_DB_PASSWORD`** and **`NEXT_PUBLIC_SUPABASE_URL`** (e.g. `https://<20-char-ref>.supabase.co`) in `.env.local`. If the project is not linked yet, the script runs `npx supabase link --project-ref <ref>` using the ref parsed from that URL, then **`supabase migration fetch --linked`** (pulls any migration SQL that exists on the remote but not locally—required before `db push` if histories diverged), then **`supabase db push --linked`**. Link state lives under `supabase/.temp/` (gitignored). If the CLI, URL, or password is missing, the migration step is skipped with a warning. Set `SKIP_EVALUATE_CRON_MIGRATION=1` to skip migrations entirely. **`npm run dev`** and **`npm run use:prod`** also sync Vault secrets for the evaluate cron when `CRON_SECRET` and the DB password are set (see Deployment).
+**Supabase CLI (migrations + Vault):** One-time: `npx supabase login`. Put **`SUPABASE_DB_PASSWORD`** and **`NEXT_PUBLIC_SUPABASE_URL`** (e.g. `https://<20-char-ref>.supabase.co`) in `.env.local`. If the project is not linked yet, the script runs `npx supabase link --project-ref <ref>` using the ref parsed from that URL, then **`supabase migration fetch --linked`** (pulls any migration SQL that exists on the remote but not locally—required before `db push` if histories diverged), then **`supabase db push --linked`**. Link state lives under `supabase/.temp/` (gitignored). If the CLI, URL, or password is missing, the migration step is skipped with a warning. Set `SKIP_EVALUATE_CRON_MIGRATION=1` to skip migrations entirely. With `CRON_SECRET` + DB password set, dev / migrate / deploy also refresh Vault (and prod paths set Telegram) as under **Deployment**.
 
 If you already applied a migration manually (SQL Editor / MCP) and `db push` complains about history, use `npx supabase migration repair <timestamp> --status applied --linked` (see [Supabase migration repair](https://supabase.com/docs/reference/cli/supabase-migration-repair)).
 
@@ -73,25 +73,21 @@ Point your CloudMailin address to `https://<your-domain>/api/ingest` (raw format
 npm run dev
 ```
 
-`npm run dev` starts cloudflared, points Telegram (and prints CloudMailin ingest URL), then runs **`scripts/sync-evaluate-cron-vault.sh`** with the tunnel URL so Supabase Cron calls your local app via `https://…trycloudflare.com/api/cron/evaluate` using the **`CRON_SECRET`** in `.env.local`. Ensure **`CRON_SECRET`** is set locally so those requests authenticate. The trycloudflare hostname changes each run; Vault is updated automatically after the tunnel URL is detected (within about a minute of startup).
+**`npm run dev`** runs **`migrate:dev`**, then cloudflared. The tunnel sets the webhook and Vault to `{tunnel}/api/cron/evaluate` with **`CRON_SECRET`**. New trycloudflare hostname each run (~1 min until ready).
 
 ## Deployment
 
 ```bash
-npm run use:prod
+npm run deploy
 ```
 
-This pushes `.env.local` to **Vercel Production** via `scripts/push-env-to-vercel.sh` and sets the Telegram webhook. If the Vercel CLI reports an error while setting a variable, the script exits immediately (fix auth, project link, or the variable name, then rerun). After changing any `NEXT_PUBLIC_*` variable, trigger a new production deploy so the client bundle picks up the new values.
+**`migrate:prod`** then **`deploy.sh`**: push `.env.local` to Vercel Production and **`vercel deploy --prod`** (fresh build). Env push errors abort immediately. **`DEPLOY_VERCEL_NO_WAIT=1`** skips waiting on the deploy.
 
-Ensure Vercel environment variables are set, including **`CRON_SECRET`** (a long random string). Production rejects unauthenticated cron requests when this variable is set.
+**`CRON_SECRET`** must be in `.env.local` and on Vercel for authenticated cron calls.
 
-**Evaluation cron (Supabase):** Overflow listings that stay in `pending_evaluation` are picked up by **Supabase Cron** (not Vercel Cron), so Hobby’s daily cron limit does not apply.
+**Evaluate cron (Supabase pg_cron, not Vercel):** picks up stuck `pending_evaluation` rows; see [`supabase/migrations/20260321135818_evaluate_cron.sql`](supabase/migrations/20260321135818_evaluate_cron.sql) for **pg_cron** / **pg_net**. Enable in Dashboard if blocked.
 
-1. Extensions **pg_cron** and **pg_net** are created by the migration if not already present (see [`supabase/migrations/20260321135818_evaluate_cron.sql`](supabase/migrations/20260321135818_evaluate_cron.sql)). If the Dashboard blocks them, enable there once.
-2. **Vault secrets** (`evaluate_cron_url`, `cron_secret`) are updated automatically:
-   - **`npm run dev`** — after cloudflared exposes a URL, [`scripts/sync-evaluate-cron-vault.sh`](scripts/sync-evaluate-cron-vault.sh) points Vault at `{tunnel}/api/cron/evaluate` with your local **`CRON_SECRET`**.
-   - **`npm run use:prod`** — after migrations, the same script runs in strict mode and sets Vault from **`NEXT_PUBLIC_APP_URL`** + `/api/cron/evaluate` and **`CRON_SECRET`** (which was just pushed to Vercel). This step fails the command if prerequisites are missing so production is not left half-configured.
-3. Ad hoc: **`npm run sync-evaluate-cron-vault`** (or set optional **`EVALUATE_CRON_URL`** in `.env.local` to override the default production URL).
+**Vault** (`evaluate_cron_url`, `cron_secret`): dev tunnel updates after cloudflared URL is known; **`migrate:prod`** / **`deploy`** use **`NEXT_PUBLIC_APP_URL`** (strict; fails if misconfigured). Ad hoc: **`npm run sync-evaluate-cron-vault`** or **`EVALUATE_CRON_URL`**. Webhook only: **`telegram:dev`** / **`telegram:prod`**.
 
 The job `flat_hunter_evaluate_cron` runs every 5 minutes and calls the route with `Authorization: Bearer …`. Confirm runs under Dashboard → Integrations → Cron; debug failed HTTP via `net._http_response` if needed.
 
@@ -104,16 +100,19 @@ select vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
 
 ## Scripts
 
-| Script                                     | Purpose                                        |
-| ------------------------------------------ | ---------------------------------------------- |
-| `npm run set-commands`                     | Register Telegram bot commands                 |
-| `npm run sync-rate`                        | Sync BoE mortgage rate to Supabase             |
-| `npm run sync-evaluate-cron-vault`         | Upsert Supabase Vault secrets for evaluate cron |
-| `scripts/dev-tunnel.sh`                    | Start dev tunnel                               |
-| `scripts/push-env-to-vercel.sh`            | Push local env to Vercel                       |
-| `scripts/use-prod.sh`                      | Switch to production endpoints                 |
-| `scripts/apply-evaluate-cron-migration.sh` | `supabase db push --linked` (from npm scripts) |
-| `scripts/sync-evaluate-cron-vault.sh`      | Upsert Vault secrets for evaluate cron (from dev / use:prod / `npm run sync-evaluate-cron-vault`) |
+| Script | Purpose |
+| ------ | ------- |
+| `npm run set-commands` | Telegram command list |
+| `npm run sync-rate` | BoE mortgage rate → Supabase |
+| `npm run sync-evaluate-cron-vault` | Vault secrets for evaluate cron |
+| `npm run telegram:dev` / `telegram:prod` | Telegram webhook (dev: optional URL after `--`) |
+| `npm run migrate:dev` / `migrate:prod` | Migrations + Vault + webhook (prod strict) |
+| `npm run deploy` | `migrate:prod` then env push + `vercel deploy --prod` |
+| `scripts/dev-tunnel.sh` | Cloudflared tunnel (used by `npm run dev`) |
+| `scripts/telegram-webhook.sh` | Webhook + ingest URL hint |
+| `scripts/push-env-to-vercel.sh` / `deploy.sh` | Env → Vercel; deploy wrapper |
+| `scripts/apply-evaluate-cron-migration.sh` | Linked `supabase db push` |
+| `scripts/sync-evaluate-cron-vault.sh` | Vault upsert (also from dev / migrate / deploy) |
 
 ## How it works
 

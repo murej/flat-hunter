@@ -202,7 +202,7 @@ app/
   api/ingest/route.ts             # CloudMailin webhook
   api/cron/evaluate/route.ts      # Cron: process pending_evaluation listings
 supabase/schema.sql
-scripts/                          # set-telegram-commands.ts, dev-tunnel.sh, push-env-to-vercel.sh, use-prod.sh
+scripts/                          # set-telegram-commands.ts, dev-tunnel.sh, telegram-webhook.sh, migrate-*.sh, deploy.sh, push-env-to-vercel.sh
 ```
 
 ## Database Schema
@@ -406,7 +406,7 @@ npm run dev -- start server, cloudflared tunnel, point Telegram bot to url
 ## Deploying
 
 ```
-npm run use:prod -- point Telegram bot to Vercel
+npm run deploy -- migrate:prod + push env + vercel deploy --prod
 ```
 
 ## Notes

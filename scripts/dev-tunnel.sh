@@ -60,27 +60,28 @@ if [ "$DNS_OK" = false ]; then
   echo "❌ DNS not resolving. Restart to get a new subdomain."
 fi
 
-# Set Telegram webhook
+print_ingest_hint() {
+  if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
+    echo "📬 https://cloudmailin:${CLOUDMAILIN_SECRET}@${TUNNEL_HOST}/api/ingest (set in CloudMailin as target URL)"
+  else
+    echo "📬 $TUNNEL_URL/api/ingest"
+  fi
+}
+
+# Set Telegram webhook (+ ingest hint via telegram-webhook.sh on success)
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "$DNS_OK" = true ]; then
-  for attempt in $(seq 1 3); do
-    RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-      -H "Content-Type: application/json" \
-      -d "{\"url\": \"${TUNNEL_URL}/api/telegram\", \"allowed_updates\": [\"message\", \"callback_query\", \"message_reaction\"]}")
-    if echo "$RESPONSE" | grep -q '"ok":true'; then
-      echo "✅ Telegram webhook set"
-      break
-    fi
-    [ "$attempt" -lt 3 ] && sleep 3 || echo "❌ setWebhook failed: $RESPONSE"
-  done
+  if bash "$SCRIPT_DIR/telegram-webhook.sh" dev "$TUNNEL_URL"; then
+    :
+  else
+    echo "⚠️  Telegram webhook step failed (tunnel still running)."
+    print_ingest_hint
+  fi
 elif [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
   echo "⚠️  TELEGRAM_BOT_TOKEN not set — skipping webhook"
-fi
-
-# CloudMailin ingest URL
-if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
-  echo "📬 https://cloudmailin:${CLOUDMAILIN_SECRET}@${TUNNEL_HOST}/api/ingest (set in CloudMailin as target URL)"
+  print_ingest_hint
 else
-  echo "📬 $TUNNEL_URL/api/ingest"
+  echo "⚠️  DNS not ready — skipping Telegram webhook; fix DNS or run: npm run telegram:dev -- $TUNNEL_URL"
+  print_ingest_hint
 fi
 
 # Point Supabase pg_cron/pg_net at this tunnel (same CRON_SECRET as local Next).
