@@ -2,15 +2,13 @@ import { createHash } from "crypto";
 import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getIngestParseModel, getEmailVerificationModel } from "@/lib/config/agent-models";
+import { getIngestParseModel, getEmailVerificationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
 import { ListingSchema, VerificationResultSchema } from "@/lib/schemas";
 import type { VerificationResultOutput, ListingOutput } from "@/lib/schemas";
-import { INGEST_PARSE_SYSTEM, EMAIL_VERIFICATION_SYSTEM } from "./prompts";
-import { TELEMETRY_TAG_VERIFICATION, TELEMETRY_TAG_PARSE, MAX_PARSE_STEPS } from "./config";
+import { INGEST_PARSE_SYSTEM, EMAIL_VERIFICATION_SYSTEM, INGEST_NOTIFICATION_SYSTEM } from "./prompts";
+import { TELEMETRY_TAG_VERIFICATION, TELEMETRY_TAG_PARSE, TELEMETRY_TAG_NOTIFICATION, MAX_PARSE_STEPS } from "./config";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
-import { buildScorecardButtons } from "@/lib/tools/scorecard";
-import { sendMessage, sendWithButtons } from "@/lib/telegram";
-import { sleep } from "@/lib/utils/retry";
+import { sendMarkdown } from "@/lib/telegram";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
 import { z } from "zod";
 
@@ -98,19 +96,18 @@ export async function runEvaluationsAndNotify(
 ): Promise<void> {
   if (ids.length === 0) return;
 
+  // Send intro notification immediately (before evaluation starts)
+  const intro = await runAgent({
+    systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+    prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
+    model: getIngestNotificationModel(),
+    maxSteps: 1,
+    telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+  });
+  await sendMarkdown(intro.message);
+
   const batchId = crypto.randomUUID();
   let sequence = 0;
-
-  // Intro notification
-  await supabaseAdmin.from("pending_notifications").insert({
-    batch_id: batchId,
-    sequence: sequence++,
-    type: "intro",
-    payload: {
-      text: `📬 *${ids.length} new listing${ids.length > 1 ? "s" : ""}* received. Evaluating...`,
-      parse_mode: "Markdown",
-    },
-  });
 
   // Process listings sequentially
   for (const id of ids) {
@@ -133,19 +130,18 @@ export async function runEvaluationsAndNotify(
     }
   }
 
-  // Summary if multiple
-  if (ids.length > 1) {
-    await supabaseAdmin.from("pending_notifications").insert({
-      batch_id: batchId,
-      sequence: sequence++,
-      type: "summary",
-      payload: {
-        text: `✅ Finished evaluating ${ids.length} listings. Use Save/Skip to manage them.`,
-        parse_mode: "Markdown",
-      },
-    });
-  }
-
-  // Consume all notifications
+  // Consume scorecard notifications
   await consumePendingNotifications(batchId);
+
+  // Summary after all scorecards sent
+  if (ids.length > 1) {
+    const summary = await runAgent({
+      systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+      prompt: `You just finished evaluating ${ids.length} listings and sent scorecards. Write a short wrap-up message reminding the user to Save or Skip them.`,
+      model: getIngestNotificationModel(),
+      maxSteps: 1,
+      telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+    });
+    await sendMarkdown(summary.message);
+  }
 }

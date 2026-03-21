@@ -26,3 +26,6 @@ export const getEmailVerificationModel = () =>
 
 export const getAreaProfileModel = () =>
   envModel("AREA_PROFILE_MODEL", DEFAULT);
+
+export const getIngestNotificationModel = () =>
+  envModel("INGEST_NOTIFICATION_MODEL", DEFAULT);

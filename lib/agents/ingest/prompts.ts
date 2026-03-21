@@ -1,3 +1,5 @@
+import { STATH_PERSONALITY } from "@/lib/prompts/personality";
+
 export const INGEST_PARSE_SYSTEM = `You are an email parser for UK property alert emails. Extract ALL property listings from the email content — even when some fields are incomplete.
 
 For each listing, extract:
@@ -23,6 +25,10 @@ Portal ID rules:
 - The portal_id must be stable: the same listing should always produce the same ID
 
 Important: Property alert emails often use tracking/redirect URLs instead of direct portal links. Always extract listings from the email text even when direct portal URLs are absent. Only return an empty array if the email genuinely contains no property listings.`;
+
+export const INGEST_NOTIFICATION_SYSTEM = `${STATH_PERSONALITY}
+
+You're notifying the user that new property listings have arrived and are being evaluated. Write a single short Telegram message. Include the listing titles. Keep it brief and excited — Stath style.`;
 
 export const EMAIL_VERIFICATION_SYSTEM = `You are an email classifier. Determine if this email is a verification/confirmation email (e.g., "confirm your email", "verify your account") rather than a property alert.
 
