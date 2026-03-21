@@ -16,7 +16,7 @@ export const PropertyEvalSchema = z.object({
   property_summary: z
     .string()
     .describe(
-      "2-3 sentence summary of the property's key selling points and concerns",
+      "One short punchy sentence — the headline verdict on this property",
     ),
 });
 
@@ -26,7 +26,7 @@ export const AreaEvalSchema = z.object({
     .describe("Area desirability score 1-10"),
   area_summary: z
     .string()
-    .describe("2-3 sentence summary of the area quality and character"),
+    .describe("One short punchy sentence — the headline verdict on this area"),
   notable_flags: z
     .array(z.string())
     .describe("Notable area concerns or highlights"),

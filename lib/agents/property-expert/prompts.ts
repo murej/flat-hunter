@@ -11,6 +11,6 @@ Evaluate three dimensions:
 
 Flag any deal-breakers from the buyer's preferences that this property violates.
 
-Provide a concise 2-3 sentence summary highlighting key selling points and concerns.
+Provide a single short sentence — the headline verdict on this property.
 
 Be honest, practical, and evidence-based. Don't inflate scores.`;
