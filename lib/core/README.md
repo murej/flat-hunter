@@ -15,6 +15,16 @@ Domain-free, reusable LLM agent runtime. Depends only on Vercel AI SDK, Zod, and
 - Provider tools (e.g. web search) passed through `providerOptions`
 - Usage logging when `LLM_USAGE_LOG=true`
 
+**Errors:** On failure, `runAgent` calls `reportError()` (see `reporting.ts`) for thrown LLM errors, tool-error step parts, and steps with `finishReason === "error"`, then rethrows. Callers should use `reportError` for **non-agent** failures (e.g. Telegram send, DB, or JSON parsing **after** a successful `runAgent` return). Calling `reportError` on the same thrown error object again is safe (idempotent).
+
+### `parse-agent-output.ts`
+
+`parseAgentJsonMessage(message, ctx)` — `JSON.parse` for `runAgent` result strings with `reportError` on parse failure (source becomes `{ctx.source}/parse`). Use when structured output returned a string but post-parse validation still fails or you need a second parse step.
+
+### `reporting.ts`
+
+`reportError(err, ctx)` — console always; optional Telegram when `TELEGRAM_VERBOSE_MODE=true`. Marks the error object so duplicate reports are skipped.
+
 ### `types.ts`
 
 - **RunAgentInput** — system prompt, tools, provider tools, model, messages, max steps, telemetry tag, output schema

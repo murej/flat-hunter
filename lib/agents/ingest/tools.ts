@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
+import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
 import { reportError } from "@/lib/core/reporting";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getIngestParseModel, getEmailVerificationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
@@ -144,7 +145,10 @@ export async function parseVerificationEmail(
     telemetryTag: TELEMETRY_TAG_VERIFICATION,
     output: Output.object({ schema: VerificationResultSchema }),
   });
-  return JSON.parse(result.message);
+  return (await parseAgentJsonMessage(result.message, {
+    source: "ingest/verification",
+    telemetryTag: TELEMETRY_TAG_VERIFICATION,
+  })) as VerificationResultOutput;
 }
 
 export async function parseEmailHtml(
@@ -158,7 +162,10 @@ export async function parseEmailHtml(
     telemetryTag: TELEMETRY_TAG_PARSE,
     output: Output.object({ schema: z.array(ListingSchema) }),
   });
-  return JSON.parse(result.message);
+  return (await parseAgentJsonMessage(result.message, {
+    source: "ingest/parse",
+    telemetryTag: TELEMETRY_TAG_PARSE,
+  })) as ListingOutput[];
 }
 
 const LISTING_MATERIAL_SELECT =
@@ -193,7 +200,10 @@ export async function deduplicateAndStore(
         .eq("id", row.id);
 
       if (updateError) {
-        console.error("Update listing error:", updateError.message);
+        await reportError(updateError, {
+          source: "ingest/deduplicateAndStore",
+          telemetryTag: `portal_id:${listing.portal_id}`,
+        });
         continue;
       }
 
@@ -213,7 +223,10 @@ export async function deduplicateAndStore(
     if (error) {
       // 23505 = unique_violation on portal_id
       if (error.code === "23505") continue;
-      console.error("Insert listing error:", error.message);
+      await reportError(error, {
+        source: "ingest/deduplicateAndStore",
+        telemetryTag: `portal_id:${listing.portal_id}`,
+      });
       continue;
     }
 
@@ -228,15 +241,21 @@ export async function runEvaluationsAndNotify(
 ): Promise<void> {
   if (ids.length === 0) return;
 
-  // Send intro notification immediately (before evaluation starts)
-  const intro = await runAgent({
-    systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-    prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
-    model: getIngestNotificationModel(),
-    maxSteps: 1,
-    telemetryTag: TELEMETRY_TAG_NOTIFICATION,
-  });
-  await sendMarkdown(intro.message);
+  try {
+    const intro = await runAgent({
+      systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+      prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
+      model: getIngestNotificationModel(),
+      maxSteps: 1,
+      telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+    });
+    await sendMarkdown(intro.message);
+  } catch (err) {
+    await reportError(err, {
+      source: "ingest/runEvaluationsAndNotify",
+      telemetryTag: "intro",
+    });
+  }
 
   const batchId = crypto.randomUUID();
   let sequence = 0;
@@ -266,19 +285,31 @@ export async function runEvaluationsAndNotify(
     }
   }
 
-  // Consume scorecard notifications
-  await consumePendingNotifications(batchId);
-
-  // Summary after all scorecards sent
-  if (ids.length > 1) {
-    const summary = await runAgent({
-      systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-      prompt: `You just finished evaluating ${ids.length} listings and sent scorecards. Write a short wrap-up message reminding the user to react (like) the ones they want to save.`,
-      model: getIngestNotificationModel(),
-      maxSteps: 1,
-      telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+  try {
+    await consumePendingNotifications(batchId);
+  } catch (err) {
+    await reportError(err, {
+      source: "ingest/runEvaluationsAndNotify",
+      telemetryTag: "consumePendingNotifications",
     });
-    await sendMarkdown(summary.message);
+  }
+
+  if (ids.length > 1) {
+    try {
+      const summary = await runAgent({
+        systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+        prompt: `You just finished evaluating ${ids.length} listings and sent scorecards. Write a short wrap-up message reminding the user to react (like) the ones they want to save.`,
+        model: getIngestNotificationModel(),
+        maxSteps: 1,
+        telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+      });
+      await sendMarkdown(summary.message);
+    } catch (err) {
+      await reportError(err, {
+        source: "ingest/runEvaluationsAndNotify",
+        telemetryTag: "summary",
+      });
+    }
   }
 }
 

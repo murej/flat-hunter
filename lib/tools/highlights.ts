@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
+import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
+import { reportError } from "@/lib/core/reporting";
 import { getHighlightsModel } from "@/lib/config/agent-models";
 import type { PropertyEvalResult, AreaEvalResult, CommuteEvalResult } from "@/types";
 
@@ -48,9 +50,17 @@ export async function generateHighlights(
     output: Output.object({ schema: HighlightsSchema }),
   });
 
-  const parsed = JSON.parse(result.message);
+  const parsed = (await parseAgentJsonMessage(result.message, {
+    source: "highlights",
+    telemetryTag: "highlights",
+  })) as { highlights?: unknown };
+  if (!Array.isArray(parsed.highlights)) {
+    const err = new Error("Highlights output missing highlights array");
+    await reportError(err, { source: "highlights/parse", telemetryTag: "highlights" });
+    throw err;
+  }
   const order = { "✅": 0, "➖": 1, "❌": 2 };
-  const sorted = parsed.highlights.sort((a: string, b: string) => {
+  const sorted = [...parsed.highlights].sort((a: string, b: string) => {
     const aOrder = order[a.charAt(0) as keyof typeof order] ?? 1;
     const bOrder = order[b.charAt(0) as keyof typeof order] ?? 1;
     return aOrder - bOrder;

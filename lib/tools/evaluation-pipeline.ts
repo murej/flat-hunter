@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { reportError } from "@/lib/core/reporting";
 import { supabaseAdmin, getListing, getPreferences } from "@/lib/supabase";
 import { fetchAreaContext } from "./area";
 import { evaluateCommute } from "./commute";
@@ -180,7 +181,13 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     .single();
 
   if (upsertError || !evaluation) {
-    console.error("Evaluation upsert failed:", upsertError?.message ?? "no data returned");
+    await reportError(
+      upsertError ?? new Error("Evaluation upsert returned no row"),
+      {
+        source: "evaluation/upsert",
+        telemetryTag: `listing:${listingId}`,
+      },
+    );
     return null;
   }
 

@@ -1,5 +1,6 @@
 import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
+import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
 import { registerAgent } from "@/lib/core/registry";
 import { getAreaExpertModel } from "@/lib/config/agent-models";
 import { AreaEvalSchema } from "@/lib/schemas";
@@ -39,11 +40,14 @@ export async function runAreaExpert(
     output: Output.object({ schema: AreaEvalSchema }),
   });
 
-  const parsed = JSON.parse(result.message);
+  const parsed = (await parseAgentJsonMessage(result.message, {
+    source: "area-expert",
+    telemetryTag: TELEMETRY_TAG,
+  })) as Record<string, unknown>;
   return {
-    area_score: clampScore(parsed.area_score),
-    area_summary: parsed.area_summary,
-    notable_flags: parsed.notable_flags || [],
+    area_score: clampScore(parsed.area_score as number),
+    area_summary: parsed.area_summary as string,
+    notable_flags: (parsed.notable_flags as string[] | undefined) || [],
     raw: parsed,
   };
 }

@@ -1,5 +1,6 @@
 import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
+import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
 import { registerAgent } from "@/lib/core/registry";
 import { getPropertyExpertModel } from "@/lib/config/agent-models";
 import { PropertyEvalSchema } from "@/lib/schemas";
@@ -33,13 +34,16 @@ export async function runPropertyExpert(
     output: Output.object({ schema: PropertyEvalSchema }),
   });
 
-  const parsed = JSON.parse(result.message);
+  const parsed = (await parseAgentJsonMessage(result.message, {
+    source: "property-expert",
+    telemetryTag: TELEMETRY_TAG,
+  })) as Record<string, unknown>;
   return {
-    price_score: clampScore(parsed.price_score),
-    size_score: clampScore(parsed.size_score),
-    fit_score: clampScore(parsed.fit_score),
-    deal_breaker_flags: parsed.deal_breaker_flags || [],
-    property_summary: parsed.property_summary,
+    price_score: clampScore(parsed.price_score as number),
+    size_score: clampScore(parsed.size_score as number),
+    fit_score: clampScore(parsed.fit_score as number),
+    deal_breaker_flags: (parsed.deal_breaker_flags as string[] | undefined) || [],
+    property_summary: parsed.property_summary as string,
     raw: parsed,
   };
 }
