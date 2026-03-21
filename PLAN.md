@@ -14,7 +14,7 @@ Next.js (App Router, API routes only) on **Vercel Hobby** (free tier). TypeScrip
 
 **Anthropic (Tier 1):** 50 RPM / 50K input TPM / 10K output TPM on Haiku. Same RPM on Sonnet/Opus but 30K/8K. Web search: 30/sec (not a bottleneck).
 
-**Vercel Hobby:** 60s function timeout (`maxDuration: 60`), 100 GB-hours/month, 10 concurrent executions (queued beyond), 2 cron jobs (1 used). `waitUntil` supported via `@vercel/functions`.
+**Vercel Hobby:** 60s function timeout (`maxDuration: 60`), 100 GB-hours/month, 10 concurrent executions (queued beyond). Vercel Cron is not used (Hobby allows at most daily). Evaluation backoff uses **Supabase Cron** + `pg_net` → `GET /api/cron/evaluate`. `waitUntil` supported via `@vercel/functions`.
 
 **External APIs:** Nominatim 1 req/sec (strict), postcodes.io generous, Police API slow, TfL 500 RPM with key, ArcGIS generous.
 
@@ -349,11 +349,7 @@ Not registered — Telegram webhook entry point.
 
 **`/api/ingest`** — POST. HTTP Basic auth. `handleIngestWebhook(request)`. `waitUntil()` for background eval + notify. `maxDuration = 60`.
 
-**`/api/cron/evaluate` ** — GET. Vercel cron every 5 min. Queries `pending_evaluation` listings, processes sequentially (~4 per invocation), remaining picked up next cycle. `maxDuration = 60`.
-
-```json
-{ "crons": [{ "path": "/api/cron/evaluate", "schedule": "*/5 * * * *" }] }
-```
+**`/api/cron/evaluate`** — GET. Supabase Cron (`pg_cron` + `pg_net`, job `flat_hunter_evaluate_cron`, `*/5 * * * *`) calls production with `Authorization: Bearer CRON_SECRET`. Queries `pending_evaluation` listings, processes sequentially (~4 per invocation), remaining picked up next cycle. `maxDuration = 60`. Migration: [`supabase/migrations/20260321135818_evaluate_cron.sql`](supabase/migrations/20260321135818_evaluate_cron.sql).
 
 ---
 
@@ -361,7 +357,7 @@ Not registered — Telegram webhook entry point.
 
 **Layer 1:** 1. `lib/utils/` 2. `lib/core/` (types, agent, registry, tools/)
 
-**Layer 2:** 3. Types + infra (`types/`, `lib/supabase.ts`, `lib/telegram.ts`, `supabase/schema.sql`) 4. Schemas + config (`lib/schemas/`, `lib/config/`) 5. Domain tools 6. Agents (preference → property-expert → area-expert → ingest + evaluation-pipeline + notifications → conversation) 7. API routes 8. Scripts + project config (vercel.json, .env.example) 9. READMEs
+**Layer 2:** 3. Types + infra (`types/`, `lib/supabase.ts`, `lib/telegram.ts`, `supabase/schema.sql`, `supabase/migrations/`) 4. Schemas + config (`lib/schemas/`, `lib/config/`) 5. Domain tools 6. Agents (preference → property-expert → area-expert → ingest + evaluation-pipeline + notifications → conversation) 7. API routes 8. Scripts + project config (`.env.example`) 9. READMEs
 
 ---
 
@@ -370,6 +366,7 @@ Not registered — Telegram webhook entry point.
 ```env
 # Deployed URL
 NEXT_PUBLIC_APP_URL=
+CRON_SECRET=
 
 # Layer 1
 ANTHROPIC_API_KEY=

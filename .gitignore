@@ -32,6 +32,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase cli (linked project ref; do not commit)
+.supabase/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

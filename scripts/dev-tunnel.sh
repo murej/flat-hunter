@@ -1,11 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Start a cloudflared tunnel and set Telegram webhook to the tunnel URL.
 # Run in a separate terminal alongside `npm run dev`.
 # Requires: cloudflared (brew install cloudflared)
 
 set -euo pipefail
 
-source "$(dirname "$0")/load-env.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=load-env.sh
+source "$SCRIPT_DIR/load-env.sh"
 
 PORT=${1:-3000}
 LOGFILE=$(mktemp)
@@ -79,6 +81,13 @@ if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
   echo "📬 https://cloudmailin:${CLOUDMAILIN_SECRET}@${TUNNEL_HOST}/api/ingest (set in CloudMailin as target URL)"
 else
   echo "📬 $TUNNEL_URL/api/ingest"
+fi
+
+# Point Supabase pg_cron/pg_net at this tunnel (same CRON_SECRET as local Next).
+if EVALUATE_CRON_URL="${TUNNEL_URL}/api/cron/evaluate" bash "$SCRIPT_DIR/sync-evaluate-cron-vault.sh"; then
+  echo "✅ Supabase Vault evaluate cron URL + secret updated"
+else
+  echo "⚠️  Supabase Vault sync failed (CRON_SECRET, SUPABASE_DB_PASSWORD, or supabase login?). Cron may still target a previous URL."
 fi
 
 echo ""

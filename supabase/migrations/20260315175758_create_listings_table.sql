@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS listings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at timestamptz DEFAULT now(),
+  portal_id text UNIQUE,
+  url text,
+  title text,
+  price integer,
+  address text,
+  postcode text,
+  bedrooms integer,
+  bathrooms integer,
+  sqft integer,
+  description text,
+  image_urls text[],
+  floorplan_url text,
+  agent_name text,
+  agent_email text,
+  listed_date date,
+  status text DEFAULT 'pending_evaluation',
+  raw_email_html text
+);;

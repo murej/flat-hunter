@@ -9,7 +9,7 @@ import "@/lib/agents/area-expert";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  // Verify Vercel cron secret in production
+  // Verify caller (e.g. Supabase pg_net) when CRON_SECRET is set
   const authHeader = request.headers.get("authorization");
   if (
     process.env.CRON_SECRET &&

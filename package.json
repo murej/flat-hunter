@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bash scripts/dev-tunnel.sh & next dev",
+    "dev": "bash -c 'source scripts/load-env.sh && bash scripts/apply-evaluate-cron-migration.sh'; bash scripts/dev-tunnel.sh & next dev",
     "build": "next build",
-    "start": "npm run use:prod && next start",
+    "start": "next start",
     "lint": "next lint",
     "set-commands": "bash -c 'source scripts/load-env.sh && npx tsx scripts/set-telegram-commands.ts'",
     "sync-rate": "bash -c 'source scripts/load-env.sh && npx tsx scripts/sync-boe-mortgage-rate.ts'",
-    "use:prod": "bash scripts/use-prod.sh"
+    "sync-evaluate-cron-vault": "bash -c 'source scripts/load-env.sh && bash scripts/sync-evaluate-cron-vault.sh'",
+    "use:prod": "bash scripts/use-prod.sh && bash -c 'source scripts/load-env.sh && bash scripts/apply-evaluate-cron-migration.sh && SYNC_EVALUATE_CRON_VAULT_STRICT=1 bash scripts/sync-evaluate-cron-vault.sh'"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
@@ -28,6 +29,7 @@
     "@types/node": "^25.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "supabase": "^2.83.0",
     "typescript": "^5.7.0",
     "vercel": "^50.34.3"
   }

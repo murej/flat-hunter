@@ -32,6 +32,8 @@ while IFS= read -r line || [ -n "$line" ]; do
   value="${line#*=}"
   key="${key// /}"
   [ -z "$key" ] && continue
+  # Local-only: DB password for Supabase CLI (never needed on Vercel)
+  [[ "$key" == "SUPABASE_DB_PASSWORD" ]] && continue
   # Strip surrounding quotes
   value="${value#\"}" ; value="${value%\"}"
   value="${value#\'}" ; value="${value%\'}"
