@@ -43,15 +43,30 @@ Optional:
 - `MORTGAGE_RATE` — Override mortgage rate (default 4.5%)
 - Model overrides (`PROPERTY_EXPERT_MODEL`, `AREA_EXPERT_MODEL`, etc.) — all default to `claude-haiku-4-5`
 - Cost control flags (`PROPERTY_EXPERT_WEB_SEARCH`, `AREA_EXPERT_WEB_SEARCH`, etc.)
-- `SUPABASE_DB_PASSWORD` — optional; enables `supabase db push --linked` from `npm run dev`, migrate, or deploy (see below). Not pushed to Vercel.
+- `SUPABASE_DB_PASSWORD` — Postgres password for your Supabase project (see **Database** below). Needed for `npm run migrate:dev` / `dev` / `deploy`. Not pushed to Vercel.
 
 ### 2. Database
 
-Run `supabase/schema.sql` against your Supabase project to create the 7 tables.
+Do these **in order**. If a step fails, fix that step before continuing.
 
-**Supabase CLI (migrations + Vault):** One-time: `npx supabase login`. Put **`SUPABASE_DB_PASSWORD`** and **`NEXT_PUBLIC_SUPABASE_URL`** (e.g. `https://<20-char-ref>.supabase.co`) in `.env.local`. If the project is not linked yet, the script runs `npx supabase link --project-ref <ref>` using the ref parsed from that URL, then **`supabase migration fetch --linked`** (pulls any migration SQL that exists on the remote but not locally—required before `db push` if histories diverged), then **`supabase db push --linked`**. Link state lives under `supabase/.temp/` (gitignored). If the CLI, URL, or password is missing, the migration step is skipped with a warning. Set `SKIP_EVALUATE_CRON_MIGRATION=1` to skip migrations entirely. With `CRON_SECRET` + DB password set, dev / migrate / deploy also refresh Vault (and prod paths set Telegram) as under **Deployment**.
+1. **Create a Supabase project** at [supabase.com](https://supabase.com) (free tier is enough).
+2. **Copy keys into `.env.local`** (same file as in step 1 of **Environment variables**):
+   - **Project Settings → API:** `NEXT_PUBLIC_SUPABASE_URL` = *Project URL*, `NEXT_PUBLIC_SUPABASE_ANON_KEY` = *anon* `public`, `SUPABASE_SERVICE_ROLE_KEY` = *service_role* (keep this secret).
+   - **Project Settings → Database:** `SUPABASE_DB_PASSWORD` = the **Database password** for this project (the one you chose at project creation). If you do not know it, use **Reset database password** on that page, then paste the new value into `.env.local`.
+3. **Install packages** (once): `npm install`
+4. **Log in to Supabase from your machine** (once): `npx supabase login` (a browser window opens; finish sign-in).
+5. **Create and update all tables:** `npm run migrate:dev`  
+   Wait until it finishes. First run can take a minute (it links the project, syncs migration files, then applies them).
 
-If you already applied a migration manually (SQL Editor / MCP) and `db push` complains about history, use `npx supabase migration repair <timestamp> --status applied --linked` (see [Supabase migration repair](https://supabase.com/docs/reference/cli/supabase-migration-repair)).
+**Success check:** the command ends without errors and you see tables under **Table Editor** in the Supabase dashboard.
+
+**If it skips the database or only prints warnings:** `SUPABASE_DB_PASSWORD` or `NEXT_PUBLIC_SUPABASE_URL` is usually wrong or empty — fix `.env.local` and run step 5 again.
+
+**Optional:** set `SKIP_EVALUATE_CRON_MIGRATION=1` in `.env.local` to turn off this step (not recommended for a new setup).
+
+**If you edited SQL by hand** and later see migration history errors: [Supabase migration repair](https://supabase.com/docs/reference/cli/supabase-migration-repair).
+
+`supabase/schema.sql` in the repo is a reference snapshot; the real source of truth is `supabase/migrations/` applied via step 5.
 
 ### 3. Telegram bot
 
@@ -100,19 +115,16 @@ select vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
 
 ## Scripts
 
-| Script | Purpose |
-| ------ | ------- |
-| `npm run set-commands` | Telegram command list |
-| `npm run sync-rate` | BoE mortgage rate → Supabase |
-| `npm run sync-evaluate-cron-vault` | Vault secrets for evaluate cron |
-| `npm run telegram:dev` / `telegram:prod` | Telegram webhook (dev: optional URL after `--`) |
-| `npm run migrate:dev` / `migrate:prod` | Migrations + Vault + webhook (prod strict) |
-| `npm run deploy` | `migrate:prod` then env push + `vercel deploy --prod` |
-| `scripts/dev-tunnel.sh` | Cloudflared tunnel (used by `npm run dev`) |
-| `scripts/telegram-webhook.sh` | Webhook + ingest URL hint |
-| `scripts/push-env-to-vercel.sh` / `deploy.sh` | Env → Vercel; deploy wrapper |
-| `scripts/apply-evaluate-cron-migration.sh` | Linked `supabase db push` |
-| `scripts/sync-evaluate-cron-vault.sh` | Vault upsert (also from dev / migrate / deploy) |
+| Script                                     | Purpose                                        |
+| ------------------------------------------ | ---------------------------------------------- |
+| `npm run set-commands`                     | Register Telegram bot commands                 |
+| `npm run sync-rate`                        | Sync BoE mortgage rate to Supabase             |
+| `npm run sync-evaluate-cron-vault`         | Upsert Supabase Vault secrets for evaluate cron |
+| `scripts/dev-tunnel.sh`                    | Start dev tunnel                               |
+| `scripts/push-env-to-vercel.sh`            | Push local env to Vercel                       |
+| `scripts/use-prod.sh`                      | Switch to production endpoints                 |
+| `scripts/apply-evaluate-cron-migration.sh` | `supabase db push --linked` (from npm scripts) |
+| `scripts/sync-evaluate-cron-vault.sh`      | Upsert Vault secrets for evaluate cron (from dev / use:prod / `npm run sync-evaluate-cron-vault`) |
 
 ## How it works
 
