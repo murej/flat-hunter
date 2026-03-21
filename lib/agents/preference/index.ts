@@ -1,4 +1,5 @@
 import { runAgent } from "@/lib/core/agent";
+import { reportError } from "@/lib/core/reporting";
 import { registerAgent } from "@/lib/core/registry";
 import { getPreferenceCollectorModel, getAreaProfileModel } from "@/lib/config/agent-models";
 import { envBool } from "@/lib/utils/env-utils";
@@ -50,7 +51,10 @@ export async function runPreferenceAgent(
             );
           }
         } catch (err) {
-          console.error(`Area profile batch error for ${area}:`, err);
+          await reportError(err, {
+            source: "preference/areaProfileBatch",
+            telemetryTag: area,
+          });
         }
       }
     }

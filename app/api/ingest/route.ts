@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import { handleIngestWebhook } from "@/lib/agents/ingest/handler";
+import { reportError } from "@/lib/core/reporting";
 
 // Import agents to trigger registration
 import "@/lib/agents/property-expert";
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
 
     return response;
   } catch (err) {
-    console.error("Ingest webhook error:", err);
+    await reportError(err, { source: "api/ingest" });
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

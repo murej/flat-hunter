@@ -1,12 +1,23 @@
 import { createHash } from "crypto";
 import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
+import { reportError } from "@/lib/core/reporting";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getIngestParseModel, getEmailVerificationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
 import { ListingSchema, VerificationResultSchema } from "@/lib/schemas";
 import type { VerificationResultOutput, ListingOutput } from "@/lib/schemas";
 import { INGEST_PARSE_SYSTEM, EMAIL_VERIFICATION_SYSTEM, INGEST_NOTIFICATION_SYSTEM } from "./prompts";
-import { TELEMETRY_TAG_VERIFICATION, TELEMETRY_TAG_PARSE, TELEMETRY_TAG_NOTIFICATION, MAX_PARSE_STEPS } from "./config";
+import {
+  TELEMETRY_TAG_VERIFICATION,
+  TELEMETRY_TAG_PARSE,
+  TELEMETRY_TAG_NOTIFICATION,
+  MAX_PARSE_STEPS,
+  MAX_INPUT_CHARS,
+  LISTING_URL_PATTERN_SOURCES,
+  INGEST_LISTING_URLS_SECTION_HEADING,
+} from "./config";
+import { preprocessString, toLlmContext } from "langmail";
+import PostalMime from "postal-mime";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
 import { sendMarkdown } from "@/lib/telegram";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
@@ -248,7 +259,10 @@ export async function runEvaluationsAndNotify(
         });
       }
     } catch (err) {
-      console.error(`Evaluation failed for listing ${id}:`, err);
+      await reportError(err, {
+        source: "ingest/runEvaluationsAndNotify",
+        telemetryTag: `listing:${id}`,
+      });
     }
   }
 
@@ -266,4 +280,354 @@ export async function runEvaluationsAndNotify(
     });
     await sendMarkdown(summary.message);
   }
+}
+
+// --- Email → LLM context (CloudMailin / JSON body) ---
+
+type MimeParts = {
+  html: string;
+  plain: string;
+  subject: string;
+};
+
+export async function extractMimeParts(
+  rawMessage: string,
+): Promise<MimeParts> {
+  const parser = new PostalMime();
+  const email = await parser.parse(rawMessage);
+  return {
+    html: email.html || "",
+    plain: email.text || "",
+    subject: email.subject || "",
+  };
+}
+
+function stripHtmlTags(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function buildLlmContextFromParts(
+  html: string,
+  subject?: string,
+  plain?: string,
+): string {
+  const bodyText = plain || (html ? stripHtmlTags(html) : "");
+  let context = "";
+
+  if (subject) context += `Subject: ${subject}\n\n`;
+  context += bodyText;
+
+  if (context.length > MAX_INPUT_CHARS) {
+    context = context.slice(0, MAX_INPUT_CHARS) + "\n...[truncated]";
+  }
+
+  const allText = html + " " + (plain || "");
+  const listingUrls = extractListingUrlsFromText(allText);
+  if (listingUrls.length > 0) {
+    context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${listingUrls.join("\n")}`;
+  }
+
+  return context;
+}
+
+export async function buildLlmContextFromRaw(
+  rawMessage: string,
+): Promise<string> {
+  try {
+    const processed = preprocessString(rawMessage);
+    let context = toLlmContext(processed);
+
+    if (context.length > MAX_INPUT_CHARS) {
+      context = context.slice(0, MAX_INPUT_CHARS) + "\n...[truncated]";
+    }
+
+    const listingUrls = extractListingUrlsFromText(rawMessage);
+    if (listingUrls.length > 0) {
+      context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${listingUrls.join("\n")}`;
+    }
+
+    return context;
+  } catch {
+    const parts = await extractMimeParts(rawMessage);
+    return buildLlmContextFromParts(parts.html, parts.subject, parts.plain);
+  }
+}
+
+export function extractListingUrls(text: string): string[] {
+  return extractListingUrlsFromText(text);
+}
+
+// --- Listing URL extraction, validation, repair ---
+
+function listingUrlRegexes(): RegExp[] {
+  return LISTING_URL_PATTERN_SOURCES.map((s) => new RegExp(s, "gi"));
+}
+
+export function extractListingUrlsFromText(text: string): string[] {
+  const urls = new Set<string>();
+  for (const re of listingUrlRegexes()) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      urls.add(decodeHtmlEntitiesInUrl(m[0]));
+    }
+  }
+  return [...urls];
+}
+
+export function decodeHtmlEntitiesInUrl(s: string): string {
+  return s
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+export function extractAllHrefs(html: string): string[] {
+  const hrefs: string[] = [];
+  const double = /href="([^"]+)"/gi;
+  const single = /href='([^']+)'/gi;
+  let m: RegExpExecArray | null;
+  while ((m = double.exec(html)) !== null) {
+    hrefs.push(decodeHtmlEntitiesInUrl(m[1]));
+  }
+  while ((m = single.exec(html)) !== null) {
+    hrefs.push(decodeHtmlEntitiesInUrl(m[1]));
+  }
+  return hrefs;
+}
+
+function hostnameNoWww(host: string): string {
+  return host.toLowerCase().replace(/^www\./, "");
+}
+
+function isKnownPortalHostname(host: string): boolean {
+  const h = hostnameNoWww(host);
+  return (
+    h.endsWith("rightmove.co.uk") ||
+    h.endsWith("zoopla.co.uk") ||
+    h.endsWith("onthemarket.com") ||
+    h.endsWith("primelocation.com")
+  );
+}
+
+function pathMatchesDirectListing(host: string, pathname: string): boolean {
+  const h = hostnameNoWww(host);
+  const p = pathname.replace(/\/+$/, "") || "/";
+
+  if (h.endsWith("rightmove.co.uk")) {
+    return /^\/properties\/\d+$/.test(p) || /^\/properties\/\d+\//.test(pathname);
+  }
+  if (h.endsWith("zoopla.co.uk")) {
+    return (
+      /\/(?:for-sale|to-rent)\/details\/\d+/.test(pathname) ||
+      /\/details\/\d+/.test(pathname)
+    );
+  }
+  if (h.endsWith("onthemarket.com")) {
+    return /^\/details\/\d+$/.test(p) || /^\/details\/\d+\//.test(pathname);
+  }
+  if (h.endsWith("primelocation.com")) {
+    return /\/details\/\d+/.test(pathname);
+  }
+  return false;
+}
+
+export function isLikelyListingUrl(url: string): boolean {
+  const trimmed = url?.trim();
+  if (!trimmed) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(decodeHtmlEntitiesInUrl(trimmed));
+  } catch {
+    return false;
+  }
+  if (!isKnownPortalHostname(parsed.hostname)) {
+    return false;
+  }
+  return pathMatchesDirectListing(parsed.hostname, parsed.pathname);
+}
+
+/**
+ * True when the URL is missing, invalid, or points at a main portal host without a listing detail path.
+ * Tracking / non-portal URLs are left false so they are not overwritten.
+ */
+export function needsListingUrlRepair(url: string): boolean {
+  const trimmed = url?.trim();
+  if (!trimmed) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(decodeHtmlEntitiesInUrl(trimmed));
+  } catch {
+    return true;
+  }
+  if (!isKnownPortalHostname(parsed.hostname)) {
+    return false;
+  }
+  return !pathMatchesDirectListing(parsed.hostname, parsed.pathname);
+}
+
+export const isGenericPortalUrl = needsListingUrlRepair;
+
+export function derivePortalIdAndCanonicalUrl(
+  url: string,
+): { portal_id: string; url: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(decodeHtmlEntitiesInUrl(url.trim()));
+  } catch {
+    return null;
+  }
+  const h = hostnameNoWww(parsed.hostname);
+  const path = parsed.pathname;
+
+  if (h.endsWith("rightmove.co.uk")) {
+    const m = path.match(/\/properties\/(\d+)/);
+    if (m) {
+      const id = m[1];
+      return {
+        portal_id: id,
+        url: `https://www.rightmove.co.uk/properties/${id}`,
+      };
+    }
+  }
+  if (h.endsWith("zoopla.co.uk")) {
+    const m = path.match(/\/details\/(\d+)/);
+    if (m) {
+      const id = m[1];
+      const tenure = /\/to-rent\//.test(path) ? "to-rent" : "for-sale";
+      return {
+        portal_id: `zoopla-${id}`,
+        url: `https://www.zoopla.co.uk/${tenure}/details/${id}/`,
+      };
+    }
+  }
+  if (h.endsWith("onthemarket.com")) {
+    const m = path.match(/\/details\/(\d+)/);
+    if (m) {
+      const id = m[1];
+      return {
+        portal_id: `otm-${id}`,
+        url: `https://www.onthemarket.com/details/${id}/`,
+      };
+    }
+  }
+  if (h.endsWith("primelocation.com")) {
+    const m = path.match(/\/details\/(\d+)/);
+    if (m) {
+      const id = m[1];
+      const tenure = /\/to-rent\//.test(path) ? "to-rent" : "for-sale";
+      return {
+        portal_id: `pl-${id}`,
+        url: `https://www.primelocation.com/${tenure}/details/${id}/`,
+      };
+    }
+  }
+  return null;
+}
+
+const LONG_ID = /\d{6,}/g;
+
+function digitRuns(s: string): string[] {
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  const re = new RegExp(LONG_ID.source, "g");
+  while ((m = re.exec(s)) !== null) out.push(m[0]);
+  return out;
+}
+
+function normalizeUkPostcode(pc: string): string | null {
+  const compact = pc.replace(/\s+/g, "").toUpperCase();
+  if (/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(compact)) return compact;
+  return null;
+}
+
+function postcodesForListing(listing: ListingOutput): string[] {
+  const fromPostcode = normalizeUkPostcode(listing.postcode.trim());
+  const fromAddress = listing.address.match(
+    /\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/gi,
+  );
+  const set = new Set<string>();
+  if (fromPostcode) set.add(fromPostcode);
+  if (fromAddress) {
+    for (const raw of fromAddress) {
+      const n = normalizeUkPostcode(raw);
+      if (n) set.add(n);
+    }
+  }
+  return [...set];
+}
+
+function pickCandidateForListing(
+  listing: ListingOutput,
+  candidates: string[],
+  totalListings: number,
+): string | null {
+  if (candidates.length === 0) return null;
+
+  if (totalListings === 1 && candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const fromPortalId = digitRuns(listing.portal_id);
+  const fromBadUrl = digitRuns(listing.url);
+  const idCandidates = [...new Set([...fromPortalId, ...fromBadUrl])];
+
+  for (const id of idCandidates) {
+    const hits = candidates.filter((c) => c.includes(id));
+    if (hits.length === 1) return hits[0];
+  }
+
+  const pcs = postcodesForListing(listing);
+  for (const pc of pcs) {
+    const compact = pc;
+    const spaced = `${compact.slice(0, compact.length - 3)} ${compact.slice(-3)}`;
+    const hits = candidates.filter(
+      (c) =>
+        c.toUpperCase().includes(compact) ||
+        c.toUpperCase().includes(spaced.toUpperCase()),
+    );
+    if (hits.length === 1) return hits[0];
+  }
+
+  return null;
+}
+
+export function repairListingsFromEmailBody(
+  listings: ListingOutput[],
+  emailText: string,
+): ListingOutput[] {
+  const candidates = extractListingUrlsFromText(emailText);
+  if (candidates.length === 0) return listings;
+
+  const sortedCandidates = [...candidates].sort();
+
+  return listings.map((listing) => {
+    if (!needsListingUrlRepair(listing.url)) {
+      return listing;
+    }
+
+    const picked = pickCandidateForListing(listing, sortedCandidates, listings.length);
+    if (!picked) return listing;
+
+    const derived = derivePortalIdAndCanonicalUrl(picked);
+    if (!derived) return { ...listing, url: picked };
+
+    return {
+      ...listing,
+      url: derived.url,
+      portal_id: derived.portal_id,
+    };
+  });
 }

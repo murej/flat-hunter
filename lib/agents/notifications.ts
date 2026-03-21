@@ -1,3 +1,4 @@
+import { reportError } from "@/lib/core/reporting";
 import { supabaseAdmin, storeMessageListing } from "@/lib/supabase";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { sleep } from "@/lib/utils/retry";
@@ -49,7 +50,10 @@ export async function consumePendingNotifications(
         .update({ consumed_at: new Date().toISOString() })
         .eq("id", notif.id);
     } catch (err) {
-      console.error(`Notification ${notif.id} failed:`, err);
+      await reportError(err, {
+        source: "notifications/consumePending",
+        telemetryTag: `notification:${notif.id}`,
+      });
     }
   }
 }

@@ -1,6 +1,7 @@
 import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, stepCountIs } from "ai";
 import { envBool } from "@/lib/utils/env-utils";
+import { reportError } from "./reporting";
 import type { RunAgentInput, RunAgentOutput } from "./types";
 
 function getDefaultModel(): string {
@@ -51,6 +52,34 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (generateText as any)(opts);
 
+      for (const step of result.steps as Array<{
+        stepNumber: number;
+        finishReason: string;
+        rawFinishReason?: string;
+        content: Array<{ type: string; toolName?: string; error?: unknown }>;
+      }>) {
+        for (const part of step.content) {
+          if (part.type === "tool-error") {
+            await reportError(part.error, {
+              source: "tool",
+              toolName: part.toolName,
+              telemetryTag: input.telemetryTag,
+            });
+          }
+        }
+        if (step.finishReason === "error") {
+          await reportError(
+            new Error("LLM step finished with finishReason error"),
+            {
+              source: "agent",
+              telemetryTag: input.telemetryTag,
+              stepNumber: step.stepNumber,
+              rawFinishReason: step.rawFinishReason,
+            },
+          );
+        }
+      }
+
       if (input.output && result.output) {
         return { message: JSON.stringify(result.output) };
       }
@@ -64,6 +93,10 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
         );
         continue;
       }
+      await reportError(err, {
+        source: "agent",
+        telemetryTag: input.telemetryTag,
+      });
       throw err;
     }
   }

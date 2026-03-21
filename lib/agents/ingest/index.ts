@@ -4,8 +4,9 @@ import {
   parseVerificationEmail,
   parseEmailHtml,
   deduplicateAndStore,
+  buildLlmContextFromRaw,
+  repairListingsFromEmailBody,
 } from "./tools";
-import { buildLlmContextFromParts, buildLlmContextFromRaw } from "./email-llm-input";
 import { sendMessage } from "@/lib/telegram";
 import { envBool } from "@/lib/utils/env-utils";
 
@@ -39,7 +40,8 @@ export async function ingestAgent(
   }
 
   // Parse listings
-  const listings = await parseEmailHtml(llmContent);
+  const parsed = await parseEmailHtml(llmContent);
+  const listings = repairListingsFromEmailBody(parsed, llmContent);
   if (listings.length === 0) {
     console.log("No listings found in email.");
     if (envBool("TELEGRAM_VERBOSE_MODE")) {

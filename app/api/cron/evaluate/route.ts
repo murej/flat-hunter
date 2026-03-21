@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { reportError } from "@/lib/core/reporting";
 import { supabaseAdmin } from "@/lib/supabase";
 import { runEvaluationsAndNotify } from "@/lib/agents/ingest/tools";
 
@@ -30,7 +31,12 @@ export async function GET(request: Request) {
   }
 
   const ids = pending.map((r: { id: string }) => r.id);
-  await runEvaluationsAndNotify(ids);
+  try {
+    await runEvaluationsAndNotify(ids);
+  } catch (err) {
+    await reportError(err, { source: "api/cron/evaluate" });
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true, processed: ids.length });
 }

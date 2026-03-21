@@ -177,7 +177,7 @@ lib/
     conversation/                 # Telegram chat router
       config.ts, index.ts, handler.ts, prompts.ts, tools.ts
     ingest/                       # Email parsing + listing ingestion
-      config.ts, index.ts, handler.ts, prompts.ts, tools.ts, email-llm-input.ts
+      config.ts, index.ts, handler.ts, prompts.ts, tools.ts
     property-expert/              # Property fit scoring
       config.ts, index.ts, prompts.ts, tools.ts
     area-expert/                  # Area scoring
@@ -295,6 +295,9 @@ Every agent directory contains a `config.ts` — the single place to tune that a
 | ingest       | `TELEMETRY_TAG_VERIFICATION` | `"email_verification"` | Verification parse log label        |
 | ingest       | `TELEMETRY_TAG_PARSE`        | `"ingest_parse"`       | Listing parse log label             |
 | ingest       | `MAX_PARSE_STEPS`            | `1`                    | One-shot structured output          |
+| ingest       | `MAX_INPUT_CHARS`            | `32000`                | Truncate email body before URL block |
+| ingest       | `LISTING_URL_PATTERN_SOURCES` | (regex strings)     | Portal listing URL extraction       |
+| ingest       | `INGEST_LISTING_URLS_SECTION_HEADING` | (string)      | LLM context label; referenced in `prompts.ts` |
 | conversation | `TELEMETRY_TAG_WHY`          | `"why_explanation"`    | Why-chain log label                 |
 | conversation | `TELEMETRY_TAG_COMPARISON`   | `"comparison"`         | Comparison-chain log label          |
 | conversation | `SUB_AGENT_MAX_STEPS`        | `1`                    | Steps for why/comparison sub-agents |
@@ -317,15 +320,15 @@ Registered as `"area_expert"`. Tools: `db` + `web_search` (toggleable, default o
 
 Not registered — invoked by API route.
 
-**`handler.ts`** — `handleIngestWebhook(request)`: CloudMailin multipart (raw RFC 5322) or JSON. HTTP Basic auth. Calls `ingestAgent()`, then `waitUntil(runEvaluationsAndNotify(newIds))`.
+**`handler.ts`** — `handleIngestWebhook(request)`: CloudMailin multipart (raw RFC 5322) or JSON. HTTP Basic auth. JSON path builds context via `buildLlmContextFromParts()` in `tools.ts`. Calls `ingestAgent()`, then `waitUntil(runEvaluationsAndNotify(newIds))`.
 
-**`tools.ts`** — `computeIdempotencyKey()`/`claimIdempotencyKey()` (SHA256 dedup), `parseVerificationEmail()` (one-shot + `VerificationResultSchema`), `parseEmailHtml()` (one-shot + `ListingSchema[]`), `deduplicateAndStore()`, `runEvaluationsAndNotify()`.
+**`config.ts`** — Telemetry tags, `MAX_PARSE_STEPS`, `MAX_INPUT_CHARS`, `LISTING_URL_PATTERN_SOURCES`, `INGEST_LISTING_URLS_SECTION_HEADING`.
 
-**`index.ts`** — `ingestAgent()`: idempotency → verification check → parse → dedup + store → return newIds.
+**`tools.ts`** — Idempotency: `computeIdempotencyKey()`, `claimIdempotencyKey()`. Parsing: `parseVerificationEmail()`, `parseEmailHtml()`, `deduplicateAndStore()`, `runEvaluationsAndNotify()`. Email → LLM text: `extractMimeParts()`, `buildLlmContextFromParts()`, `buildLlmContextFromRaw()`, `extractListingUrls()` / `extractListingUrlsFromText()`. Listing URLs: `decodeHtmlEntitiesInUrl()`, `extractAllHrefs()`, `isLikelyListingUrl()`, `needsListingUrlRepair()` / `isGenericPortalUrl`, `derivePortalIdAndCanonicalUrl()`, `repairListingsFromEmailBody()`.
+
+**`index.ts`** — `ingestAgent()`: idempotency → verification check → parse → `repairListingsFromEmailBody()` → dedup + store → return newIds.
 
 **Listing refresh (same `portal_id`):** If a parsed listing’s `portal_id` already exists, compare **material listing fields** (those in `ListingSchema`: price, title, description, url, address, postcode, bedrooms, bathrooms, sqft, image_urls, floorplan_url, agent_name, agent_email, listed_date) to the stored row. If **unchanged**, skip (no DB write, no evaluation). If **changed**, `UPDATE` the row with the new parsed fields and `updated_at` (omit `status` from this patch — ingest should not set `status` here). Add that listing’s `id` to the same id list returned to the handler so `runEvaluationsAndNotify` runs `runEvaluationPipeline` and the `evaluations` row is upserted. **Note:** On completion, `runEvaluationPipeline` sets `status` to `evaluated` (same as new listings), which overwrites `saved` / `dismissed` / `viewing_requested` today; optionally extend the pipeline later to preserve terminal user statuses after ingest-refresh. **Change detection:** Prefer a stable snapshot (e.g. canonical JSON hash) to avoid noisy re-runs from ordering differences in `image_urls`.
-
-**`email-llm-input.ts`** — `buildLlmContextFromParts(html, subject?, plain?)`, `buildLlmContextFromRaw(rawMessage)`, `extractMimeParts()`, `extractListingUrls()` (Rightmove, Zoopla, OnTheMarket, PrimeLocation), `extractAllHrefs()`.
 
 ### Conversation — `lib/agents/conversation/`
 

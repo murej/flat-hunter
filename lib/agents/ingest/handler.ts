@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { ingestAgent } from "./index";
-import { runEvaluationsAndNotify } from "./tools";
-import { buildLlmContextFromParts } from "./email-llm-input";
+import { buildLlmContextFromParts, runEvaluationsAndNotify } from "./tools";
 
 function checkAuth(request: Request): boolean {
   const secret = process.env.CLOUDMAILIN_SECRET;

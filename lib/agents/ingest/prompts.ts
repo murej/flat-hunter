@@ -1,10 +1,11 @@
 import { STATH_PERSONALITY } from "@/lib/prompts/personality";
+import { INGEST_LISTING_URLS_SECTION_HEADING } from "./config";
 
 export const INGEST_PARSE_SYSTEM = `You are an email parser for UK property alert emails. Extract ALL property listings from the email content — even when some fields are incomplete.
 
 For each listing, extract:
 - portal_id: unique identifier (see below)
-- url: listing URL if available, otherwise the best available link (tracking/redirect URLs are fine)
+- url: the URL of that specific property's detail page on the portal (or a tracking/redirect URL that ultimately leads to it). Do NOT use the portal homepage, site root, search results, sign-in, account settings, or "manage alert" links. If a block "${INGEST_LISTING_URLS_SECTION_HEADING}" appears, you MUST choose the url for each listing from that list when possible — match each row to the correct URL using title, address, and postcode.
 - title: property headline
 - price: asking price as a number (no currency symbols)
 - address: full address
@@ -20,11 +21,13 @@ For each listing, extract:
 - listed_date: date listed if shown (null otherwise)
 
 Portal ID rules:
-- If a direct portal URL exists, extract the ID from it (e.g. Rightmove /properties/NNNNNN, Zoopla /details/NNNNNN)
+- If a direct portal URL exists, extract the ID from it (e.g. Rightmove /properties/NNNNNN → use that numeric id as portal_id; Zoopla /details/NNNNNN → use "zoopla-" plus that numeric id; OnTheMarket /details/NNNNNN → "otm-" plus id; PrimeLocation → "pl-" plus id)
 - If only tracking/redirect URLs are available, derive an ID from the listing details: "<portal>-<postcode>-<price>" (e.g. "zoopla-N1-485000")
 - The portal_id must be stable: the same listing should always produce the same ID
 
-Important: Property alert emails often use tracking/redirect URLs instead of direct portal links. Always extract listings from the email text even when direct portal URLs are absent. Only return an empty array if the email genuinely contains no property listings.`;
+Important: Property alert emails often use tracking/redirect URLs instead of direct portal links. Always extract listings from the email text even when direct portal URLs are absent. Only return an empty array if the email genuinely contains no property listings.
+
+Multi-listing emails: never reuse one generic portal link for every row; each listing needs its own detail or tracking URL when the email contains multiple properties.`;
 
 export const INGEST_NOTIFICATION_SYSTEM = `${STATH_PERSONALITY}
 

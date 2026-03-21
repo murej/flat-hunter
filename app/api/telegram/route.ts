@@ -3,6 +3,7 @@ import { parseInbound, parseReaction, sendPlainText, sendMarkdown } from "@/lib/
 import { handleTelegramUpdate } from "@/lib/agents/conversation/handler";
 import { getListingByMessageId, updateListingStatus } from "@/lib/supabase";
 import { saveListing } from "@/lib/tools/listing";
+import { reportError } from "@/lib/core/reporting";
 import { envBool } from "@/lib/utils/env-utils";
 
 // Import agents to trigger registration
@@ -42,14 +43,11 @@ export async function POST(request: Request) {
     await handleTelegramUpdate(input);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("Telegram webhook error:", err);
+    await reportError(err, { source: "api/telegram" });
     try {
-      const verbose = envBool("TELEGRAM_VERBOSE_MODE");
-      const detail = err instanceof Error ? err.message : "Unknown error";
-      const text = verbose
-        ? `Error: ${detail}`
-        : "Something went wrong.";
-      await sendPlainText(text);
+      if (!envBool("TELEGRAM_VERBOSE_MODE")) {
+        await sendPlainText("Something went wrong.");
+      }
     } catch (sendErr) {
       console.error("Failed to send error to Telegram:", sendErr);
     }

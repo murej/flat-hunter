@@ -14,3 +14,23 @@ export const TELEMETRY_TAG_NOTIFICATION = "ingest_notification";
  * Default: 1
  */
 export const MAX_PARSE_STEPS = 1;
+
+/** Max characters of email-derived body text passed to the listing parser (before listing URL block). */
+export const MAX_INPUT_CHARS = 32_000;
+
+/**
+ * Regex sources for UK portal property detail URLs (flags applied when compiling).
+ * Keep in sync with path rules in tools.ts (listing URL validation / repair).
+ */
+export const LISTING_URL_PATTERN_SOURCES = [
+  String.raw`https?://(?:www\.)?rightmove\.co\.uk/properties/\d+`,
+  String.raw`https?://(?:www\.)?zoopla\.co\.uk/(?:for-sale|to-rent)/details/\d+`,
+  String.raw`https?://(?:www\.)?zoopla\.co\.uk/details/\d+`,
+  String.raw`https?://(?:www\.)?onthemarket\.com/details/\d+`,
+  String.raw`https?://(?:www\.)?primelocation\.com/(?:for-sale|to-rent)/details/\d+`,
+  String.raw`https?://(?:www\.)?primelocation\.com/details/\d+`,
+] as const;
+
+/** Shown in LLM context and referenced in parse instructions (no trailing colon). */
+export const INGEST_LISTING_URLS_SECTION_HEADING =
+  "Detected listing URLs (property detail pages only)";
