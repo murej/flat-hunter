@@ -1,2 +1,0 @@
-{"sessionId":"fd4790","location":"commuteEvaluator.ts:resolvedFrom","message":"postcode resolution","data":{"fromPostcode":"E9","resolvedFrom":"E9 5AA"},"timestamp":1773619266821,"hypothesisId":"H5"}
-{"sessionId":"fd4790","location":"commuteEvaluator.ts:tflResponse","message":"TfL response","data":{"resolvedFrom":"E9 5AA","status":200,"ok":true},"timestamp":1773619268277,"hypothesisId":"H5"}
