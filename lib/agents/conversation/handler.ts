@@ -85,9 +85,9 @@ export async function handleTelegramUpdate(input: {
       return;
     }
 
-    // /saved — show saved properties
-    if (text === "/saved") {
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "saved" });
+    // /liked — show liked (saved) properties
+    if (text === "/liked") {
+      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "liked" });
       const msg = await getFormattedSavedList();
       await sendMarkdown(msg);
       return;

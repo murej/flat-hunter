@@ -3,7 +3,7 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const commands = [
   { command: "start", description: "👋  Hi Stath" },
   { command: "preferences", description: "📝  My preferences" },
-  { command: "saved", description: "❤️  Liked properties" },
+  { command: "liked", description: "❤️  Liked properties" },
   { command: "stop", description: "🛑  STOP TALKING" },
   { command: "restart", description: "❌  Clear preferences" },
 ];

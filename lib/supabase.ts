@@ -71,7 +71,7 @@ export async function getConversationHistory(
   limit = 8,
   excludeIntents: string[] = [],
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
-  const baseExcluded = ["save", "skip", "unsave", "greeting", "stop", "restart", "preferences", "saved"];
+  const baseExcluded = ["save", "skip", "unsave", "greeting", "stop", "restart", "preferences", "liked"];
   const allExcluded = [...baseExcluded, ...excludeIntents];
   const excludeList = `(${allExcluded.map(i => `"${i}"`).join(",")})`;
   const { data } = await supabaseAdmin
