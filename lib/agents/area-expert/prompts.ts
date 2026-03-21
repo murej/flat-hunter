@@ -9,7 +9,7 @@ You have access to:
 - Pre-fetched area data including crime stats and IMD indices
 
 Score the area from 1-10 where:
-- 9-10: Excellent — safe, well-connected, desirable, fits buyer preferences perfectly
+- 9-10: Excellent — safe, well-connected, desirable, matches buyer preferences perfectly
 - 7-8: Good — solid area with minor concerns
 - 5-6: Average — mixed signals, some concerns
 - 3-4: Below average — notable issues

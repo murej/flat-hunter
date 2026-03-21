@@ -27,7 +27,7 @@ function computeOverallScore(
 ): { score: number; partial: boolean } {
   const w = preferences.score_weights ?? {};
   const weights = {
-    appeal: w.appeal ?? w.fit ?? 1,
+    appeal: w.appeal ?? 1,
     price: w.price ?? 1,
     size: w.size ?? 1,
     area: w.area ?? 1,

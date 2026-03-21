@@ -231,7 +231,7 @@ agent_context        -- agent_id, scope, scope_value (unique triple), content js
 ## Domain Types (`types/index.ts`)
 
 - **Preferences, Listing, Evaluation, Conversation** — mirror tables
-- **ScoreWeights** — `{ appeal?, fit? (legacy JSON), commute?, price?, size?, area? }` (0-5, default 1)
+- **ScoreWeights** — `{ appeal?, commute?, price?, size?, area? }` (0-5, default 1)
 - **PropertyEvalResult, AreaEvalResult, CommuteEvalResult, FinanceEvalResult** — scores, summary, `*_unknown`, `raw` jsonb
 - **TelegramPayload** — `{ buttons?, parse_mode?, metadata? }` typed shape for `DirectToolResult.payload`
 

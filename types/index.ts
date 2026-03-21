@@ -87,8 +87,6 @@ export type Conversation = {
 
 export type ScoreWeights = {
   appeal?: number;
-  /** Legacy JSON key; used if `appeal` is unset */
-  fit?: number;
   commute?: number;
   price?: number;
   size?: number;
