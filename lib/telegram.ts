@@ -105,6 +105,18 @@ export async function sendPlainText(text: string): Promise<number> {
   return (json.result as Record<string, unknown>).message_id as number;
 }
 
+export function startTypingIndicator(): { stop: () => void } {
+  const send = () => {
+    callTelegram("sendChatAction", {
+      chat_id: CHAT_ID(),
+      action: "typing",
+    }).catch(() => {});
+  };
+  send();
+  const interval = setInterval(send, 4000);
+  return { stop: () => clearInterval(interval) };
+}
+
 export async function deleteMessage(messageId: number): Promise<void> {
   await callTelegram("deleteMessage", {
     chat_id: CHAT_ID(),
