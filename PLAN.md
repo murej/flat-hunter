@@ -323,6 +323,8 @@ Not registered — invoked by API route.
 
 **`index.ts`** — `ingestAgent()`: idempotency → verification check → parse → dedup + store → return newIds.
 
+**Listing refresh (same `portal_id`):** If a parsed listing’s `portal_id` already exists, compare **material listing fields** (those in `ListingSchema`: price, title, description, url, address, postcode, bedrooms, bathrooms, sqft, image_urls, floorplan_url, agent_name, agent_email, listed_date) to the stored row. If **unchanged**, skip (no DB write, no evaluation). If **changed**, `UPDATE` the row with the new parsed fields and `updated_at` (omit `status` from this patch — ingest should not set `status` here). Add that listing’s `id` to the same id list returned to the handler so `runEvaluationsAndNotify` runs `runEvaluationPipeline` and the `evaluations` row is upserted. **Note:** On completion, `runEvaluationPipeline` sets `status` to `evaluated` (same as new listings), which overwrites `saved` / `dismissed` / `viewing_requested` today; optionally extend the pipeline later to preserve terminal user statuses after ingest-refresh. **Change detection:** Prefer a stable snapshot (e.g. canonical JSON hash) to avoid noisy re-runs from ordering differences in `image_urls`.
+
 **`email-llm-input.ts`** — `buildLlmContextFromParts(html, subject?, plain?)`, `buildLlmContextFromRaw(rawMessage)`, `extractMimeParts()`, `extractListingUrls()` (Rightmove, Zoopla, OnTheMarket, PrimeLocation), `extractAllHrefs()`.
 
 ### Conversation — `lib/agents/conversation/`

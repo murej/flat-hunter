@@ -74,6 +74,8 @@ Start a tunnel (e.g. cloudflared) and point CloudMailin + Telegram webhook to th
 npm run use:prod
 ```
 
+This pushes `.env.local` to **Vercel Production** via `scripts/push-env-to-vercel.sh` and sets the Telegram webhook. If the Vercel CLI reports an error while setting a variable, the script exits immediately (fix auth, project link, or the variable name, then rerun). After changing any `NEXT_PUBLIC_*` variable, trigger a new production deploy so the client bundle picks up the new values.
+
 Ensure Vercel environment variables are set. The cron job (`/api/cron/evaluate`, every 5 minutes) picks up any listings that didn't finish evaluating within the webhook timeout.
 
 ## Scripts

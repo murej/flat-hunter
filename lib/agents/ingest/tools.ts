@@ -12,6 +12,102 @@ import { sendMarkdown } from "@/lib/telegram";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
 import { z } from "zod";
 
+/** Row slice from DB for material comparison + refresh update */
+type ListingMaterialRow = {
+  id: string;
+  url: string;
+  title: string;
+  price: number;
+  address: string;
+  postcode: string;
+  bedrooms: number;
+  bathrooms: number;
+  sqft: number | null;
+  description: string;
+  image_urls: string[] | null;
+  floorplan_url: string | null;
+  agent_name: string | null;
+  agent_email: string | null;
+  listed_date: string | null;
+};
+
+function canonicalListingDataHash(data: {
+  url: string;
+  title: string;
+  price: number;
+  address: string;
+  postcode: string;
+  bedrooms: number;
+  bathrooms: number;
+  sqft: number | null;
+  description: string;
+  image_urls: string[];
+  floorplan_url: string | null;
+  agent_name: string | null;
+  agent_email: string | null;
+  listed_date: string | null;
+}): string {
+  const canonical = {
+    url: data.url,
+    title: data.title,
+    price: data.price,
+    address: data.address,
+    postcode: data.postcode,
+    bedrooms: data.bedrooms,
+    bathrooms: data.bathrooms,
+    sqft: data.sqft,
+    description: data.description,
+    image_urls: [...data.image_urls].sort(),
+    floorplan_url: data.floorplan_url,
+    agent_name: data.agent_name,
+    agent_email: data.agent_email,
+    listed_date: data.listed_date,
+  };
+  return createHash("sha256")
+    .update(JSON.stringify(canonical))
+    .digest("hex");
+}
+
+/** True when parsed listing matches stored material fields (portal_id already matches). */
+function listingMaterialDataUnchanged(
+  dbRow: ListingMaterialRow,
+  parsed: ListingOutput,
+): boolean {
+  const fromDb = canonicalListingDataHash({
+    url: dbRow.url,
+    title: dbRow.title,
+    price: dbRow.price,
+    address: dbRow.address,
+    postcode: dbRow.postcode,
+    bedrooms: dbRow.bedrooms,
+    bathrooms: dbRow.bathrooms,
+    sqft: dbRow.sqft,
+    description: dbRow.description,
+    image_urls: dbRow.image_urls ?? [],
+    floorplan_url: dbRow.floorplan_url,
+    agent_name: dbRow.agent_name,
+    agent_email: dbRow.agent_email,
+    listed_date: dbRow.listed_date,
+  });
+  const fromParsed = canonicalListingDataHash({
+    url: parsed.url,
+    title: parsed.title,
+    price: parsed.price,
+    address: parsed.address,
+    postcode: parsed.postcode,
+    bedrooms: parsed.bedrooms,
+    bathrooms: parsed.bathrooms,
+    sqft: parsed.sqft,
+    description: parsed.description,
+    image_urls: parsed.image_urls,
+    floorplan_url: parsed.floorplan_url,
+    agent_name: parsed.agent_name,
+    agent_email: parsed.agent_email,
+    listed_date: parsed.listed_date,
+  });
+  return fromDb === fromParsed;
+}
+
 export function computeIdempotencyKey(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -54,20 +150,45 @@ export async function parseEmailHtml(
   return JSON.parse(result.message);
 }
 
+const LISTING_MATERIAL_SELECT =
+  "id, url, title, price, address, postcode, bedrooms, bathrooms, sqft, description, image_urls, floorplan_url, agent_name, agent_email, listed_date";
+
 export async function deduplicateAndStore(
   listings: ListingOutput[],
-): Promise<string[]> {
+): Promise<{ newIds: string[]; unchangedDuplicateCount: number }> {
   const newIds: string[] = [];
+  let unchangedDuplicateCount = 0;
 
   for (const listing of listings) {
-    // Check for existing by portal_id
     const { data: existing } = await supabaseAdmin
       .from("listings")
-      .select("id")
+      .select(LISTING_MATERIAL_SELECT)
       .eq("portal_id", listing.portal_id)
-      .single();
+      .maybeSingle();
 
-    if (existing) continue;
+    if (existing) {
+      const row = existing as ListingMaterialRow;
+      if (listingMaterialDataUnchanged(row, listing)) {
+        unchangedDuplicateCount++;
+        continue;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("listings")
+        .update({
+          ...listing,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+
+      if (updateError) {
+        console.error("Update listing error:", updateError.message);
+        continue;
+      }
+
+      newIds.push(String(row.id));
+      continue;
+    }
 
     const { data: inserted, error } = await supabaseAdmin
       .from("listings")
@@ -85,10 +206,10 @@ export async function deduplicateAndStore(
       continue;
     }
 
-    if (inserted) newIds.push((inserted as { id: string }).id);
+    if (inserted) newIds.push(String((inserted as { id: number | string }).id));
   }
 
-  return newIds;
+  return { newIds, unchangedDuplicateCount };
 }
 
 export async function runEvaluationsAndNotify(

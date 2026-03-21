@@ -50,13 +50,21 @@ export async function ingestAgent(
   }
 
   // Dedup and store
-  const newIds = await deduplicateAndStore(listings);
+  const { newIds, unchangedDuplicateCount } = await deduplicateAndStore(listings);
   if (newIds.length === 0) {
-    console.log("All listings were duplicates.");
+    console.log("All listings were duplicates or unchanged.");
     if (envBool("TELEGRAM_VERBOSE_MODE")) {
-      await sendMessage(`📭 ${listings.length} listing(s) found but all were duplicates.`);
+      await sendMessage(
+        `📭 ${listings.length} listing(s) found; none new or updated (${unchangedDuplicateCount} unchanged duplicate(s)).`,
+      );
     }
     return { newIds: [] };
+  }
+
+  if (envBool("TELEGRAM_VERBOSE_MODE") && unchangedDuplicateCount > 0) {
+    await sendMessage(
+      `ℹ️ ${unchangedDuplicateCount} duplicate listing(s) skipped (data unchanged). Evaluating ${newIds.length} new or updated.`,
+    );
   }
 
   return { newIds };

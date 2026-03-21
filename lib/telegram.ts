@@ -7,7 +7,37 @@ type SendOptions = {
   reply_markup?: unknown;
 };
 
+function agentLogTelegram(payload: {
+  hypothesisId: string;
+  message: string;
+  data: Record<string, unknown>;
+}) {
+  const line = JSON.stringify({ sessionId: "dba640", location: "lib/telegram.ts", timestamp: Date.now(), ...payload });
+  console.error("[telegram-debug]", line);
+  // #region agent log
+  fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "dba640" },
+    body: line,
+  }).catch(() => {});
+  // #endregion
+}
+
 async function callTelegram(method: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const raw = process.env.TELEGRAM_BOT_TOKEN;
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) {
+    agentLogTelegram({
+      hypothesisId: "H1",
+      message: "TELEGRAM_BOT_TOKEN missing or whitespace-only",
+      data: {
+        defined: raw !== undefined,
+        rawLen: raw?.length ?? 0,
+        trimmedLen: trimmed.length,
+      },
+    });
+  }
+
   const res = await fetch(`${BASE()}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -15,6 +45,21 @@ async function callTelegram(method: string, body: Record<string, unknown>): Prom
   });
   if (!res.ok) {
     const text = await res.text();
+    agentLogTelegram({
+      hypothesisId: "H3",
+      message: "Telegram API non-OK",
+      data: {
+        method,
+        httpStatus: res.status,
+        responsePreview: text.slice(0, 400),
+        tokenPresent: Boolean(trimmed),
+        tokenLen: trimmed.length,
+        tokenTrimDelta:
+          raw !== undefined && trimmed.length > 0 ? raw.length - trimmed.length : undefined,
+        tokenHasColon: trimmed.includes(":"),
+        chatIdPresent: Boolean(process.env.TELEGRAM_CHAT_ID?.trim()),
+      },
+    });
     throw new Error(`Telegram ${method} failed (${res.status}): ${text}`);
   }
   return res.json() as Promise<Record<string, unknown>>;
