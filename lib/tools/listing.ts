@@ -29,14 +29,6 @@ export async function saveListing(id: string): Promise<string> {
   return `Listing ${id} saved.`;
 }
 
-export async function skipListing(id: string): Promise<string> {
-  await supabaseAdmin
-    .from("listings")
-    .update({ status: "dismissed", updated_at: new Date().toISOString() })
-    .eq("id", id);
-  return `Listing ${id} skipped.`;
-}
-
 export async function getScorecard(
   id: string,
 ): Promise<{ text: string; buttons: Array<Array<{ text: string; callback_data: string }>> } | null> {
@@ -52,15 +44,14 @@ export async function getScorecard(
   if (!evaluation) {
     return {
       text: buildNoScoreScorecardText(listing),
-      buttons: buildScorecardButtons(id, false),
+      buttons: buildScorecardButtons(id),
     };
   }
 
-  const isSaved = listing.status === "saved";
   const rate = await getLatestMortgageRate();
   return {
     text: buildScorecardText(listing, evaluation as Evaluation, rate),
-    buttons: buildScorecardButtons(id, isSaved),
+    buttons: buildScorecardButtons(id),
   };
 }
 

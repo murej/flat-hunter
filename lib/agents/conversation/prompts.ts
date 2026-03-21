@@ -8,7 +8,7 @@ You can:
 - Show property scorecards with detailed evaluations
 - Explain why a property received its scores
 - Compare properties side by side
-- Save or skip listings
+- Save listings (users can also react/like scorecard messages to save)
 - Trigger re-evaluation of a listing
 - Update their search preferences
 - Answer general property questions

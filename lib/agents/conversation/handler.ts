@@ -1,6 +1,6 @@
 import { sendMessage, sendMarkdown, sendWithButtons, answerCallbackQuery, deleteMessage } from "@/lib/telegram";
-import { logConversation, getPreferences, deletePreferences, getConversationHistory, getSessionMode, setSessionMode, clearSessionMode } from "@/lib/supabase";
-import { saveListing, skipListing, getScorecard, getWhyContext, getFormattedPreferences, getFormattedSavedList } from "@/lib/tools/listing";
+import { logConversation, getPreferences, deletePreferences, getConversationHistory, getSessionMode, setSessionMode, clearSessionMode, storeMessageListing } from "@/lib/supabase";
+import { getScorecard, getWhyContext, getFormattedPreferences, getFormattedSavedList } from "@/lib/tools/listing";
 import { runPreferenceAgent } from "@/lib/agents/preference";
 import { runAgent } from "@/lib/core/agent";
 import { getWhyExplanationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
@@ -94,7 +94,7 @@ export async function handleTelegramUpdate(input: {
   const sessionMode = await getSessionMode();
   if (
     sessionMode === "preference" &&
-    !/^(save|skip|unsave|why|scorecard):/.test(text)
+    !/^(why|scorecard):/.test(text)
   ) {
     const [, prefsBefore, history] = await Promise.all([
       logConversation({
@@ -129,35 +129,6 @@ export async function handleTelegramUpdate(input: {
       message: result.message,
       intent: "preference_reply",
     });
-    return;
-  }
-
-  // Route: save:/skip:/unsave: callbacks
-  const saveMatch = text.match(/^(save|skip|unsave):(.+)$/);
-  if (saveMatch) {
-    const [, action, id] = saveMatch;
-
-    try {
-      await clearSessionMode();
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: action });
-
-      if (action === "save") {
-        await saveListing(id);
-        await deleteMessage(messageId);
-        await sendMessage("💾 Saved!");
-      } else if (action === "unsave") {
-        const { updateListingStatus } = await import("@/lib/supabase");
-        await updateListingStatus(id, "evaluated");
-        await deleteMessage(messageId);
-        await sendMessage("📌 Unsaved. Status reset to evaluated.");
-      } else {
-        await skipListing(id);
-        await deleteMessage(messageId);
-      }
-    } catch (err) {
-      console.error(`${action} failed for listing ${id}:`, err);
-      try { await deleteMessage(messageId); } catch {}
-    }
     return;
   }
 
@@ -197,7 +168,8 @@ export async function handleTelegramUpdate(input: {
     const id = scorecardMatch[1];
     const scorecard = await getScorecard(id);
     if (scorecard) {
-      await sendWithButtons(scorecard.text, scorecard.buttons, "Markdown");
+      const msgId = await sendWithButtons(scorecard.text, scorecard.buttons, "Markdown");
+      await storeMessageListing(msgId, id);
     } else {
       await sendMessage("Listing not found.");
     }

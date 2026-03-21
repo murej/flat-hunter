@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin, storeMessageListing } from "@/lib/supabase";
 import { sendMessage, sendWithButtons } from "@/lib/telegram";
 import { sleep } from "@/lib/utils/retry";
 
@@ -27,12 +27,16 @@ export async function consumePendingNotifications(
   for (const notif of notifications as NotificationRow[]) {
     try {
       if (notif.type === "scorecard") {
-        const { text, buttons, parse_mode } = notif.payload as {
+        const { listing_id, text, buttons, parse_mode } = notif.payload as {
+          listing_id?: string;
           text: string;
           buttons: Array<Array<{ text: string; callback_data: string }>>;
           parse_mode?: "Markdown" | "HTML";
         };
-        await sendWithButtons(text, buttons, parse_mode ?? "Markdown");
+        const telegramMessageId = await sendWithButtons(text, buttons, parse_mode ?? "Markdown");
+        if (listing_id) {
+          await storeMessageListing(telegramMessageId, listing_id);
+        }
         await sleep(SCORECARD_DELAY_MS);
       } else {
         await sendMessage(notif.payload.text as string, {

@@ -63,7 +63,7 @@ if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "$DNS_OK" = true ]; then
   for attempt in $(seq 1 3); do
     RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
       -H "Content-Type: application/json" \
-      -d "{\"url\": \"${TUNNEL_URL}/api/telegram\"}")
+      -d "{\"url\": \"${TUNNEL_URL}/api/telegram\", \"allowed_updates\": [\"message\", \"callback_query\", \"message_reaction\"]}")
     if echo "$RESPONSE" | grep -q '"ok":true'; then
       echo "✅ Telegram webhook set"
       break

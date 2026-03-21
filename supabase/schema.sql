@@ -101,6 +101,12 @@ CREATE TABLE IF NOT EXISTS pending_notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_batch ON pending_notifications(batch_id, consumed_at);
 
+CREATE TABLE IF NOT EXISTS message_listings (
+  telegram_message_id BIGINT PRIMARY KEY,
+  listing_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS agent_context (
   id SERIAL PRIMARY KEY,
   agent_id TEXT NOT NULL,

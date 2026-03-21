@@ -119,6 +119,7 @@ export async function runEvaluationsAndNotify(
           sequence: sequence++,
           type: "scorecard",
           payload: {
+            listing_id: result.listingId,
             text: result.scorecardText,
             buttons: result.scorecardButtons,
             parse_mode: "Markdown",
@@ -137,7 +138,7 @@ export async function runEvaluationsAndNotify(
   if (ids.length > 1) {
     const summary = await runAgent({
       systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-      prompt: `You just finished evaluating ${ids.length} listings and sent scorecards. Write a short wrap-up message reminding the user to Save or Skip them.`,
+      prompt: `You just finished evaluating ${ids.length} listings and sent scorecards. Write a short wrap-up message reminding the user to react (like) the ones they want to save.`,
       model: getIngestNotificationModel(),
       maxSteps: 1,
       telemetryTag: TELEMETRY_TAG_NOTIFICATION,

@@ -18,4 +18,4 @@ bash scripts/push-env-to-vercel.sh
 echo "Setting webhook to $URL/api/telegram..."
 curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
-  -d "{\"url\": \"$URL/api/telegram\"}" | python3 -m json.tool 2>/dev/null || true
+  -d "{\"url\": \"$URL/api/telegram\", \"allowed_updates\": [\"message\", \"callback_query\", \"message_reaction\"]}" | python3 -m json.tool 2>/dev/null || true

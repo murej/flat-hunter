@@ -44,6 +44,7 @@ function computeOverallScore(
 
 export async function runEvaluationPipeline(listingId: string): Promise<{
   evaluation: Evaluation;
+  listingId: string;
   scorecardText: string;
   scorecardButtons: Array<Array<{ text: string; callback_data: string }>>;
 } | null> {
@@ -167,8 +168,9 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
 
   return {
     evaluation: eval_,
+    listingId,
     scorecardText: buildScorecardText(updatedListing!, eval_, mortgageRate),
-    scorecardButtons: buildScorecardButtons(listingId, false),
+    scorecardButtons: buildScorecardButtons(listingId),
   };
 }
 

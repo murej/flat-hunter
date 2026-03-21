@@ -7,7 +7,7 @@ type SendOptions = {
   reply_markup?: unknown;
 };
 
-async function callTelegram(method: string, body: Record<string, unknown>) {
+async function callTelegram(method: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const res = await fetch(`${BASE()}/${method}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -17,30 +17,31 @@ async function callTelegram(method: string, body: Record<string, unknown>) {
     const text = await res.text();
     throw new Error(`Telegram ${method} failed (${res.status}): ${text}`);
   }
-  return res;
+  return res.json() as Promise<Record<string, unknown>>;
 }
 
 export async function sendMessage(
   text: string,
   opts?: SendOptions,
-): Promise<void> {
-  await callTelegram("sendMessage", {
+): Promise<number> {
+  const json = await callTelegram("sendMessage", {
     chat_id: CHAT_ID(),
     text,
     ...opts,
   });
+  return (json.result as Record<string, unknown>).message_id as number;
 }
 
 export async function sendWithButtons(
   text: string,
   buttons: Array<Array<{ text: string; callback_data: string }>>,
   parseMode?: "Markdown" | "HTML",
-): Promise<void> {
+): Promise<number> {
   const markup = { inline_keyboard: buttons };
   try {
-    await sendMessage(text, { parse_mode: parseMode, reply_markup: markup });
+    return await sendMessage(text, { parse_mode: parseMode, reply_markup: markup });
   } catch {
-    await sendMessage(text, { reply_markup: markup });
+    return await sendMessage(text, { reply_markup: markup });
   }
 }
 
@@ -87,20 +88,21 @@ export function parseInbound(body: Record<string, unknown>): {
 export async function sendMarkdown(
   text: string,
   opts?: Omit<SendOptions, "parse_mode">,
-): Promise<void> {
+): Promise<number> {
   try {
-    await sendMessage(text, { ...opts, parse_mode: "Markdown" });
+    return await sendMessage(text, { ...opts, parse_mode: "Markdown" });
   } catch {
-    await sendMessage(text, opts);
+    return await sendMessage(text, opts);
   }
 }
 
 /** Send plain text with no parse_mode — safe for arbitrary error strings. */
-export async function sendPlainText(text: string): Promise<void> {
-  await callTelegram("sendMessage", {
+export async function sendPlainText(text: string): Promise<number> {
+  const json = await callTelegram("sendMessage", {
     chat_id: CHAT_ID(),
     text: text.slice(0, 4096), // Telegram limit
   });
+  return (json.result as Record<string, unknown>).message_id as number;
 }
 
 export async function deleteMessage(messageId: number): Promise<void> {
@@ -118,4 +120,20 @@ export async function answerCallbackQuery(
     callback_query_id: callbackQueryId,
     ...(text && { text }),
   });
+}
+
+export function parseReaction(body: Record<string, unknown>): {
+  messageId: number;
+  added: boolean;
+} | null {
+  const mr = body.message_reaction as Record<string, unknown> | undefined;
+  if (!mr) return null;
+
+  const newReaction = mr.new_reaction as Array<unknown>;
+  const oldReaction = mr.old_reaction as Array<unknown>;
+
+  return {
+    messageId: mr.message_id as number,
+    added: newReaction.length > oldReaction.length,
+  };
 }

@@ -139,6 +139,26 @@ export async function clearSessionMode(): Promise<void> {
     .eq("scope_value", "current");
 }
 
+export async function storeMessageListing(
+  telegramMessageId: number,
+  listingId: string,
+): Promise<void> {
+  await supabaseAdmin
+    .from("message_listings")
+    .upsert({ telegram_message_id: telegramMessageId, listing_id: listingId });
+}
+
+export async function getListingByMessageId(
+  telegramMessageId: number,
+): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("message_listings")
+    .select("listing_id")
+    .eq("telegram_message_id", telegramMessageId)
+    .single();
+  return (data as { listing_id: string } | null)?.listing_id ?? null;
+}
+
 export async function getActiveListingId(
   lookback = 10,
 ): Promise<string | null> {

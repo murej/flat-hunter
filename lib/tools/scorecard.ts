@@ -55,16 +55,9 @@ export function buildScorecardText(
 
 export function buildScorecardButtons(
   listingId: string,
-  isSaved: boolean,
 ): Array<Array<{ text: string; callback_data: string }>> {
   return [
-    [
-      isSaved
-        ? { text: "📌 Unsave", callback_data: `unsave:${listingId}` }
-        : { text: "💾 Save", callback_data: `save:${listingId}` },
-      { text: "⏭ Skip", callback_data: `skip:${listingId}` },
-      { text: "❓ Why?", callback_data: `why:${listingId}` },
-    ],
+    [{ text: "❓ Why?", callback_data: `why:${listingId}` }],
   ];
 }
 

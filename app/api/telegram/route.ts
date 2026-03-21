@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { parseInbound, sendPlainText } from "@/lib/telegram";
+import { parseInbound, parseReaction, sendPlainText, sendMarkdown } from "@/lib/telegram";
 import { handleTelegramUpdate } from "@/lib/agents/conversation/handler";
+import { getListingByMessageId, updateListingStatus } from "@/lib/supabase";
+import { saveListing } from "@/lib/tools/listing";
 import { envBool } from "@/lib/utils/env-utils";
 
 // Import agents to trigger registration
@@ -13,6 +15,24 @@ export const maxDuration = 60;
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Record<string, unknown>;
+
+    // Handle message reactions (save/unsave via like)
+    const reaction = parseReaction(body);
+    if (reaction) {
+      const listingId = await getListingByMessageId(reaction.messageId);
+      if (listingId) {
+        const verbose = envBool("TELEGRAM_VERBOSE_MODE");
+        if (reaction.added) {
+          await saveListing(listingId);
+          if (verbose) await sendMarkdown("💾 Saved!");
+        } else {
+          await updateListingStatus(listingId, "evaluated");
+          if (verbose) await sendMarkdown("📌 Unsaved.");
+        }
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     const input = parseInbound(body);
 
     if (!input.text) {

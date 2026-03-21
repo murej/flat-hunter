@@ -5,7 +5,6 @@ import { dbConfig } from "@/lib/config/db-config";
 import { isCallAgentEnabled, isReEvaluationAllowed, RE_EVAL_COOLDOWN_HOURS } from "@/lib/config/conversation-llm";
 import {
   saveListing,
-  skipListing,
   getScorecard,
   getWhyContext,
   getComparisonData,
@@ -53,18 +52,6 @@ export function buildConversationTools(activeListingId: string | null) {
       }),
       execute: async ({ listing_id }) => {
         const msg = await saveListing(listing_id);
-        captured = { type: "direct", message: msg };
-        return msg;
-      },
-    }),
-
-    skip_listing: tool({
-      description: "Dismiss/skip a property listing",
-      inputSchema: z.object({
-        listing_id: z.string().describe("The listing ID to skip"),
-      }),
-      execute: async ({ listing_id }) => {
-        const msg = await skipListing(listing_id);
         captured = { type: "direct", message: msg };
         return msg;
       },
