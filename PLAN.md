@@ -349,7 +349,7 @@ Not registered — Telegram webhook entry point.
 
 **`/api/ingest`** — POST. HTTP Basic auth. `handleIngestWebhook(request)`. `waitUntil()` for background eval + notify. `maxDuration = 60`.
 
-**`/api/cron/evaluate`** — GET. Vercel cron every 5 min. Queries `pending_evaluation` listings, processes sequentially (~4 per invocation), remaining picked up next cycle. `maxDuration = 60`.
+**`/api/cron/evaluate` ** — GET. Vercel cron every 5 min. Queries `pending_evaluation` listings, processes sequentially (~4 per invocation), remaining picked up next cycle. `maxDuration = 60`.
 
 ```json
 { "crons": [{ "path": "/api/cron/evaluate", "schedule": "*/5 * * * *" }] }
