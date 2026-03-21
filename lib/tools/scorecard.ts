@@ -17,7 +17,7 @@ export function buildScorecardText(
 ): string {
   let priceLine = `💰 ${formatMoney(listing.price)}`;
   if (evaluation.mortgage_monthly !== null && mortgageRate != null) {
-    priceLine += ` · ${formatMoney(evaluation.mortgage_monthly)}/mo (at ${mortgageRate}%)`;
+    priceLine += ` · ${formatMoney(evaluation.mortgage_monthly)}/mo (${mortgageRate}%)`;
   }
 
   const lines = [
