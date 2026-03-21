@@ -27,20 +27,34 @@ function computeOverallScore(
   commute: CommuteEvalResult,
   _finance: FinanceEvalResult,
   preferences: Preferences,
-): number {
+): { score: number; partial: boolean } {
   const defaults: Required<ScoreWeights> = { fit: 1, price: 1, size: 1, area: 1, commute: 1 };
   const w = preferences.score_weights ?? {};
   const weights = { ...defaults, ...w };
-  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
 
-  const weighted =
-    property.fit_score * weights.fit +
-    property.price_score * weights.price +
-    property.size_score * weights.size +
-    area.area_score * weights.area +
-    commute.commute_score * weights.commute;
+  const entries: Array<{ score: number | null; weight: number }> = [
+    { score: property.fit_score, weight: weights.fit },
+    { score: property.price_score, weight: weights.price },
+    { score: property.size_score, weight: weights.size },
+    { score: area.area_score, weight: weights.area },
+    { score: commute.commute_score, weight: weights.commute },
+  ];
 
-  return Math.round((weighted / totalWeight) * 10) / 10;
+  let totalWeight = 0;
+  let weighted = 0;
+  let partial = false;
+
+  for (const { score, weight } of entries) {
+    if (score == null) {
+      partial = true;
+      continue;
+    }
+    weighted += score * weight;
+    totalWeight += weight;
+  }
+
+  const score = totalWeight > 0 ? Math.round((weighted / totalWeight) * 10) / 10 : 0;
+  return { score, partial };
 }
 
 export async function runEvaluationPipeline(listingId: string): Promise<{
@@ -111,7 +125,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     );
   }
 
-  const overallScore = computeOverallScore(
+  const { score: overallScore, partial: partialScore } = computeOverallScore(
     propertyResult,
     areaResult,
     commuteResult,
@@ -185,7 +199,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   return {
     evaluation: eval_,
     listingId,
-    scorecardText: buildScorecardText(updatedListing!, eval_, mortgageRate),
+    scorecardText: buildScorecardText(updatedListing!, eval_, mortgageRate, partialScore),
     scorecardButtons: buildScorecardButtons(listingId),
   };
 }

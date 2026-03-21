@@ -31,7 +31,8 @@ export async function generateHighlights(
   commute: CommuteEvalResult,
   preferenceSummary: string,
 ): Promise<string> {
-  const prompt = `**Scores:** Fit ${property.fit_score}/10, Price ${property.price_score}/10, Size ${property.size_score}/10, Area ${area.area_score}/10, Commute ${commute.commute_score}/10
+  const fmt = (s: number | null) => s != null ? `${s}/10` : "N/A";
+  const prompt = `**Scores:** Fit ${fmt(property.fit_score)}, Price ${fmt(property.price_score)}, Size ${fmt(property.size_score)}, Area ${fmt(area.area_score)}, Commute ${fmt(commute.commute_score)}
 **Property verdict:** ${property.property_summary}
 **Area verdict:** ${area.area_summary}
 **Deal-breakers:** ${property.deal_breaker_flags.length > 0 ? property.deal_breaker_flags.join(", ") : "None"}

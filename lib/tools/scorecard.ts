@@ -1,8 +1,14 @@
 import type { Listing, Evaluation } from "@/types";
 
-function scoreBar(score: number): string {
+function scoreBar(score: number | null): string {
+  if (score == null) return "N/A";
   const filled = Math.round(score);
   return "█".repeat(filled) + "░".repeat(10 - filled);
+}
+
+function scoreLine(label: string, score: number | null, suffix?: string): string {
+  if (score == null) return `${label} N/A`;
+  return `${label} ${scoreBar(score)} ${score}/10${suffix ?? ""}`;
 }
 
 function formatMoney(n: number | null): string {
@@ -14,6 +20,7 @@ export function buildScorecardText(
   listing: Listing,
   evaluation: Evaluation,
   mortgageRate?: number,
+  partialScore?: boolean,
 ): string {
   let priceLine = `💰 ${formatMoney(listing.price)}`;
   if (evaluation.mortgage_monthly !== null && mortgageRate != null) {
@@ -26,13 +33,13 @@ export function buildScorecardText(
     priceLine,
     `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${Math.round(listing.sqft / 10.764)} m²` : ""}`,
     "",
-    `*Overall: ${evaluation.overall_score}/10*`,
+    `*Overall: ${evaluation.overall_score}/10${partialScore ?? [evaluation.fit_score, evaluation.price_score, evaluation.size_score, evaluation.area_score, evaluation.commute_score].some((s) => s == null) ? "\\*" : ""}*`,
     "",
-    `Fit:     ${scoreBar(evaluation.fit_score)} ${evaluation.fit_score}/10`,
-    `Price:   ${scoreBar(evaluation.price_score)} ${evaluation.price_score}/10`,
-    `Size:    ${scoreBar(evaluation.size_score)} ${evaluation.size_score}/10`,
-    `Area:    ${scoreBar(evaluation.area_score)} ${evaluation.area_score}/10`,
-    `Commute: ${scoreBar(evaluation.commute_score)} ${evaluation.commute_score}/10${evaluation.commute_minutes != null ? ` · ${evaluation.commute_minutes} min` : ""}`,
+    scoreLine("Fit:    ", evaluation.fit_score),
+    scoreLine("Price:  ", evaluation.price_score),
+    scoreLine("Size:   ", evaluation.size_score),
+    scoreLine("Area:   ", evaluation.area_score),
+    scoreLine("Commute:", evaluation.commute_score, evaluation.commute_minutes != null ? ` · ${evaluation.commute_minutes} min` : undefined),
   ];
 
   lines.push("", evaluation.property_summary);

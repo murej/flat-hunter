@@ -51,11 +51,11 @@ export type Listing = {
 export type Evaluation = {
   id: string;
   listing_id: string;
-  price_score: number;
-  size_score: number;
-  fit_score: number;
-  commute_score: number;
-  area_score: number;
+  price_score: number | null;
+  size_score: number | null;
+  fit_score: number | null;
+  commute_score: number | null;
+  area_score: number | null;
   overall_score: number;
   deal_breaker_flags: string[];
   commute_minutes: number | null;
@@ -93,9 +93,9 @@ export type ScoreWeights = {
 };
 
 export type PropertyEvalResult = {
-  price_score: number;
-  size_score: number;
-  fit_score: number;
+  price_score: number | null;
+  size_score: number | null;
+  fit_score: number | null;
   deal_breaker_flags: string[];
   property_summary: string;
   property_unknown?: string;
@@ -103,7 +103,7 @@ export type PropertyEvalResult = {
 };
 
 export type AreaEvalResult = {
-  area_score: number;
+  area_score: number | null;
   area_summary: string;
   notable_flags: string[];
   area_unknown?: string;
@@ -111,7 +111,7 @@ export type AreaEvalResult = {
 };
 
 export type CommuteEvalResult = {
-  commute_score: number;
+  commute_score: number | null;
   commute_minutes: number | null;
   commute_route: string | null;
 };

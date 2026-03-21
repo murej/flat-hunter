@@ -148,7 +148,7 @@ export async function evaluateCommute(
 ): Promise<CommuteEvalResult> {
   if (!toPostcode) {
     console.error("[commute] No commute destination postcode configured");
-    return { commute_score: 5, commute_minutes: null, commute_route: null };
+    return { commute_score: null, commute_minutes: null, commute_route: null };
   }
 
   // Resolve origin
@@ -158,14 +158,14 @@ export async function evaluateCommute(
   }
   if (!origin) {
     console.error("[commute] Could not resolve origin postcode:", fromPostcode, "address:", address);
-    return { commute_score: 5, commute_minutes: null, commute_route: null };
+    return { commute_score: null, commute_minutes: null, commute_route: null };
   }
 
   // Resolve destination
   const dest = await resolvePostcodeToCoords(toPostcode);
   if (!dest) {
     console.error("[commute] Could not resolve destination postcode:", toPostcode);
-    return { commute_score: 5, commute_minutes: null, commute_route: null };
+    return { commute_score: null, commute_minutes: null, commute_route: null };
   }
 
   const journey = await fetchTfLJourney(
@@ -177,7 +177,7 @@ export async function evaluateCommute(
 
   if (!journey) {
     console.error("[commute] TfL journey returned null for", fromPostcode, "->", toPostcode);
-    return { commute_score: 5, commute_minutes: null, commute_route: null };
+    return { commute_score: null, commute_minutes: null, commute_route: null };
   }
 
   return {
