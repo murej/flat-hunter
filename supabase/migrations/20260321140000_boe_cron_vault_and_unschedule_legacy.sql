@@ -1,11 +1,9 @@
 -- Replace Edge-Function-targeting BOE job with Vault + app URL (same pattern as flat_hunter_evaluate_cron).
 create extension if not exists pg_cron with schema extensions;
 create extension if not exists pg_net with schema extensions;
-
 select cron.unschedule(jobid)
 from cron.job
 where jobname = 'sync-boe-mortgage-rate-monthly';
-
 select
   cron.schedule(
     'flat_hunter_boe_mortgage_cron',
@@ -21,4 +19,4 @@ select
         timeout_milliseconds := 120000
       ) as request_id;
     $cmd$
-  );;
+  );
