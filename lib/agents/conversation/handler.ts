@@ -51,8 +51,16 @@ export async function handleTelegramUpdate(input: {
     // /restart — reset preferences with confirmation
     if (text === "/restart") {
       await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "restart" });
+      const confirm = await runAgent({
+        systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+        prompt:
+          "The user typed /restart to reset their property search preferences and start fresh. Write the confirmation question for Telegram. They will see two buttons: \"Yes, reset\" and \"No, keep\". Ask if they are sure and warn that saved preferences will be deleted. One short paragraph.",
+        model: getIngestNotificationModel(),
+        maxSteps: 1,
+        telemetryTag: "restart_confirm",
+      });
       await sendWithButtons(
-        "Are you sure? This will delete your preferences and start fresh.",
+        confirm.message,
         [[
           { text: "Yes, reset", callback_data: "restart_confirm" },
           { text: "No, keep", callback_data: "restart_deny" },
@@ -73,7 +81,15 @@ export async function handleTelegramUpdate(input: {
     }
     if (text === "restart_deny") {
       await deleteMessage(messageId);
-      await sendMessage("No worries, preferences kept.");
+      const denyAck = await runAgent({
+        systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+        prompt:
+          "The user chose not to reset their property search preferences. Acknowledge briefly and positively.",
+        model: getIngestNotificationModel(),
+        maxSteps: 1,
+        telemetryTag: "restart_deny",
+      });
+      await sendMarkdown(denyAck.message);
       return;
     }
 

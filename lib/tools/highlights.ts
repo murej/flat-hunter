@@ -4,6 +4,7 @@ import { runAgent } from "@/lib/core/agent";
 import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
 import { reportError } from "@/lib/core/reporting";
 import { getHighlightsModel } from "@/lib/config/agent-models";
+import { HIGHLIGHTS_SYSTEM } from "@/lib/prompts/highlights";
 import type { PropertyEvalResult, AreaEvalResult, CommuteEvalResult } from "@/types";
 
 const HighlightsSchema = z.object({
@@ -13,19 +14,6 @@ const HighlightsSchema = z.object({
       "3-7 highlight lines. Each starts with ✅ (pro), ➖ (neutral), or ❌ (con) followed by a short phrase.",
     ),
 });
-
-const HIGHLIGHTS_SYSTEM = `You produce a concise list of 3-7 match highlights for a property scorecard.
-
-Each line must start with exactly one emoji:
-- ✅ for a pro (positive match against buyer preferences)
-- ➖ for a neutral (mixed or unremarkable)
-- ❌ for a con (negative, mismatch, or deal-breaker)
-
-Rules:
-- Cover the most important factors across appeal, price, size, area, commute, and any deal-breakers.
-- Each highlight is one short phrase (under 60 chars). No full sentences.
-- Most important highlights first.
-- Do NOT repeat scores or numbers — the scorecard already shows those.`;
 
 export async function generateHighlights(
   property: PropertyEvalResult,

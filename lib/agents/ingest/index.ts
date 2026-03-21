@@ -7,8 +7,13 @@ import {
   buildLlmContextFromRaw,
   repairListingsFromEmailBody,
 } from "./tools";
-import { sendMessage } from "@/lib/telegram";
 import { envBool } from "@/lib/utils/env-utils";
+import {
+  notifyVerificationEmailTelegram,
+  notifyNoListingsParsedVerbose,
+  notifyAllDuplicatesVerbose,
+  notifyDuplicatesSkippedWhileEvaluating,
+} from "./notify-telegram";
 
 export async function ingestAgent(
   content: string,
@@ -30,12 +35,10 @@ export async function ingestAgent(
   // Check if verification email
   const verification = await parseVerificationEmail(llmContent);
   if (verification.isVerification) {
-    const msg = verification.verificationUrl
-      ? `🔐 Verification email received.\nURL: ${verification.verificationUrl}`
-      : verification.verificationCode
-        ? `🔐 Verification code: ${verification.verificationCode}`
-        : "🔐 Verification email received (no URL/code extracted).";
-    await sendMessage(msg);
+    await notifyVerificationEmailTelegram({
+      verificationUrl: verification.verificationUrl,
+      verificationCode: verification.verificationCode,
+    });
     return { newIds: [] };
   }
 
@@ -46,7 +49,7 @@ export async function ingestAgent(
     console.log("No listings found in email.");
     if (envBool("TELEGRAM_VERBOSE_MODE")) {
       const snippet = llmContent.slice(0, 300);
-      await sendMessage(`📭 No listings found in email.\n\nContent preview:\n${snippet}…`);
+      await notifyNoListingsParsedVerbose(snippet);
     }
     return { newIds: [] };
   }
@@ -56,17 +59,19 @@ export async function ingestAgent(
   if (newIds.length === 0) {
     console.log("All listings were duplicates or unchanged.");
     if (envBool("TELEGRAM_VERBOSE_MODE")) {
-      await sendMessage(
-        `📭 ${listings.length} listing(s) found; none new or updated (${unchangedDuplicateCount} unchanged duplicate(s)).`,
-      );
+      await notifyAllDuplicatesVerbose({
+        parsedCount: listings.length,
+        unchangedDuplicateCount,
+      });
     }
     return { newIds: [] };
   }
 
   if (envBool("TELEGRAM_VERBOSE_MODE") && unchangedDuplicateCount > 0) {
-    await sendMessage(
-      `ℹ️ ${unchangedDuplicateCount} duplicate listing(s) skipped (data unchanged). Evaluating ${newIds.length} new or updated.`,
-    );
+    await notifyDuplicatesSkippedWhileEvaluating({
+      unchangedDuplicateCount,
+      newOrUpdatedCount: newIds.length,
+    });
   }
 
   return { newIds };

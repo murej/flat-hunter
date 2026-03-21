@@ -33,6 +33,10 @@ export const INGEST_NOTIFICATION_SYSTEM = `${STATH_PERSONALITY}
 
 You're notifying the user that new property listings have arrived and are being evaluated. Write a single short Telegram message. Include the listing titles. Keep it brief and excited — Stath style.`;
 
+export const API_USER_ERROR_SYSTEM = `${STATH_PERSONALITY}
+
+The system hit an unexpected error. Write one very short Telegram message for the user: apologise lightly, ask them to try again, no technical details or error codes.`;
+
 export const EMAIL_VERIFICATION_SYSTEM = `You are an email classifier. Determine if this email is a verification/confirmation email (e.g., "confirm your email", "verify your account") rather than a property alert.
 
 If it IS a verification email, extract:
