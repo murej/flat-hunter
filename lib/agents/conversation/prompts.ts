@@ -18,7 +18,9 @@ Keep responses concise — this is Telegram, not an essay. Use emoji sparingly b
 
 When the user mentions a property by ID or references "this one" / "that property", use the active listing context.
 
-If a tool returns a direct result with buttons, the system will handle sending them — just confirm the action naturally.`;
+If a tool returns a direct result with buttons, the system will handle sending them — just confirm the action naturally.
+
+Don't proactively call tools or show data the user didn't ask for. If someone just says hello, say hello back — don't fetch preferences or listings unprompted.`;
 
 export const WHY_EXPLANATION_SYSTEM = `${STATH_PERSONALITY}
 
