@@ -3,8 +3,9 @@ import { logConversation, getPreferences, deletePreferences, getConversationHist
 import { saveListing, skipListing, getScorecard, getWhyContext, getFormattedPreferences, getFormattedSavedList } from "@/lib/tools/listing";
 import { runPreferenceAgent } from "@/lib/agents/preference";
 import { runAgent } from "@/lib/core/agent";
-import { getWhyExplanationModel } from "@/lib/config/agent-models";
+import { getWhyExplanationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
 import { WHY_EXPLANATION_SYSTEM } from "./prompts";
+import { INGEST_NOTIFICATION_SYSTEM } from "@/lib/agents/ingest/prompts";
 import { TELEMETRY_TAG_WHY, SUB_AGENT_MAX_STEPS } from "./config";
 import { conversationAgent } from "./index";
 import type { Preferences } from "@/types";
@@ -31,9 +32,16 @@ export async function handleTelegramUpdate(input: {
   // /stop — stop any active flow
   if (text === "/stop") {
     await clearSessionMode();
-    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "cancel" });
-    await sendMessage("Cancelled. What else can I help with?");
-    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Cancelled. What else can I help with?", intent: "cancel" });
+    await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "stop" });
+    const stopResult = await runAgent({
+      systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+      prompt: "The user just stopped the current flow. Acknowledge briefly and ask what else they need.",
+      model: getIngestNotificationModel(),
+      maxSteps: 1,
+      telemetryTag: "stop_notification",
+    });
+    await sendMarkdown(stopResult.message);
+    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: stopResult.message, intent: "stop" });
     return;
   }
 
@@ -129,6 +137,7 @@ export async function handleTelegramUpdate(input: {
   if (saveMatch) {
     const [, action, idStr] = saveMatch;
     const id = parseInt(idStr, 10);
+    await clearSessionMode();
     await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: action });
 
     if (action === "save") {
@@ -210,8 +219,15 @@ export async function handleTelegramUpdate(input: {
   const GREETING_WORDS = /^(h(ello|i|ey|owdy|iya)|yo|sup|morning|evening|afternoon|what'?s up|alright)[!?.]*$/i;
   if (GREETING_WORDS.test(text.trim())) {
     await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "greeting" });
-    await sendMessage("Alright! What can I do for you?");
-    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: "Alright! What can I do for you?", intent: "greeting" });
+    const greetResult = await runAgent({
+      systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+      prompt: `The user just said "${text}". Greet them back briefly and ask what they need.`,
+      model: getIngestNotificationModel(),
+      maxSteps: 1,
+      telemetryTag: "greeting",
+    });
+    await sendMarkdown(greetResult.message);
+    await logConversation({ telegram_message_id: messageId, direction: "outbound", message: greetResult.message, intent: "greeting" });
     return;
   }
 
