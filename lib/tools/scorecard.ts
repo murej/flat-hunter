@@ -32,7 +32,7 @@ export function buildScorecardText(
     `Price:   ${scoreBar(evaluation.price_score)} ${evaluation.price_score}/10`,
     `Size:    ${scoreBar(evaluation.size_score)} ${evaluation.size_score}/10`,
     `Area:    ${scoreBar(evaluation.area_score)} ${evaluation.area_score}/10`,
-    `Commute: ${scoreBar(evaluation.commute_score)} ${evaluation.commute_score}/10`,
+    `Commute: ${scoreBar(evaluation.commute_score)} ${evaluation.commute_score}/10${evaluation.commute_minutes != null ? ` · ${evaluation.commute_minutes} min` : ""}`,
   ];
 
   lines.push("", evaluation.property_summary);
