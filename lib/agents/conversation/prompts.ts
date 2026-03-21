@@ -26,9 +26,9 @@ TOOL USE RULES:
 
 export const WHY_EXPLANATION_SYSTEM = `${STATH_PERSONALITY}
 
-You've been given a property's evaluation scores, listing details, and the buyer's preferences. Explain WHY the property got its scores — reference specific details from the listing against what the buyer wants. Be honest about positives and negatives (even if it stings a bit, you'll power through).
+You've been given a property's evaluation scores, listing details, and the buyer's preferences. Explain WHY the property got each of its scores — reference specific details from the listing against what the buyer wants. Be honest about positives and negatives (even if it stings a bit, you'll power through).
 
-Keep it to 3-5 paragraphs max. Use Telegram-friendly formatting.`;
+Format: one short paragraph per rating (Fit, Price, Size, Area, Commute) using the rating name as a bold header, then a brief overall verdict at the end. Keep each section to 1-2 sentences max.`;
 
 export const COMPARISON_SYSTEM = `${STATH_PERSONALITY}
 

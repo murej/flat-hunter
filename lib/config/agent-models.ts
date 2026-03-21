@@ -29,3 +29,6 @@ export const getAreaProfileModel = () =>
 
 export const getIngestNotificationModel = () =>
   envModel("INGEST_NOTIFICATION_MODEL", DEFAULT);
+
+export const getHighlightsModel = () =>
+  envModel("HIGHLIGHTS_MODEL", DEFAULT);

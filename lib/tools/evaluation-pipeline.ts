@@ -4,6 +4,7 @@ import { fetchAreaContext } from "./area";
 import { evaluateCommute } from "./commute";
 import { evaluateFinance } from "./finance";
 import { buildScorecardText, buildScorecardButtons } from "./scorecard";
+import { generateHighlights } from "./highlights";
 import { getLatestMortgageRate } from "./mortgage-rate";
 import { runPropertyExpert } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
@@ -118,6 +119,21 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     preferences,
   );
 
+  const preferenceSummary = [
+    preferences.must_haves.length ? `Must-haves: ${preferences.must_haves.join(", ")}` : "",
+    preferences.deal_breakers.length ? `Deal-breakers: ${preferences.deal_breakers.join(", ")}` : "",
+    `Budget: £${preferences.max_price.toLocaleString("en-GB")}`,
+    `Commute: max ${preferences.commute_max_minutes} min`,
+    preferences.style_notes ? `Style: ${preferences.style_notes}` : "",
+  ].filter(Boolean).join(". ");
+
+  const highlights = await generateHighlights(
+    propertyResult,
+    areaResult,
+    commuteResult,
+    preferenceSummary,
+  );
+
   // Insert evaluation
   const evaluationRow = {
     listing_id: listingId,
@@ -135,7 +151,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     stamp_duty: financeResult.stamp_duty,
     stress_test_monthly: financeResult.stress_test_monthly,
     total_monthly: financeResult.total_monthly,
-    property_summary: propertyResult.property_summary,
+    property_summary: highlights,
     area_summary: areaResult.area_summary,
     raw_property_eval: propertyResult.raw,
     raw_area_eval: areaResult.raw,

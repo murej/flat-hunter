@@ -1,11 +1,11 @@
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 
 const commands = [
-  { command: "start", description: "Say hello to Stath" },
-  { command: "preferences", description: "Search preferences" },
-  { command: "saved", description: "Saved properties" },
-  { command: "stop", description: "STOP TALKING" },
-  { command: "restart", description: "Reset preferences and start fresh" },
+  { command: "start", description: "👋  Hi Stath" },
+  { command: "preferences", description: "📝  My preferences" },
+  { command: "saved", description: "❤️  Liked properties" },
+  { command: "stop", description: "🛑  STOP TALKING" },
+  { command: "restart", description: "❌  Clear preferences" },
 ];
 
 async function main() {

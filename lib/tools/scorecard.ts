@@ -24,7 +24,7 @@ export function buildScorecardText(
     `🏠 *${listing.title}*`,
     `📍 ${listing.address}`,
     priceLine,
-    `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${listing.sqft} sqft` : ""}`,
+    `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${Math.round(listing.sqft / 10.764)} m²` : ""}`,
     "",
     `*Overall: ${evaluation.overall_score}/10*`,
     "",
@@ -35,16 +35,7 @@ export function buildScorecardText(
     `Commute: ${scoreBar(evaluation.commute_score)} ${evaluation.commute_score}/10`,
   ];
 
-  if (evaluation.commute_minutes !== null) {
-    lines.push(`🚇 ${evaluation.commute_minutes} min — ${evaluation.commute_route}`);
-  }
-
-  if (evaluation.deal_breaker_flags.length > 0) {
-    lines.push(`\n⚠️ Deal breakers: ${evaluation.deal_breaker_flags.join(", ")}`);
-  }
-
-  lines.push(`\n${evaluation.property_summary}`);
-  lines.push(`\n📌 ${evaluation.area_summary}`);
+  lines.push("", evaluation.property_summary);
 
   if (listing.url) {
     lines.push(`\n🔗 ${listing.url}`);
@@ -57,7 +48,7 @@ export function buildScorecardButtons(
   listingId: string,
 ): Array<Array<{ text: string; callback_data: string }>> {
   return [
-    [{ text: "❓ Why?", callback_data: `why:${listingId}` }],
+    [{ text: "More details", callback_data: `why:${listingId}` }],
   ];
 }
 
