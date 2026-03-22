@@ -8,13 +8,15 @@ import { slimAreaContext } from "./context";
 import type { AreaEvalResult } from "@/types";
 import { clampScore } from "@/lib/utils/agent-output";
 import { AGENT_NAME, TELEMETRY_TAG } from "./config";
-import { ensureDbToolAgentsRegistered } from "@/lib/agents/ensure-db-tool-agents";
 import { getAgentConfig } from "@/lib/core/registry";
 
 export async function runAreaExpert(
   prompt: string,
   areaContext?: Record<string, unknown>,
 ): Promise<AreaEvalResult> {
+  const { ensureDbToolAgentsRegistered } = await import(
+    "@/lib/agents/registry-bootstrap"
+  );
   await ensureDbToolAgentsRegistered();
   const cfg = getAgentConfig(AGENT_NAME);
   if (!cfg?.tools) {

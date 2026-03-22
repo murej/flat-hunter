@@ -18,7 +18,7 @@ export function buildCallAgentTool() {
     }),
     execute: async ({ agent, prompt }) => {
       const { ensureDbToolAgentsRegistered } = await import(
-        "@/lib/agents/ensure-db-tool-agents"
+        "@/lib/agents/registry-bootstrap"
       );
       await ensureDbToolAgentsRegistered();
 

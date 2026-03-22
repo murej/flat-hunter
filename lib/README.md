@@ -28,11 +28,16 @@ Registered as `"area_expert"`. Evaluates neighbourhood quality via crime stats, 
 
 Queue consumer for `pending_notifications`. Sends intro, scorecards (with 500ms delay), and summary messages to Telegram.
 
+### Registry bootstrap (`agents/registry-bootstrap.ts`)
+
+Side-effect import of `preference/` registers that agent synchronously. Exports `ensureDbToolAgentsRegistered()` to register `property_expert` and `area_expert` with async-built tools (db_read schema RPC). API entrypoints (e.g. Telegram) import this module and await `ensureDbToolAgentsRegistered()` before handling requests that use experts or `call_agent`.
+
 ## Tools (`tools/`)
 
 | File | Purpose |
 |------|---------|
 | `evaluation-pipeline.ts` | Orchestrates evaluators (commute+finance+property parallel, then area expert), computes weighted overall score, upserts evaluation |
+| `highlights.ts` | `generateHighlights()` — LLM step for 3–7 scorecard match bullets; uses [`prompts/highlights.ts`](prompts/highlights.ts) |
 | `area.ts` | `fetchAreaContext()` — postcodes.io, Police API crime data, ArcGIS IMD by LSOA |
 | `commute.ts` | `evaluateCommute()` — TfL Journey Planner + Nominatim geocoding |
 | `finance.ts` | `evaluateFinance()` — mortgage repayment, interest-only, SDLT with FTB relief, stress test |

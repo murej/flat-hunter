@@ -5,8 +5,7 @@ import { sendTelegramRouteCatchUserMessage } from "@/lib/telegram/llm-outbound";
 import { handleTelegramUpdate } from "@/lib/agents/conversation/handler";
 import { reportError } from "@/lib/core/reporting";
 
-import "@/lib/agents/register-conversation-agents";
-import { ensureDbToolAgentsRegistered } from "@/lib/agents/ensure-db-tool-agents";
+import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 
 export const maxDuration = 60;
 

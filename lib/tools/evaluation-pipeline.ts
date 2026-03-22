@@ -8,7 +8,7 @@ import { generateHighlights } from "./highlights";
 import { getLatestMortgageRate } from "./mortgage-rate";
 import { runPropertyExpert } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
-import { ensureDbToolAgentsRegistered } from "@/lib/agents/ensure-db-tool-agents";
+import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
 import type {
   Preferences,

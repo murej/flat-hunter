@@ -1,3 +1,10 @@
+/**
+ * Registers the preference agent on import (sync) and exposes async registration for
+ * property-expert and area-expert (db_read schema RPC). Import this module from API
+ * entrypoints before conversation or call_agent may run.
+ */
+import "@/lib/agents/preference";
+
 import { registerAgent } from "@/lib/core/registry";
 import { getPropertyExpertModel, getAreaExpertModel } from "@/lib/config/agent-models";
 import { getPropertyExpertTools } from "@/lib/agents/property-expert/tools";

@@ -7,7 +7,7 @@ import { PROPERTY_EXPERT_SYSTEM } from "./prompts";
 import type { PropertyEvalResult } from "@/types";
 import { clampScore } from "@/lib/utils/agent-output";
 import { AGENT_NAME, TELEMETRY_TAG } from "./config";
-import { ensureDbToolAgentsRegistered } from "@/lib/agents/ensure-db-tool-agents";
+import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { getAgentConfig } from "@/lib/core/registry";
 
 export async function runPropertyExpert(

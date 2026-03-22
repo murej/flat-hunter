@@ -305,6 +305,8 @@ Every agent directory contains a `config.ts` — the single place to tune that a
 
 Shared constants live in `lib/config/`: `EXPERT_MAX_STEPS=8` (expert-web-search.ts), `CONVERSATION_MAX_STEPS=3` / `RE_EVAL_COOLDOWN_HOURS=24` (conversation-llm.ts). `SCORECARD_DELAY_MS=500` lives at top of notifications.ts.
 
+`lib/agents/registry-bootstrap.ts` side-effect-imports preference (sync registry) and exports `ensureDbToolAgentsRegistered()` for async property/area expert registration (db_read schema appendix).
+
 ### Preference — `lib/agents/preference/`
 
 Registered as `"preference"`. Tools: `db`. Model: Haiku. Max steps: 5. Multi-turn preference collection (areas, price, deposit, bedrooms, commute, must-haves, deal-breakers, style). On save with `AREA_PROFILE_BATCH=true`: iterate target areas → `runAreaExpert()` per area via `getPostcodeContextForArea()` to pre-populate agent_context.
@@ -349,7 +351,7 @@ Not registered — Telegram webhook entry point.
 
 ## API Routes
 
-**`/api/telegram`** — POST. Imports agents for registration, `handleTelegramUpdate(parseInbound(body))`. Returns 200 always (prevents Telegram retries). `maxDuration = 60`. Catch block forwards error to user via `sendMessage()`. When `TELEGRAM_VERBOSE_MODE=true`, sends full error message; otherwise sends generic "Something went wrong" without details.
+**`/api/telegram`** — POST. Imports `lib/agents/registry-bootstrap` (preference + `ensureDbToolAgentsRegistered`), `handleTelegramUpdate(parseInbound(body))`. Returns 200 always (prevents Telegram retries). `maxDuration = 60`. Catch block forwards error to user via `sendMessage()`. When `TELEGRAM_VERBOSE_MODE=true`, sends full error message; otherwise sends generic "Something went wrong" without details.
 
 **`/api/ingest`** — POST. HTTP Basic auth. `handleIngestWebhook(request)`. `waitUntil()` for background eval + notify. `maxDuration = 60`.
 
