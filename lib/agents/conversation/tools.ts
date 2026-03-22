@@ -33,6 +33,8 @@ export async function buildConversationTools(
   let updatePreferencesDirectCapture: DirectToolResult | null = null;
   let showSavedDirectCapture: DirectToolResult | null = null;
   let showPreferencesDirectCapture: DirectToolResult | null = null;
+  /** Listing UUID last shown via scorecard tools (for outbound conversation logging). */
+  let lastScorecardListingId: string | null = null;
   const inbound = inboundUserText ?? "";
 
   const coreTools = await buildTools(
@@ -113,6 +115,7 @@ export async function buildConversationTools(
           if (!scorecard) {
             return "One listing matched but a scorecard could not be built (missing evaluation?).";
           }
+          lastScorecardListingId = id;
           const next: ToolResult = {
             type: "direct",
             message: scorecard.text,
@@ -147,6 +150,7 @@ export async function buildConversationTools(
       execute: async ({ listing_id }) => {
         const scorecard = await getScorecard(listing_id);
         if (!scorecard) return "Listing not found.";
+        lastScorecardListingId = listing_id;
         const next: ToolResult = {
           type: "direct",
           message: scorecard.text,
@@ -273,5 +277,6 @@ export async function buildConversationTools(
       }
       return captured;
     },
+    getLastScorecardListingId: () => lastScorecardListingId,
   };
 }

@@ -14,8 +14,12 @@ import {
   userLikelyWantsPropertyScorecardView,
   userTargetsADifferentListingThanActive,
   userWantsExplicitWhyExplanation,
+  detectSqftSuperlativeIntent,
 } from "./why-intent";
-import { getScorecard } from "@/lib/tools/listing";
+import {
+  getScorecard,
+  getListingIdBySqftExtreme,
+} from "@/lib/tools/listing";
 import {
   getConversationHistory,
   getActiveListingId,
@@ -62,12 +66,34 @@ export async function conversationAgent(
     return;
   }
 
+  const sqftExtreme = detectSqftSuperlativeIntent(text);
+  if (sqftExtreme) {
+    const resolvedId = await getListingIdBySqftExtreme(sqftExtreme);
+    const scorecard = resolvedId ? await getScorecard(resolvedId) : null;
+    if (scorecard && resolvedId) {
+      await sendWithButtons(
+        scorecard.text,
+        scorecard.buttons,
+        "Markdown",
+      );
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "outbound",
+        message: scorecard.text,
+        listing_id: resolvedId,
+      });
+      return;
+    }
+  }
+
   // Build tools
-  const { tools, getCaptured } = await buildConversationTools(activeId, text);
+  const { tools, getCaptured, getLastScorecardListingId } =
+    await buildConversationTools(activeId, text);
 
   // Active listing anchor helps "this one" — but biases toward wrong UUID for newest/oldest/area, etc.
+  const targetsDifferent = userTargetsADifferentListingThanActive(text);
   const contextNote =
-    activeId && !userTargetsADifferentListingThanActive(text)
+    activeId && !targetsDifferent
       ? `\n[Active listing context: ID ${activeId}]`
       : "";
 
@@ -188,11 +214,13 @@ export async function conversationAgent(
         parse_mode: payload?.parse_mode,
       });
     }
+    const outboundListingId =
+      getLastScorecardListingId() ?? activeId ?? null;
     await logConversation({
       telegram_message_id: messageId,
       direction: "outbound",
       message: captured.message,
-      listing_id: activeId ?? null,
+      listing_id: outboundListingId,
     });
     return;
   }

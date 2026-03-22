@@ -25,7 +25,11 @@ export function userLikelyWantsPropertyScorecardView(text: string): boolean {
   if (/\bcompare\b/i.test(t) && /\b(properties|listings|flats)\b/i.test(t)) return false;
 
   if (/\b(show|see|view|open|display|pull up)\b/i.test(t)) return true;
-  if (/\b(newest|oldest|latest|earliest|cheapest|priciest|most expensive)\b/i.test(t))
+  if (
+    /\b(newest|oldest|latest|earliest|cheapest|priciest|most expensive|largest|smallest|biggest|tiniest)\b/i.test(
+      t,
+    )
+  )
     return true;
   if (/\bscorecard\b/i.test(t)) return true;
   if (/\b(find|look up|search for)\b/i.test(t) && /\b(property|flat|listing|place)\b/i.test(t))
@@ -39,7 +43,11 @@ export function userLikelyWantsPropertyScorecardView(text: string): boolean {
  */
 export function userTargetsADifferentListingThanActive(text: string): boolean {
   const t = text.trim();
-  if (/\b(newest|oldest|latest|earliest|cheapest|priciest|most expensive)\b/i.test(t))
+  if (
+    /\b(newest|oldest|latest|earliest|cheapest|priciest|most expensive|largest|smallest|biggest|tiniest)\b/i.test(
+      t,
+    )
+  )
     return true;
   if (
     /\b(another|a different|different|other)\b/i.test(t) &&
@@ -76,6 +84,22 @@ export function userAsksToShowPreferences(text: string): boolean {
     /\b(show|what are|see)\b/i.test(t) &&
     /\b(preferences?|prefs?|search criteria|my criteria)\b/i.test(t)
   );
+}
+
+/** In/near/around + place-like token (not "your database", "the list", etc.). */
+const GEO_LISTING_REFINEMENT =
+  /\b(in|near|around)\s+(?!your\b|the\b|all\b|our\b|my\b|this\b|that\b|a\b|an\b)([a-z][a-z-]*)\b/i;
+
+/**
+ * User wants globally largest/smallest property by sqft, without a geographic filter in text.
+ * Returns null when a place refinement is present (delegate to LLM / find_listings).
+ */
+export function detectSqftSuperlativeIntent(text: string): "max" | "min" | null {
+  const t = text.trim();
+  if (GEO_LISTING_REFINEMENT.test(t)) return null;
+  if (/\b(largest|biggest)\b/i.test(t)) return "max";
+  if (/\b(smallest|tiniest)\b/i.test(t)) return "min";
+  return null;
 }
 
 export function listingIdFromWhyToolPayload(data: unknown): string | null {

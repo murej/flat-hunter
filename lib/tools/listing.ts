@@ -138,6 +138,47 @@ export async function findListingsByQuery(
   return { rows, totalAfterFilter, cappedAtFetch };
 }
 
+/**
+ * Listing id for global "largest/smallest" shortcut: prefer sqft when present,
+ * else fall back to bedrooms (then price) so DBs without sqft still work.
+ */
+export async function getListingIdBySqftExtreme(
+  extreme: "max" | "min",
+): Promise<string | null> {
+  const asc = extreme === "min";
+  const admin = getSupabaseAdmin();
+
+  const sqftRes = await admin
+    .from("listings")
+    .select("id")
+    .not("sqft", "is", null)
+    .gt("sqft", 0)
+    .order("sqft", { ascending: asc })
+    .limit(1)
+    .maybeSingle();
+
+  if (sqftRes.error) {
+    console.error("getListingIdBySqftExtreme sqft:", sqftRes.error.message);
+  } else if (sqftRes.data && (sqftRes.data as { id: unknown }).id != null) {
+    return String((sqftRes.data as { id: string }).id);
+  }
+
+  const bedRes = await admin
+    .from("listings")
+    .select("id")
+    .order("bedrooms", { ascending: asc })
+    .order("price", { ascending: asc })
+    .limit(1)
+    .maybeSingle();
+
+  if (bedRes.error) {
+    console.error("getListingIdBySqftExtreme bedrooms:", bedRes.error.message);
+    return null;
+  }
+  const row = bedRes.data as { id: string } | null;
+  return row?.id != null ? String(row.id) : null;
+}
+
 export function formatFindListingsForTool(result: FindListingsResult): string {
   if (result.rows.length === 0) {
     return "No listings matched that search. Try different keywords (address, postcode, or area), or ask for your saved list.";
