@@ -22,6 +22,49 @@ function logLlmUsage(
 export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
   const model = input.model ?? getDefaultModel();
 
+  // #region agent log
+  if (input.telemetryTag === "email_verification") {
+    const rawEv = process.env.EMAIL_VERIFICATION_MODEL;
+    const rawDefault = process.env.LLM_DEFAULT_MODEL;
+    const payload = {
+      hypothesisId: "ev-model-H1-H5",
+      runId: process.env.VERCEL ? "vercel" : "local",
+      inputModelDefined: input.model !== undefined,
+      inputModelLen: input.model?.length ?? -1,
+      resolvedModelLen: model.length,
+      resolvedTrimLen: model.trim().length,
+      envEmailVerificationSet: rawEv !== undefined,
+      envEmailVerificationLen: rawEv?.length ?? -1,
+      envEmailVerificationTrimEmpty:
+        rawEv != null && rawEv.trim().length === 0,
+      envLlmDefaultLen: rawDefault?.length ?? -1,
+      envLlmDefaultTrimEmpty:
+        rawDefault != null && rawDefault.trim().length === 0,
+    };
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "b75a44",
+      },
+      body: JSON.stringify({
+        sessionId: "b75a44",
+        location: "lib/core/agent.ts:runAgent",
+        message: "email_verification model resolution",
+        data: payload,
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    console.log(
+      JSON.stringify({
+        debugSession: "b75a44",
+        tag: "agent-email-verification-model",
+        ...payload,
+      }),
+    );
+  }
+  // #endregion
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opts: Record<string, any> = {
     model: anthropic(model),
