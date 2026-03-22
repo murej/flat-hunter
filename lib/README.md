@@ -6,7 +6,7 @@ Domain-specific agents, tools, configuration, and schemas. Imports from [Layer 1
 
 ### Conversation (`agents/conversation/`)
 
-Telegram webhook entry point. Routes: `/start`, `save:/skip:/unsave:`, `why:{id}`, `scorecard:{id}`, `update preferences`, and default free-text chat. 11 domain tools plus core tools (db_read, db_write, call_agent), including `find_and_show_scorecard` (search → scorecard when one match) and `find_listings` for non-UUID lookup. Supports DataToolResult chaining for why-explanation and comparison sub-agents.
+Telegram webhook entry point. Routes: `/start`, `save:/skip:/unsave:`, `why:{id}`, `scorecard:{id}`, `update preferences`, and default free-text chat. Free-text turns run a **minimal LLM router** (`general` | `browse` | `preferences` | `insight`) then expose only the domain tools for that mode plus core `db_read` / `db_write` / optional `call_agent`. Per-mode prompts live in `conversation/prompts.ts` + `tool-policy.ts`. Includes `find_and_show_scorecard` (search → scorecard when one match) and `find_listings`. Supports DataToolResult chaining for why-explanation and comparison sub-agents.
 
 ### Ingest (`agents/ingest/`)
 

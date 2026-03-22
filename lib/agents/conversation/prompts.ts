@@ -1,35 +1,24 @@
 import { STATH_PERSONALITY } from "@/lib/prompts/personality";
+import type { ConversationMode } from "./conversation-router";
 
-export const CONVERSATION_AGENT_SYSTEM = `${STATH_PERSONALITY}
+/** Shared for all modes (router already narrowed intent). */
+export const CONVERSATION_AGENT_BASE = `${STATH_PERSONALITY}
 
-You are a UK property search assistant on Telegram. You help the user manage their property search.
+You are a UK property search assistant on Telegram. Be concise; emoji sparingly.
 
-You can:
-- Find listings by keywords (address, postcode, area, etc.) when the user does not give a listing ID
-- **find_and_show_scorecard** — search by keywords; if exactly one match, opens the full scorecard with buttons in one step (preferred when they want to view a property by description, not a UUID)
-- Show property scorecards with detailed evaluations (when you already have a listing UUID)
-- Explain why a property received its scores
-- Compare properties side by side
-- Save listings (users can also react/like scorecard messages to save)
-- Trigger re-evaluation of a listing
-- Update their search preferences
-- Answer general property questions
+When [Active listing context: ID …] appears on the user turn, use that UUID only for "this one" / "that property" / "it". If they want a different listing, resolve via search tools or db_read (allowlisted tables in db_read description).
 
-Keep responses concise — this is Telegram, not an essay. Use emoji sparingly but naturally.
+If a tool returns a direct result with buttons, the runtime sends them — acknowledge briefly.`;
 
-When [Active listing context: ID …] appears on the user turn, use that UUID only for "this one" / "that property" / "it". If they want a different listing, do not use that ID — resolve via find_and_show_scorecard, find_listings, or db_read (schema and usage are in the db_read tool description).
+export const CONVERSATION_MODE_FRAGMENTS: Record<ConversationMode, string> = {
+  general: `MODE: general — only tools you have (usually db_read / call_agent). Do not invent listing IDs. Prefer short answers.`,
 
-The default way to show a listing is the scorecard with buttons: use **find_and_show_scorecard** when you only have keywords; use **show_property_scorecard** when you have a listing_id. Do not summarize a matching property in plain text when one tool call can show the scorecard. get_property_evaluation is only for an explicit verbal "why" explanation of scores, not for viewing the listing.
+  browse: `MODE: browse — listing actions only. Prefer **find_and_show_scorecard** when the user describes a property without a UUID; **show_property_scorecard** when you have listing_id. Use **find_listings** when they want a list without opening a scorecard yet. Do not call get_property_evaluation (not available). Save with save_listing; re-eval with evaluate_listing when asked.`,
 
-If a tool returns a direct result with buttons, the system will handle sending them — just confirm the action naturally.
+  preferences: `MODE: preferences — only show_preferences, show_saved_properties, or update_preferences when the user is clearly asking about prefs, saved list, or criteria. Do not open arbitrary listing scorecards unless they tie it to saved prefs.`,
 
-TOOL USE RULES:
-- NEVER call show_preferences or show_saved_properties unless the user's message is explicitly asking to see them.
-- Greetings (/start, hello, hi) should NEVER trigger any tool calls. Just respond conversationally.
-- When the user wants to see/open/view a property by description (no UUID), call find_and_show_scorecard—not find_listings alone followed by a prose description.
-- When in doubt whether to use a tool: if they clearly want to see a listing or scorecard, use the appropriate scorecard tool; otherwise respond conversationally without inventing listing data.
-- Use find_listings when they want a list of options or to browse matches without opening the scorecard yet.
-- Prefer show_property_scorecard when you already have listing_id; use get_property_evaluation only when the user explicitly asks why scores are what they are. Other domain tools (save_listing, evaluate_listing, get_comparison_data) match their names; db_read lists allowlisted tables and columns in its own description.`;
+  insight: `MODE: insight — **get_property_evaluation** for why/how scores; **get_comparison_data** when comparing multiple listings (gather listing UUIDs via db_read if needed). You do not have find_* or show_property_scorecard in this mode; use db_read on listings when you need ids.`,
+};
 
 export const WHY_EXPLANATION_SYSTEM = `${STATH_PERSONALITY}
 

@@ -343,7 +343,7 @@ Not registered — Telegram webhook entry point.
 
 **`index.ts`** — log inbound → check prefs → resolve active listing → run agent with history → chain sub-agents on DataToolResult → send response (read payload for buttons/parse_mode) → log outbound.
 
-**Prompts**: `CONVERSATION_AGENT_SYSTEM`, `WHY_EXPLANATION_SYSTEM`, `COMPARISON_SYSTEM`.
+**Prompts**: `CONVERSATION_AGENT_BASE` + per-mode fragments (`tool-policy` / `prompts.ts`), `WHY_EXPLANATION_SYSTEM`, `COMPARISON_SYSTEM`. **Router**: `conversation-router.ts` (structured mode enum, one step).
 
 ### Notifications — `lib/agents/notifications.ts`
 

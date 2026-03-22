@@ -1,13 +1,14 @@
 import { runAgent } from "@/lib/core/agent";
 import { getConversationModel, getWhyExplanationModel } from "@/lib/config/agent-models";
-import { CONVERSATION_MAX_STEPS } from "@/lib/config/conversation-llm";
 import { TELEMETRY_TAG, TELEMETRY_TAG_WHY, TELEMETRY_TAG_COMPARISON, SUB_AGENT_MAX_STEPS } from "./config";
-import {
-  CONVERSATION_AGENT_SYSTEM,
-  WHY_EXPLANATION_SYSTEM,
-  COMPARISON_SYSTEM,
-} from "./prompts";
+import { WHY_EXPLANATION_SYSTEM, COMPARISON_SYSTEM } from "./prompts";
 import { buildConversationTools } from "./tools";
+import { resolveConversationMode } from "./conversation-router";
+import {
+  buildConversationSystemPrompt,
+  MAX_STEPS_BY_MODE,
+} from "./tool-policy";
+import { envBool } from "@/lib/utils/env-utils";
 import {
   listingIdFromWhyToolPayload,
   userAsksHowManyListings,
@@ -86,9 +87,14 @@ export async function conversationAgent(
     }
   }
 
+  const { mode, source } = await resolveConversationMode(text);
+  if (envBool("CONVERSATION_ROUTER_LOG")) {
+    console.log(`[conversation] turn mode=${mode} routerSource=${source}`);
+  }
+
   // Build tools
   const { tools, getCaptured, getLastScorecardListingId } =
-    await buildConversationTools(activeId, text);
+    await buildConversationTools(activeId, text, mode);
 
   // Active listing anchor helps "this one" — but biases toward wrong UUID for newest/oldest/area, etc.
   const targetsDifferent = userTargetsADifferentListingThanActive(text);
@@ -99,14 +105,14 @@ export async function conversationAgent(
 
   // Run agent
   const result = await runAgent({
-    systemPrompt: CONVERSATION_AGENT_SYSTEM,
+    systemPrompt: buildConversationSystemPrompt(mode),
     messages: [
       ...history,
       { role: "user" as const, content: text + contextNote },
     ],
     tools,
     model: getConversationModel(),
-    maxSteps: CONVERSATION_MAX_STEPS,
+    maxSteps: MAX_STEPS_BY_MODE[mode],
     telemetryTag: TELEMETRY_TAG,
   });
 

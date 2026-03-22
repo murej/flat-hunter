@@ -22,10 +22,43 @@ import {
   userAsksForSavedOrShortlistList,
   userAsksToShowPreferences,
 } from "./why-intent";
+import type { ConversationMode } from "./conversation-router";
+
+/** Domain tool names exposed per router mode (core db/call_agent added separately). */
+const MODE_DOMAIN_KEYS: Record<ConversationMode, readonly string[]> = {
+  general: [],
+  browse: [
+    "find_listings",
+    "find_and_show_scorecard",
+    "show_property_scorecard",
+    "save_listing",
+    "evaluate_listing",
+  ],
+  preferences: [
+    "show_preferences",
+    "show_saved_properties",
+    "update_preferences",
+  ],
+  insight: ["get_property_evaluation", "get_comparison_data"],
+};
+
+function pickDomainTools<T extends Record<string, unknown>>(
+  all: T,
+  keys: readonly string[],
+): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of keys) {
+    if (k in all) {
+      (out as Record<string, unknown>)[k] = all[k as keyof T];
+    }
+  }
+  return out;
+}
 
 export async function buildConversationTools(
-  activeListingId: string | null,
-  inboundUserText?: string,
+  _activeListingId: string | null,
+  inboundUserText: string | undefined,
+  mode: ConversationMode,
 ) {
   let captured: ToolResult | null = null;
   /** If show_property_scorecard ran, keep it — async tool completion order can let get_property_evaluation overwrite `captured` last. */
@@ -244,8 +277,14 @@ export async function buildConversationTools(
     }),
   };
 
+  const domainKeys = MODE_DOMAIN_KEYS[mode];
+  const domainSubset = pickDomainTools(
+    domainTools as Record<string, unknown>,
+    domainKeys,
+  ) as typeof domainTools;
+
   return {
-    tools: { ...coreTools, ...domainTools },
+    tools: { ...coreTools, ...domainSubset },
     getCaptured: () => {
       if (
         captured?.type === "data" &&

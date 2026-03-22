@@ -12,6 +12,13 @@ export const getAreaExpertModel = () =>
 export const getConversationModel = () =>
   envModel("CONVERSATION_MODEL", DEFAULT);
 
+/** One-shot mode classifier; falls back to conversation model id. */
+export const getConversationRouterModel = () =>
+  envModel(
+    "CONVERSATION_ROUTER_MODEL",
+    envModel("CONVERSATION_MODEL", DEFAULT),
+  );
+
 export const getWhyExplanationModel = () =>
   envModel("WHY_EXPLANATION_MODEL", DEFAULT);
 
