@@ -87,6 +87,45 @@ export async function buildConversationTools(
       },
     }),
 
+    find_and_show_scorecard: tool({
+      description:
+        "Search listings by keywords; if exactly one property matches, show the full scorecard with action buttons (same UI as show_property_scorecard). If zero or multiple matches, returns the same text summary as find_listings—tell the user to narrow the search or pick an ID. Prefer this over find_listings when the user wants to open/view/show a specific property described by area, postcode, address fragment, etc., and you do not already have a listing UUID.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe(
+            "Search keywords derived from the user's message (e.g. 'Clapham', 'SW11', 'Old Street')",
+          ),
+        scope: z
+          .enum(["all", "saved"])
+          .optional()
+          .describe(
+            "Use 'saved' for shortlisted listings only; use 'all' or omit to search every listing",
+          ),
+      }),
+      execute: async ({ query, scope }) => {
+        const result = await findListingsByQuery(query, {
+          status: scope === "saved" ? "saved" : "any",
+        });
+        if (result.totalAfterFilter === 1 && result.rows.length === 1) {
+          const id = result.rows[0]!.id;
+          const scorecard = await getScorecard(id);
+          if (!scorecard) {
+            return "One listing matched but a scorecard could not be built (missing evaluation?).";
+          }
+          const next: ToolResult = {
+            type: "direct",
+            message: scorecard.text,
+            payload: { buttons: scorecard.buttons, parse_mode: "Markdown" } as TelegramPayload,
+          };
+          scorecardDirectCapture = next;
+          captured = next;
+          return scorecard.text;
+        }
+        return truncateForToolResult(formatFindListingsForTool(result));
+      },
+    }),
+
     save_listing: tool({
       description: "Save/shortlist a property listing",
       inputSchema: z.object({
@@ -101,7 +140,7 @@ export async function buildConversationTools(
 
     show_property_scorecard: tool({
       description:
-        "Show the full scorecard for a property (formatted summary with action buttons). Use this when the user wants to see, open, or view a listing — including after find_listings resolves a single match — unless they only want a verbal explanation of why scores were assigned (then use get_property_evaluation).",
+        "Show the full scorecard for a property (formatted summary with action buttons) when you have a listing UUID. If the user only described the property in words, use find_and_show_scorecard instead (unless you already resolved an ID). Not for verbal 'why' explanations — use get_property_evaluation only when they explicitly ask why scores are what they are.",
       inputSchema: z.object({
         listing_id: z.string().describe("The listing ID"),
       }),

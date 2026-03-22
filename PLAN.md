@@ -339,7 +339,7 @@ Not registered — Telegram webhook entry point.
 
 **`handler.ts`** — routes: `/start`, `save:/skip:/unsave:`, `why:{id}`, `scorecard:{id}`, `update preferences`/`update:{category}`, default → `conversationAgent()`.
 
-**`tools.ts`** — 10 tools: `show_preferences`, `show_saved_properties`, `skip_listing`, `save_listing`, `show_property_scorecard`, `evaluate_listing` (re-eval cooldown), `get_property_evaluation` (DataToolResult → explanation chain), `get_comparison_data` (DataToolResult → comparison chain), `update_preferences` (→ preference agent), `call_agent` (toggleable).
+**`tools.ts`** — 11 domain tools: `show_preferences`, `show_saved_properties`, `find_listings`, `find_and_show_scorecard` (single match → scorecard with buttons), `save_listing`, `show_property_scorecard`, `evaluate_listing` (re-eval cooldown), `get_property_evaluation` (DataToolResult → explanation chain), `get_comparison_data` (DataToolResult → comparison chain), `update_preferences` (→ preference agent), plus core `db_read` / `db_write` and optional `call_agent`.
 
 **`index.ts`** — log inbound → check prefs → resolve active listing → run agent with history → chain sub-agents on DataToolResult → send response (read payload for buttons/parse_mode) → log outbound.
 
