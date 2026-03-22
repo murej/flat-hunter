@@ -16,6 +16,54 @@ export const maxDuration = 60;
 export async function GET(request: Request) {
   // Verify caller (e.g. Supabase pg_net) when CRON_SECRET is set
   const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  // #region agent log
+  {
+    const expectedBearer = cronSecret ? `Bearer ${cronSecret}` : "";
+    const exactMatch = Boolean(
+      cronSecret && authHeader === `Bearer ${cronSecret}`,
+    );
+    const authDebugData = {
+      hypothesisId: "H1-H5",
+      runId: process.env.VERCEL ? "vercel" : "local",
+      hasCronSecretEnv: Boolean(cronSecret),
+      cronSecretLen: cronSecret?.length ?? 0,
+      cronSecretHasLeadingOrTrailingWs:
+        cronSecret != null && cronSecret !== cronSecret.trim(),
+      authPresent: authHeader !== null,
+      authLen: authHeader?.length ?? 0,
+      bearerPrefixOk: authHeader?.startsWith("Bearer ") ?? false,
+      expectedBearerLen: expectedBearer.length,
+      exactMatch,
+      lenMismatch:
+        Boolean(cronSecret) &&
+        authHeader !== null &&
+        authHeader.length !== expectedBearer.length,
+    };
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "b75a44",
+      },
+      body: JSON.stringify({
+        sessionId: "b75a44",
+        location: "app/api/cron/evaluate/route.ts:GET",
+        message: "cron evaluate auth check",
+        data: authDebugData,
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // Vercel/production: ingest is unreachable from the edge; mirror to function logs.
+    console.log(
+      JSON.stringify({
+        debugSession: "b75a44",
+        tag: "cron-evaluate-auth",
+        ...authDebugData,
+      }),
+    );
+  }
+  // #endregion
   if (
     process.env.CRON_SECRET &&
     authHeader !== `Bearer ${process.env.CRON_SECRET}`

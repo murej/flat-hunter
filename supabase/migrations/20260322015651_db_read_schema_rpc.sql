@@ -24,4 +24,4 @@ AS $$
 $$;
 
 REVOKE ALL ON FUNCTION public.get_db_read_schema_subset(text[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_db_read_schema_subset(text[]) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_db_read_schema_subset(text[]) TO service_role;;
