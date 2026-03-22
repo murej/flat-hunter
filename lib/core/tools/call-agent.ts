@@ -17,6 +17,11 @@ export function buildCallAgentTool() {
         .describe("The task or question to send to the agent"),
     }),
     execute: async ({ agent, prompt }) => {
+      const { ensureDbToolAgentsRegistered } = await import(
+        "@/lib/agents/ensure-db-tool-agents"
+      );
+      await ensureDbToolAgentsRegistered();
+
       const config = getAgentConfig(agent);
       if (!config) return `Error: agent "${agent}" not found in registry.`;
 

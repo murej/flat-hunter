@@ -17,16 +17,23 @@ function validateTable(table: string, allowed: string[]): string | null {
   return null;
 }
 
-export function buildDbReadTool(config: DbToolConfig) {
+const DB_READ_BASE_DESCRIPTION =
+  "Read rows from the database. Returns a JSON array of matching rows.";
+
+export function buildDbReadTool(
+  config: DbToolConfig,
+  schemaAppendix: string,
+) {
   return tool({
-    description:
-      "Read rows from the database. Returns JSON array of matching rows.",
+    description: `${DB_READ_BASE_DESCRIPTION}\n\n${schemaAppendix}`,
     inputSchema: z.object({
       table: z.string().describe("Table name to query"),
       columns: z
         .string()
         .optional()
-        .describe("Comma-separated columns to select (default: *)"),
+        .describe(
+          "Comma-separated columns to select (default: table-specific subset in schema below, or * if none)",
+        ),
       filters: z
         .record(z.string(), z.unknown())
         .optional()

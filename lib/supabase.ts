@@ -36,6 +36,17 @@ export async function getListing(id: string): Promise<Listing | null> {
   return data as Listing | null;
 }
 
+export async function countListings(): Promise<number> {
+  const { count, error } = await getSupabaseAdmin()
+    .from("listings")
+    .select("id", { count: "exact", head: true });
+  if (error) {
+    console.error("countListings:", error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
+
 export async function updateListingStatus(
   id: string,
   status: string,

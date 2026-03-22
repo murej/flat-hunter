@@ -1,35 +1,31 @@
 import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
 import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
-import { registerAgent } from "@/lib/core/registry";
 import { getPropertyExpertModel } from "@/lib/config/agent-models";
 import { PropertyEvalSchema } from "@/lib/schemas";
 import { PROPERTY_EXPERT_SYSTEM } from "./prompts";
-import { getPropertyExpertTools } from "./tools";
 import type { PropertyEvalResult } from "@/types";
 import { clampScore } from "@/lib/utils/agent-output";
 import { AGENT_NAME, TELEMETRY_TAG } from "./config";
-
-const { tools, providerTools, maxSteps } = getPropertyExpertTools();
-
-registerAgent(AGENT_NAME, {
-  systemPrompt: PROPERTY_EXPERT_SYSTEM,
-  tools,
-  providerTools,
-  model: getPropertyExpertModel(),
-  maxSteps,
-});
+import { ensureDbToolAgentsRegistered } from "@/lib/agents/ensure-db-tool-agents";
+import { getAgentConfig } from "@/lib/core/registry";
 
 export async function runPropertyExpert(
   prompt: string,
 ): Promise<PropertyEvalResult> {
+  await ensureDbToolAgentsRegistered();
+  const cfg = getAgentConfig(AGENT_NAME);
+  if (!cfg?.tools) {
+    throw new Error("Property expert agent not registered");
+  }
+
   const result = await runAgent({
     systemPrompt: PROPERTY_EXPERT_SYSTEM,
     prompt,
-    tools,
-    providerTools,
+    tools: cfg.tools,
+    providerTools: cfg.providerTools,
     model: getPropertyExpertModel(),
-    maxSteps,
+    maxSteps: cfg.maxSteps,
     telemetryTag: TELEMETRY_TAG,
     output: Output.object({ schema: PropertyEvalSchema }),
   });

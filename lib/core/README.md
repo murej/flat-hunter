@@ -40,11 +40,11 @@ Domain-free, reusable LLM agent runtime. Depends only on Vercel AI SDK, Zod, and
 
 ### `tools/`
 
-`buildTools(sets, config?)` returns Zod-based tools with `execute`. `buildProviderTools(sets)` returns Anthropic native tools.
+`buildTools(sets, config?)` is async; returns Zod-based tools with `execute`. `buildProviderTools(sets)` returns Anthropic native tools.
 
 | Tool | File | Description |
 |------|------|-------------|
-| `db_read` | `db.ts` | Query rows with filters, ordering, limits. Table allowlist enforced. |
+| `db_read` | `db.ts` | Query rows with filters, ordering, limits. Table allowlist enforced. Description includes a cached schema appendix from `get_db_read_schema_subset` RPC (see `db-read-schema-appendix.ts`). |
 | `db_write` | `db.ts` | Insert or update rows. Requires filters for updates. |
 | `call_agent` | `call-agent.ts` | Delegate to a registered agent by name. |
 | `web_search` | `web-search.ts` | Anthropic native web search (`webSearch_20250305`, max 3 uses). |

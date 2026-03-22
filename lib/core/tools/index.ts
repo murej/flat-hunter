@@ -2,6 +2,7 @@ import type { Tool } from "ai";
 import { buildDbReadTool, buildDbWriteTool, type DbToolConfig } from "./db";
 import { buildCallAgentTool } from "./call-agent";
 import { buildWebSearchTool } from "./web-search";
+import { getDbReadSchemaDescriptionAppendix } from "./db-read-schema-appendix";
 
 export type ToolSet = "db" | "call_agent" | "web_search";
 
@@ -9,14 +10,17 @@ type BuildToolsConfig = {
   db?: DbToolConfig;
 };
 
-export function buildTools(
+export async function buildTools(
   sets: ToolSet[],
   config?: BuildToolsConfig,
-): Record<string, Tool> {
+): Promise<Record<string, Tool>> {
   const tools: Record<string, Tool> = {};
 
   if (sets.includes("db") && config?.db) {
-    tools.db_read = buildDbReadTool(config.db);
+    const schemaAppendix = await getDbReadSchemaDescriptionAppendix(
+      config.db,
+    );
+    tools.db_read = buildDbReadTool(config.db, schemaAppendix);
     tools.db_write = buildDbWriteTool(config.db);
   }
 

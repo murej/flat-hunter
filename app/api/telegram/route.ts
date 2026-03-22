@@ -6,6 +6,7 @@ import { handleTelegramUpdate } from "@/lib/agents/conversation/handler";
 import { reportError } from "@/lib/core/reporting";
 
 import "@/lib/agents/register-conversation-agents";
+import { ensureDbToolAgentsRegistered } from "@/lib/agents/ensure-db-tool-agents";
 
 export const maxDuration = 60;
 
@@ -15,6 +16,8 @@ function ok() {
 
 export async function POST(request: Request) {
   try {
+    await ensureDbToolAgentsRegistered();
+
     const body = (await request.json()) as Record<string, unknown>;
 
     if (await tryHandleMessageReaction(body)) {

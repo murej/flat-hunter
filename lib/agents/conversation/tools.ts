@@ -10,16 +10,32 @@ import {
   getComparisonData,
   getFormattedSavedList,
   getFormattedPreferences,
+  findListingsByQuery,
+  formatFindListingsForTool,
   UPDATE_PREFERENCES_BUTTONS,
 } from "@/lib/tools/listing";
+import { truncateForToolResult } from "@/lib/utils/tool-result";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import type { ToolResult } from "@/lib/core/types";
+import type { DirectToolResult, ToolResult } from "@/lib/core/types";
 import type { TelegramPayload } from "@/types";
+import {
+  userAsksForSavedOrShortlistList,
+  userAsksToShowPreferences,
+} from "./why-intent";
 
-export function buildConversationTools(activeListingId: string | null) {
+export async function buildConversationTools(
+  activeListingId: string | null,
+  inboundUserText?: string,
+) {
   let captured: ToolResult | null = null;
+  /** If show_property_scorecard ran, keep it — async tool completion order can let get_property_evaluation overwrite `captured` last. */
+  let scorecardDirectCapture: ToolResult | null = null;
+  let updatePreferencesDirectCapture: DirectToolResult | null = null;
+  let showSavedDirectCapture: DirectToolResult | null = null;
+  let showPreferencesDirectCapture: DirectToolResult | null = null;
+  const inbound = inboundUserText ?? "";
 
-  const coreTools = buildTools(
+  const coreTools = await buildTools(
     isCallAgentEnabled() ? ["db", "call_agent"] : ["db"],
     { db: dbConfig },
   );
@@ -31,6 +47,7 @@ export function buildConversationTools(activeListingId: string | null) {
       execute: async () => {
         const text = await getFormattedPreferences();
         captured = { type: "direct", message: text, payload: { parse_mode: "Markdown" } as TelegramPayload };
+        showPreferencesDirectCapture = captured;
         return text;
       },
     }),
@@ -41,7 +58,32 @@ export function buildConversationTools(activeListingId: string | null) {
       execute: async () => {
         const text = await getFormattedSavedList();
         captured = { type: "direct", message: text, payload: { parse_mode: "Markdown" } as TelegramPayload };
+        showSavedDirectCapture = captured;
         return text;
+      },
+    }),
+
+    find_listings: tool({
+      description:
+        "Search listings by keywords when the user refers to a property without a listing UUID (address fragment, area, postcode, portal reference, price in the title, etc.). Map the user's wording into a short keyword query. Use scope 'saved' only when they mean their saved/shortlisted properties.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe(
+            "Search keywords derived from the user's message (e.g. 'Clapham', 'SW11', 'Old Street')",
+          ),
+        scope: z
+          .enum(["all", "saved"])
+          .optional()
+          .describe(
+            "Use 'saved' for shortlisted listings only; use 'all' or omit to search every listing",
+          ),
+      }),
+      execute: async ({ query, scope }) => {
+        const result = await findListingsByQuery(query, {
+          status: scope === "saved" ? "saved" : "any",
+        });
+        return truncateForToolResult(formatFindListingsForTool(result));
       },
     }),
 
@@ -58,18 +100,21 @@ export function buildConversationTools(activeListingId: string | null) {
     }),
 
     show_property_scorecard: tool({
-      description: "Show the full scorecard for a property",
+      description:
+        "Show the full scorecard for a property (formatted summary with action buttons). Use this when the user wants to see, open, or view a listing — including after find_listings resolves a single match — unless they only want a verbal explanation of why scores were assigned (then use get_property_evaluation).",
       inputSchema: z.object({
         listing_id: z.string().describe("The listing ID"),
       }),
       execute: async ({ listing_id }) => {
         const scorecard = await getScorecard(listing_id);
         if (!scorecard) return "Listing not found.";
-        captured = {
+        const next: ToolResult = {
           type: "direct",
           message: scorecard.text,
           payload: { buttons: scorecard.buttons, parse_mode: "Markdown" } as TelegramPayload,
         };
+        scorecardDirectCapture = next;
+        captured = next;
         return scorecard.text;
       },
     }),
@@ -111,7 +156,8 @@ export function buildConversationTools(activeListingId: string | null) {
     }),
 
     get_property_evaluation: tool({
-      description: "Get evaluation data for a property to explain scores (triggers Why explanation chain)",
+      description:
+        "ONLY when the user explicitly asks why the property scored how it did, or wants a detailed explanation of the ratings — not for simply showing the listing or scorecard. Triggers a separate long prose 'why' reply, not the scorecard UI. If they want to see the property, use show_property_scorecard instead.",
       inputSchema: z.object({
         listing_id: z.string().describe("The listing ID"),
       }),
@@ -149,6 +195,7 @@ export function buildConversationTools(activeListingId: string | null) {
             : "What preferences would you like to update?",
           payload: { buttons: UPDATE_PREFERENCES_BUTTONS, parse_mode: "Markdown" } as TelegramPayload,
         };
+        updatePreferencesDirectCapture = captured;
         return "Preference update initiated.";
       },
     }),
@@ -156,6 +203,36 @@ export function buildConversationTools(activeListingId: string | null) {
 
   return {
     tools: { ...coreTools, ...domainTools },
-    getCaptured: () => captured,
+    getCaptured: () => {
+      if (
+        captured?.type === "data" &&
+        captured.toolName === "get_property_evaluation"
+      ) {
+        if (updatePreferencesDirectCapture?.type === "direct") {
+          return updatePreferencesDirectCapture;
+        }
+        if (
+          showSavedDirectCapture?.type === "direct" &&
+          inbound &&
+          userAsksForSavedOrShortlistList(inbound)
+        ) {
+          return showSavedDirectCapture;
+        }
+        if (
+          showPreferencesDirectCapture?.type === "direct" &&
+          inbound &&
+          userAsksToShowPreferences(inbound)
+        ) {
+          return showPreferencesDirectCapture;
+        }
+        if (scorecardDirectCapture?.type === "direct") {
+          const p = scorecardDirectCapture.payload as TelegramPayload | undefined;
+          if (p?.buttons?.length) {
+            return scorecardDirectCapture;
+          }
+        }
+      }
+      return captured;
+    },
   };
 }

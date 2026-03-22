@@ -8,6 +8,7 @@ import { generateHighlights } from "./highlights";
 import { getLatestMortgageRate } from "./mortgage-rate";
 import { runPropertyExpert } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
+import { ensureDbToolAgentsRegistered } from "@/lib/agents/ensure-db-tool-agents";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
 import type {
   Preferences,
@@ -65,6 +66,8 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   scorecardText: string;
   scorecardButtons: Array<Array<{ text: string; callback_data: string }>>;
 } | null> {
+  await ensureDbToolAgentsRegistered();
+
   const [listing, preferences] = await Promise.all([
     getListing(listingId),
     getPreferences(),

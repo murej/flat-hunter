@@ -9,11 +9,20 @@ import {
 } from "./prompts";
 import { buildConversationTools } from "./tools";
 import {
+  listingIdFromWhyToolPayload,
+  userAsksHowManyListings,
+  userLikelyWantsPropertyScorecardView,
+  userTargetsADifferentListingThanActive,
+  userWantsExplicitWhyExplanation,
+} from "./why-intent";
+import { getScorecard } from "@/lib/tools/listing";
+import {
   getConversationHistory,
   getActiveListingId,
   logConversation,
   getPreferences,
   setSessionMode,
+  countListings,
 } from "@/lib/supabase";
 import { runPreferenceAgent } from "@/lib/agents/preference";
 import { sendMessage, sendMarkdown, sendWithButtons } from "@/lib/telegram";
@@ -54,12 +63,13 @@ export async function conversationAgent(
   }
 
   // Build tools
-  const { tools, getCaptured } = buildConversationTools(activeId);
+  const { tools, getCaptured } = await buildConversationTools(activeId, text);
 
-  // Add active listing context to prompt
-  const contextNote = activeId
-    ? `\n[Active listing context: ID ${activeId}]`
-    : "";
+  // Active listing anchor helps "this one" — but biases toward wrong UUID for newest/oldest/area, etc.
+  const contextNote =
+    activeId && !userTargetsADifferentListingThanActive(text)
+      ? `\n[Active listing context: ID ${activeId}]`
+      : "";
 
   // Run agent
   const result = await runAgent({
@@ -81,20 +91,66 @@ export async function conversationAgent(
     const dataResult = captured;
 
     if (dataResult.toolName === "get_property_evaluation") {
-      const explanation = await runAgent({
-        systemPrompt: WHY_EXPLANATION_SYSTEM,
-        prompt: `Explain these evaluation scores:\n${JSON.stringify(dataResult.data, null, 2)}`,
-        model: getWhyExplanationModel(),
-        maxSteps: SUB_AGENT_MAX_STEPS,
-        telemetryTag: TELEMETRY_TAG_WHY,
-      });
-      await sendMarkdown(explanation.message);
+      const wantsWhy = userWantsExplicitWhyExplanation(text);
+      const wantsScorecardView = userLikelyWantsPropertyScorecardView(text);
+      const evalListingId = listingIdFromWhyToolPayload(dataResult.data);
+
+      if (!wantsWhy && wantsScorecardView && evalListingId) {
+        const scorecard = await getScorecard(evalListingId);
+        if (scorecard) {
+          await sendWithButtons(
+            scorecard.text,
+            scorecard.buttons,
+            "Markdown",
+          );
+          await logConversation({
+            telegram_message_id: messageId,
+            direction: "outbound",
+            message: scorecard.text,
+            listing_id: evalListingId,
+          });
+          return;
+        }
+      }
+
+      if (wantsWhy) {
+        const explanation = await runAgent({
+          systemPrompt: WHY_EXPLANATION_SYSTEM,
+          prompt: `Explain these evaluation scores:\n${JSON.stringify(dataResult.data, null, 2)}`,
+          model: getWhyExplanationModel(),
+          maxSteps: SUB_AGENT_MAX_STEPS,
+          telemetryTag: TELEMETRY_TAG_WHY,
+        });
+        await sendMarkdown(explanation.message);
+        await logConversation({
+          telegram_message_id: messageId,
+          direction: "outbound",
+          message: explanation.message,
+          listing_id: activeId ?? null,
+          intent: "why_explanation",
+        });
+        return;
+      }
+
+      if (userAsksHowManyListings(text)) {
+        const n = await countListings();
+        const countMsg = `There are **${n}** listings on file.`;
+        await sendMarkdown(countMsg);
+        await logConversation({
+          telegram_message_id: messageId,
+          direction: "outbound",
+          message: countMsg,
+          listing_id: activeId ?? null,
+        });
+        return;
+      }
+
+      await sendMarkdown(result.message);
       await logConversation({
         telegram_message_id: messageId,
         direction: "outbound",
-        message: explanation.message,
+        message: result.message,
         listing_id: activeId ?? null,
-        intent: "why_explanation",
       });
       return;
     }
