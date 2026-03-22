@@ -28,3 +28,11 @@ export function cronSecretFromEnv(): string | undefined {
   const t = raw.trim();
   return t === "" ? undefined : t;
 }
+
+/** Trimmed CLOUDMAILIN_SECRET for Basic auth — same trimming issue as cron on Vercel. */
+export function cloudmailinSecretFromEnv(): string | undefined {
+  const raw = process.env.CLOUDMAILIN_SECRET;
+  if (raw == null || raw === "") return undefined;
+  const t = raw.trim();
+  return t === "" ? undefined : t;
+}
