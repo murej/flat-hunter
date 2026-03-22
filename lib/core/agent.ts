@@ -4,8 +4,13 @@ import { envBool } from "@/lib/utils/env-utils";
 import { reportError } from "./reporting";
 import type { RunAgentInput, RunAgentOutput } from "./types";
 
+const FALLBACK_MODEL_ID = "claude-haiku-4-5";
+
 function getDefaultModel(): string {
-  return process.env.LLM_DEFAULT_MODEL || "claude-haiku-4-5";
+  const raw = process.env.LLM_DEFAULT_MODEL;
+  if (raw == null || raw === "") return FALLBACK_MODEL_ID;
+  const t = raw.trim();
+  return t === "" ? FALLBACK_MODEL_ID : t;
 }
 
 function logLlmUsage(
@@ -20,27 +25,12 @@ function logLlmUsage(
 }
 
 export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
-  const model = input.model ?? getDefaultModel();
+  const rawResolved = input.model ?? getDefaultModel();
+  const trimmed = rawResolved.trim();
+  const model = trimmed === "" ? FALLBACK_MODEL_ID : trimmed;
 
   // #region agent log
   if (input.telemetryTag === "email_verification") {
-    const rawEv = process.env.EMAIL_VERIFICATION_MODEL;
-    const rawDefault = process.env.LLM_DEFAULT_MODEL;
-    const payload = {
-      hypothesisId: "ev-model-H1-H5",
-      runId: process.env.VERCEL ? "vercel" : "local",
-      inputModelDefined: input.model !== undefined,
-      inputModelLen: input.model?.length ?? -1,
-      resolvedModelLen: model.length,
-      resolvedTrimLen: model.trim().length,
-      envEmailVerificationSet: rawEv !== undefined,
-      envEmailVerificationLen: rawEv?.length ?? -1,
-      envEmailVerificationTrimEmpty:
-        rawEv != null && rawEv.trim().length === 0,
-      envLlmDefaultLen: rawDefault?.length ?? -1,
-      envLlmDefaultTrimEmpty:
-        rawDefault != null && rawDefault.trim().length === 0,
-    };
     fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
       method: "POST",
       headers: {
@@ -50,8 +40,12 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
       body: JSON.stringify({
         sessionId: "b75a44",
         location: "lib/core/agent.ts:runAgent",
-        message: "email_verification model resolution",
-        data: payload,
+        message: "email_verification model post-fix",
+        data: {
+          hypothesisId: "ev-model-verify",
+          runId: process.env.VERCEL ? "vercel-post-fix" : "local-post-fix",
+          finalModelLen: model.length,
+        },
         timestamp: Date.now(),
       }),
     }).catch(() => {});
@@ -59,7 +53,9 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
       JSON.stringify({
         debugSession: "b75a44",
         tag: "agent-email-verification-model",
-        ...payload,
+        hypothesisId: "ev-model-verify",
+        runId: process.env.VERCEL ? "vercel-post-fix" : "local-post-fix",
+        finalModelLen: model.length,
       }),
     );
   }

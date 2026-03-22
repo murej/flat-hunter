@@ -18,7 +18,10 @@ export function envIntClamped(
 }
 
 export function envModel(key: string, fallback = "claude-haiku-4-5"): string {
-  return process.env[key] || fallback;
+  const val = process.env[key];
+  if (val == null || val === "") return fallback;
+  const t = val.trim();
+  return t === "" ? fallback : t;
 }
 
 /** Trimmed CRON_SECRET for Bearer checks — Vercel env values often include accidental newlines vs Vault. */
