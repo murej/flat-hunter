@@ -19,3 +19,13 @@ DEPLOY_ARGS=(deploy --prod --non-interactive)
 echo "⏳ Vercel production deploy..."
 "$VERCEL" "${DEPLOY_ARGS[@]}"
 echo "✅ Vercel deploy finished (or queued with --no-wait)."
+
+# shellcheck source=load-env.sh
+source "$SCRIPT_DIR/load-env.sh"
+PROD_URL="${NEXT_PUBLIC_APP_URL:-}"
+PROD_URL="${PROD_URL%/}"
+if [ -n "$PROD_URL" ]; then
+  bash "$SCRIPT_DIR/print-cloudmailin-ingest-url.sh" --block "$PROD_URL"
+else
+  echo "ℹ️  Set NEXT_PUBLIC_APP_URL in .env.local to show the CloudMailin ingest URL after deploy."
+fi

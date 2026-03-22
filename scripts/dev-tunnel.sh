@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Start a cloudflared tunnel and set Telegram webhook to the tunnel URL.
 # Run in a separate terminal alongside `npm run dev`.
-# Requires: cloudflared (brew install cloudflared)
+# cloudflared comes from the devDependency (npm install); no global install needed.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH="$SCRIPT_DIR/../node_modules/.bin:$PATH"
 # shellcheck source=load-env.sh
 source "$SCRIPT_DIR/load-env.sh"
 

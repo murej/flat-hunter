@@ -1,7 +1,6 @@
 -- Lease listings during evaluation; atomic batch claim for cron (SKIP LOCKED).
 
 ALTER TABLE listings DROP CONSTRAINT IF EXISTS listings_status_check;
-
 ALTER TABLE listings ADD CONSTRAINT listings_status_check CHECK (
   status = ANY (
     ARRAY[
@@ -14,7 +13,6 @@ ALTER TABLE listings ADD CONSTRAINT listings_status_check CHECK (
     ]
   )
 );
-
 CREATE OR REPLACE FUNCTION public.claim_listings_for_evaluation(
   p_batch_limit int,
   p_stale_minutes int DEFAULT 15
@@ -49,7 +47,6 @@ BEGIN
   RETURNING l.id;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.claim_listing_for_evaluation(
   p_id uuid,
   p_stale_minutes int DEFAULT 15
@@ -76,11 +73,9 @@ BEGIN
   RETURN n > 0;
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION public.claim_listings_for_evaluation(int, int) TO anon;
 GRANT EXECUTE ON FUNCTION public.claim_listings_for_evaluation(int, int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_listings_for_evaluation(int, int) TO service_role;
-
 GRANT EXECUTE ON FUNCTION public.claim_listing_for_evaluation(uuid, int) TO anon;
 GRANT EXECUTE ON FUNCTION public.claim_listing_for_evaluation(uuid, int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_listing_for_evaluation(uuid, int) TO service_role;
