@@ -21,6 +21,14 @@ fi
 
 echo "Reading from $ENV_FILE..."
 
+# Leading/trailing whitespace only (avoids accidental newlines/spaces in pasted secrets on Vercel)
+trim_ws() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
 NEXT_PUBLIC_PUSHED=false
 
 while IFS= read -r line || [ -n "$line" ]; do
@@ -30,6 +38,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   # Split on first = only (preserves = in values like base64 tokens)
   key="${line%%=*}"
   value="${line#*=}"
+  key="$(trim_ws "$key")"
   key="${key// /}"
   [ -z "$key" ] && continue
   # Local-only: DB password for Supabase CLI (never needed on Vercel)
@@ -37,11 +46,12 @@ while IFS= read -r line || [ -n "$line" ]; do
   # Strip surrounding quotes
   value="${value#\"}" ; value="${value%\"}"
   value="${value#\'}" ; value="${value%\'}"
+  value="$(trim_ws "$value")"
 
   [[ "$key" == NEXT_PUBLIC_* ]] && NEXT_PUBLIC_PUSHED=true
 
   echo "Setting $key..."
-  echo "$value" | "$VERCEL" env add "$key" production --force
+  printf '%s' "$value" | "$VERCEL" env add "$key" production --force
 done < "$ENV_FILE"
 
 echo "Done."

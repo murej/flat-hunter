@@ -10,6 +10,7 @@ cd "$PROJECT_ROOT"
 VERCEL="$PROJECT_ROOT/node_modules/.bin/vercel"
 [ -x "$VERCEL" ] || VERCEL="vercel"
 
+# Pushes .env.local → Vercel production (values trimmed of leading/trailing whitespace; see push-env-to-vercel.sh)
 bash "$SCRIPT_DIR/push-env-to-vercel.sh"
 
 # DEPLOY_VERCEL_NO_WAIT=1 to exit before the deployment finishes
