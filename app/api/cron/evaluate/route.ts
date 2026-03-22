@@ -5,7 +5,7 @@ import {
   getEvaluatingStaleMinutes,
 } from "@/lib/supabase/evaluation-claim";
 import { runEvaluationsAndNotify } from "@/lib/agents/ingest/tools";
-import { envIntClamped } from "@/lib/utils/env-utils";
+import { cronSecretFromEnv, envIntClamped } from "@/lib/utils/env-utils";
 
 // Import agents to trigger registration
 import "@/lib/agents/property-expert";
@@ -16,7 +16,8 @@ export const maxDuration = 60;
 export async function GET(request: Request) {
   // Verify caller (e.g. Supabase pg_net) when CRON_SECRET is set
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecretRaw = process.env.CRON_SECRET;
+  const cronSecret = cronSecretFromEnv();
   // #region agent log
   {
     const expectedBearer = cronSecret ? `Bearer ${cronSecret}` : "";
@@ -24,12 +25,14 @@ export async function GET(request: Request) {
       cronSecret && authHeader === `Bearer ${cronSecret}`,
     );
     const authDebugData = {
-      hypothesisId: "H1-H5",
-      runId: process.env.VERCEL ? "vercel" : "local",
+      hypothesisId: "H3-trim",
+      runId: process.env.VERCEL ? "vercel-post-fix" : "local-post-fix",
       hasCronSecretEnv: Boolean(cronSecret),
       cronSecretLen: cronSecret?.length ?? 0,
       cronSecretHasLeadingOrTrailingWs:
-        cronSecret != null && cronSecret !== cronSecret.trim(),
+        cronSecretRaw != null &&
+        cronSecretRaw !== "" &&
+        cronSecretRaw !== cronSecretRaw.trim(),
       authPresent: authHeader !== null,
       authLen: authHeader?.length ?? 0,
       bearerPrefixOk: authHeader?.startsWith("Bearer ") ?? false,
@@ -64,10 +67,7 @@ export async function GET(request: Request) {
     );
   }
   // #endregion
-  if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import { syncMortgageRateFromEnv } from "@/lib/sync-boe-mortgage-rate";
+import { cronSecretFromEnv } from "@/lib/utils/env-utils";
 
 export const maxDuration = 30;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
-  if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
+  const cronSecret = cronSecretFromEnv();
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

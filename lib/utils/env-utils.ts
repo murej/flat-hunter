@@ -20,3 +20,11 @@ export function envIntClamped(
 export function envModel(key: string, fallback = "claude-haiku-4-5"): string {
   return process.env[key] || fallback;
 }
+
+/** Trimmed CRON_SECRET for Bearer checks — Vercel env values often include accidental newlines vs Vault. */
+export function cronSecretFromEnv(): string | undefined {
+  const raw = process.env.CRON_SECRET;
+  if (raw == null || raw === "") return undefined;
+  const t = raw.trim();
+  return t === "" ? undefined : t;
+}
