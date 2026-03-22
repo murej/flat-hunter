@@ -29,38 +29,6 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
   const trimmed = rawResolved.trim();
   const model = trimmed === "" ? FALLBACK_MODEL_ID : trimmed;
 
-  // #region agent log
-  if (input.telemetryTag === "email_verification") {
-    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "b75a44",
-      },
-      body: JSON.stringify({
-        sessionId: "b75a44",
-        location: "lib/core/agent.ts:runAgent",
-        message: "email_verification model post-fix",
-        data: {
-          hypothesisId: "ev-model-verify",
-          runId: process.env.VERCEL ? "vercel-post-fix" : "local-post-fix",
-          finalModelLen: model.length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    console.log(
-      JSON.stringify({
-        debugSession: "b75a44",
-        tag: "agent-email-verification-model",
-        hypothesisId: "ev-model-verify",
-        runId: process.env.VERCEL ? "vercel-post-fix" : "local-post-fix",
-        finalModelLen: model.length,
-      }),
-    );
-  }
-  // #endregion
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opts: Record<string, any> = {
     model: anthropic(model),
