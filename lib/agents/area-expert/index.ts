@@ -4,7 +4,7 @@ import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
 import { getAreaExpertModel } from "@/lib/config/agent-models";
 import { AreaEvalSchema } from "@/lib/schemas";
 import { AREA_EXPERT_SYSTEM } from "./prompts";
-import { slimAreaContext } from "./context";
+import { slimAreaContext, isValidAreaContext } from "./context";
 import type { AreaEvalResult } from "@/types";
 import { clampScore } from "@/lib/utils/agent-output";
 import { AGENT_NAME, TELEMETRY_TAG } from "./config";
@@ -23,8 +23,8 @@ export async function runAreaExpert(
     throw new Error("Area expert agent not registered");
   }
 
-  const contextStr = areaContext
-    ? `\n\nPre-fetched area data:\n${JSON.stringify(slimAreaContext(areaContext as Parameters<typeof slimAreaContext>[0]), null, 2)}`
+  const contextStr = areaContext && isValidAreaContext(areaContext)
+    ? `\n\nPre-fetched area data:\n${JSON.stringify(slimAreaContext(areaContext), null, 2)}`
     : "";
 
   const result = await runAgent({

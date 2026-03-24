@@ -1,6 +1,7 @@
 import { preprocessString, toLlmContext } from "langmail";
 import PostalMime from "postal-mime";
 import { annotateUrlWithPortalId } from "./portal-id";
+import { LISTING_URL_PATTERN_SOURCES, INGEST_LISTING_URLS_SECTION_HEADING } from "./config";
 
 const MAX_INPUT_CHARS = 32_000;
 
@@ -28,15 +29,9 @@ export async function extractMimeParts(
 }
 
 export function extractListingUrls(text: string): string[] {
-  const patterns = [
-    /https?:\/\/(?:www\.)?rightmove\.co\.uk\/properties\/\d+/g,
-    /https?:\/\/(?:www\.)?zoopla\.co\.uk\/for-sale\/details\/\d+/g,
-    /https?:\/\/(?:www\.)?onthemarket\.com\/details\/\d+/g,
-    /https?:\/\/(?:www\.)?primelocation\.com\/for-sale\/details\/\d+/g,
-  ];
-
   const urls = new Set<string>();
-  for (const pattern of patterns) {
+  for (const src of LISTING_URL_PATTERN_SOURCES) {
+    const pattern = new RegExp(src, "g");
     const matches = text.match(pattern);
     if (matches) {
       for (const m of matches) urls.add(m);
@@ -102,7 +97,7 @@ export function buildLlmContextFromParts(
   const allUrls = [...new Set([...urls, ...listingHrefs])];
   if (allUrls.length > 0) {
     const annotated = allUrls.map(annotateUrlWithPortalId);
-    context += `\n\nDetected listing URLs:\n${annotated.join("\n")}`;
+    context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${annotated.join("\n")}`;
   }
 
   return { context, truncated };
@@ -120,10 +115,17 @@ export async function buildLlmContextFromRaw(
     // Extract direct listing URLs and all hrefs from the raw message
     const urls = extractListingUrls(rawMessage);
     const hrefs = extractAllHrefs(rawMessage);
-    const allUrls = [...new Set([...urls, ...hrefs])];
+    const listingHrefs = hrefs.filter(
+      (h) =>
+        h.includes("rightmove.co.uk") ||
+        h.includes("zoopla.co.uk") ||
+        h.includes("onthemarket.com") ||
+        h.includes("primelocation.com"),
+    );
+    const allUrls = [...new Set([...urls, ...listingHrefs])];
     if (allUrls.length > 0) {
       const annotated = allUrls.map(annotateUrlWithPortalId);
-      context += `\n\nDetected URLs:\n${annotated.join("\n")}`;
+      context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${annotated.join("\n")}`;
     }
 
     if (context.length > MAX_INPUT_CHARS) {

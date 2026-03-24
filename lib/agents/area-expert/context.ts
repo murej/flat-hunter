@@ -11,6 +11,14 @@ type AreaContextData = {
   matchedArea: string | null;
 };
 
+export function isValidAreaContext(data: unknown): data is AreaContextData {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  if (typeof obj.postcode !== "object" || obj.postcode === null) return false;
+  const pc = obj.postcode as Record<string, unknown>;
+  return typeof pc.admin_ward === "string";
+}
+
 export function slimAreaContext(ctx: AreaContextData): Record<string, unknown> {
   // Trim crime data — just counts by category
   const crimeCounts: Record<string, number> = {};
