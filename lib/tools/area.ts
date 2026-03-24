@@ -1,4 +1,4 @@
-import { retryWithBackoff, sleep } from "@/lib/utils/retry";
+import { retryWithBackoff, sleep, nominatimThrottle } from "@/lib/utils/retry";
 
 type PostcodeResult = {
   postcode: string;
@@ -19,9 +19,12 @@ type AreaContext = {
   matchedArea: string | null;
 };
 
+const API_TIMEOUT = 8000;
+
 async function fetchPostcode(postcode: string): Promise<PostcodeResult | null> {
   const res = await fetch(
     `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`,
+    { signal: AbortSignal.timeout(API_TIMEOUT) },
   );
   if (!res.ok) return null;
   const json = (await res.json()) as { result: PostcodeResult };
@@ -37,6 +40,7 @@ async function fetchCrime(
       async () => {
         const res = await fetch(
           `https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`,
+          { signal: AbortSignal.timeout(API_TIMEOUT) },
         );
         if (!res.ok) throw new Error(`Police API ${res.status}`);
         return (await res.json()) as unknown[];
@@ -52,7 +56,7 @@ async function fetchCrime(
 async function fetchIMD(lsoa: string): Promise<unknown | null> {
   try {
     const url = `https://services3.arcgis.com/ivmBBrHfQfDnDf8Q/arcgis/rest/services/Indices_of_Multiple_Deprivation_(IMD)_2019/FeatureServer/0/query?where=lsoa11cd='${encodeURIComponent(lsoa)}'&outFields=*&f=json`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(API_TIMEOUT) });
     if (!res.ok) return null;
     const json = (await res.json()) as {
       features?: Array<{ attributes: unknown }>;
@@ -108,20 +112,21 @@ export async function resolveAreaToPostcode(
   area: string,
 ): Promise<string | null> {
   // Use Nominatim to find a representative postcode for an area
-  await sleep(1100); // Nominatim rate limit: 1 req/sec
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(area + ", London, UK")}&format=json&limit=1&addressdetails=1`,
-      { headers: { "User-Agent": "Stath/1.0" } },
-    );
-    if (!res.ok) return null;
-    const results = (await res.json()) as Array<{
-      address?: { postcode?: string };
-    }>;
-    return results[0]?.address?.postcode ?? null;
-  } catch {
-    return null;
-  }
+  return nominatimThrottle(async () => {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(area + ", London, UK")}&format=json&limit=1&addressdetails=1`,
+        { headers: { "User-Agent": "Stath/1.0" }, signal: AbortSignal.timeout(API_TIMEOUT) },
+      );
+      if (!res.ok) return null;
+      const results = (await res.json()) as Array<{
+        address?: { postcode?: string };
+      }>;
+      return results[0]?.address?.postcode ?? null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export async function getPostcodeContextForArea(

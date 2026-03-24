@@ -31,3 +31,12 @@ export async function retryWithBackoff<T>(
   }
   throw lastError;
 }
+
+/** Global Nominatim queue — serialises calls with 1.1s gaps to respect 1 req/sec. */
+let _nominatimQueue: Promise<void> = Promise.resolve();
+
+export function nominatimThrottle<T>(fn: () => Promise<T>): Promise<T> {
+  const p = _nominatimQueue.then(() => sleep(1100)).then(fn);
+  _nominatimQueue = p.then(() => {}, () => {});
+  return p;
+}

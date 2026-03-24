@@ -41,7 +41,9 @@ export async function sendWithButtons(
   const markup = { inline_keyboard: buttons };
   try {
     return await sendMessage(text, { parse_mode: parseMode, reply_markup: markup });
-  } catch {
+  } catch (err) {
+    const isParseError = err instanceof Error && /can't parse|Bad Request/i.test(err.message);
+    if (!isParseError) throw err;
     return await sendMessage(text, { reply_markup: markup });
   }
 }
@@ -92,7 +94,9 @@ export async function sendMarkdown(
 ): Promise<number> {
   try {
     return await sendMessage(text, { ...opts, parse_mode: "Markdown" });
-  } catch {
+  } catch (err) {
+    const isParseError = err instanceof Error && /can't parse|Bad Request/i.test(err.message);
+    if (!isParseError) throw err;
     return await sendMessage(text, opts);
   }
 }

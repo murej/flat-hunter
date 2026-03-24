@@ -1,8 +1,12 @@
 import type { Listing, Evaluation } from "@/types";
 
+function escapeMarkdown(s: string): string {
+  return s.replace(/([_*\[\]`])/g, "\\$1");
+}
+
 function scoreBar(score: number | null): string {
   if (score == null) return "N/A";
-  const filled = Math.round(score);
+  const filled = Math.min(10, Math.max(0, Math.round(score)));
   return "█".repeat(filled) + "░".repeat(10 - filled);
 }
 
@@ -28,8 +32,8 @@ export function buildScorecardText(
   }
 
   const lines = [
-    `🏠 *${listing.title}*`,
-    `📍 ${listing.address}`,
+    `🏠 *${escapeMarkdown(listing.title)}*`,
+    `📍 ${escapeMarkdown(listing.address)}`,
     priceLine,
     `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${Math.round(listing.sqft / 10.764)} m²` : ""}`,
     "",
@@ -61,8 +65,8 @@ export function buildScorecardButtons(
 
 export function buildNoScoreScorecardText(listing: Listing): string {
   return [
-    `🏠 *${listing.title}*`,
-    `📍 ${listing.address}`,
+    `🏠 *${escapeMarkdown(listing.title)}*`,
+    `📍 ${escapeMarkdown(listing.address)}`,
     `💰 ${formatMoney(listing.price)}`,
     `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath`,
     "",

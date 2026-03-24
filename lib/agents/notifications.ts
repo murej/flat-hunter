@@ -16,14 +16,26 @@ type NotificationRow = {
 export async function consumePendingNotifications(
   batchId: string,
 ): Promise<void> {
-  const { data: notifications } = await getSupabaseAdmin()
+  // Recover stale unconsumed notifications from previous batches (older than 5 min)
+  const { data: stale } = await getSupabaseAdmin()
+    .from("pending_notifications")
+    .select("*")
+    .is("consumed_at", null)
+    .neq("batch_id", batchId)
+    .neq("type", "reject")
+    .lt("created_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .order("created_at", { ascending: true })
+    .limit(10);
+
+  const { data: current } = await getSupabaseAdmin()
     .from("pending_notifications")
     .select("*")
     .eq("batch_id", batchId)
     .is("consumed_at", null)
     .order("sequence", { ascending: true });
 
-  if (!notifications || notifications.length === 0) return;
+  const notifications = [...(stale ?? []), ...(current ?? [])];
+  if (notifications.length === 0) return;
 
   for (const notif of notifications as NotificationRow[]) {
     try {
@@ -79,20 +91,32 @@ export async function flushRejectSummary(): Promise<void> {
       : `• ${title} — ${score}/10`;
   });
 
-  const text = `*Filtered out (below 6/10):*\n${lines.join("\n")}`;
+  const header = `*Filtered out (below 6/10):*`;
+  const MAX_MSG_LEN = 3800;
 
-  try {
-    await sendMessage(text, {
-      parse_mode: "Markdown",
-      disable_web_page_preview: true,
-    });
-  } catch {
-    // Fallback without Markdown if formatting fails
-    const plain = `Filtered out (below 6/10):\n${(rejects as NotificationRow[]).map((r) => {
-      const { title, score } = r.payload as { title: string; score: number };
-      return `• ${title} — ${score}/10`;
-    }).join("\n")}`;
-    await sendMessage(plain, { disable_web_page_preview: true });
+  // Chunk lines to stay under Telegram's 4096-char limit
+  const chunks: string[][] = [[]];
+  let currentLen = header.length + 1;
+  for (const line of lines) {
+    if (currentLen + line.length + 1 > MAX_MSG_LEN && chunks[chunks.length - 1].length > 0) {
+      chunks.push([]);
+      currentLen = header.length + 1;
+    }
+    chunks[chunks.length - 1].push(line);
+    currentLen += line.length + 1;
+  }
+
+  for (const chunk of chunks) {
+    const text = `${header}\n${chunk.join("\n")}`;
+    try {
+      await sendMessage(text, {
+        parse_mode: "Markdown",
+        disable_web_page_preview: true,
+      });
+    } catch {
+      const plain = `Filtered out (below 6/10):\n${chunk.map((l) => l.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")).join("\n")}`;
+      await sendMessage(plain, { disable_web_page_preview: true });
+    }
   }
 
   const ids = (rejects as NotificationRow[]).map((r) => r.id);

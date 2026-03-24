@@ -1,5 +1,7 @@
 import type { CommuteEvalResult } from "@/types";
-import { retryWithBackoff, sleep } from "@/lib/utils/retry";
+import { retryWithBackoff, nominatimThrottle } from "@/lib/utils/retry";
+
+const API_TIMEOUT = 8000;
 
 async function resolvePostcodeToCoords(
   postcode: string,
@@ -8,6 +10,7 @@ async function resolvePostcodeToCoords(
     // Try full postcode first
     const res = await fetch(
       `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`,
+      { signal: AbortSignal.timeout(API_TIMEOUT) },
     );
     if (res.ok) {
       const json = (await res.json()) as {
@@ -22,6 +25,7 @@ async function resolvePostcodeToCoords(
     const outcode = postcode.trim().split(/\s/)[0];
     const outRes = await fetch(
       `https://api.postcodes.io/outcodes/${encodeURIComponent(outcode)}`,
+      { signal: AbortSignal.timeout(API_TIMEOUT) },
     );
     if (outRes.ok) {
       const outJson = (await outRes.json()) as {
@@ -51,33 +55,33 @@ function simplifyAddress(address: string): string {
 async function resolveAddressToCoords(
   address: string,
 ): Promise<{ lat: number; lon: number } | null> {
-  await sleep(1100); // Nominatim rate limit
-  try {
-    // Try simplified address (strip apartment/plot prefixes)
-    const simplified = simplifyAddress(address);
-    const query = simplified !== address ? simplified : address;
+  return nominatimThrottle(async () => {
+    try {
+      const simplified = simplifyAddress(address);
+      const query = simplified !== address ? simplified : address;
 
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
-      { headers: { "User-Agent": "Stath/1.0" } },
-    );
-    if (!res.ok) {
-      console.error("[commute] Nominatim failed for", query, "status:", res.status);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+        { headers: { "User-Agent": "Stath/1.0" }, signal: AbortSignal.timeout(API_TIMEOUT) },
+      );
+      if (!res.ok) {
+        console.error("[commute] Nominatim failed for", query, "status:", res.status);
+        return null;
+      }
+      const results = (await res.json()) as Array<{
+        lat: string;
+        lon: string;
+      }>;
+      if (!results[0]) {
+        console.error("[commute] Nominatim returned no results for", query);
+        return null;
+      }
+      return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
+    } catch (err) {
+      console.error("[commute] Nominatim error for", address, err);
       return null;
     }
-    const results = (await res.json()) as Array<{
-      lat: string;
-      lon: string;
-    }>;
-    if (!results[0]) {
-      console.error("[commute] Nominatim returned no results for", query);
-      return null;
-    }
-    return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
-  } catch (err) {
-    console.error("[commute] Nominatim error for", address, err);
-    return null;
-  }
+  });
 }
 
 type TfLJourney = {
@@ -103,6 +107,7 @@ async function fetchTfLJourney(
       async () => {
         const res = await fetch(
           `https://api.tfl.gov.uk/Journey/JourneyResults/${fromLat},${fromLon}/to/${toLat},${toLon}?${params}`,
+          { signal: AbortSignal.timeout(API_TIMEOUT) },
         );
         if (!res.ok) throw new Error(`TfL API ${res.status}`);
         return (await res.json()) as { journeys?: TfLJourney[] };

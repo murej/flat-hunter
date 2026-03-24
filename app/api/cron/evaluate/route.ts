@@ -21,7 +21,7 @@ function triggerNextInvocation(cronSecret: string | undefined): void {
   fetch(`${appUrl}/api/cron/evaluate`, {
     method: "GET",
     headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
-  }).catch(() => {});
+  }).catch((err) => console.error("[cron-trigger]", err));
 }
 
 export async function GET(request: Request) {

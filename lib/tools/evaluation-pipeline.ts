@@ -10,6 +10,7 @@ import { runPropertyExpert } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
 import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
+import { isValidAreaContext } from "@/lib/agents/area-expert/context";
 import type {
   Preferences,
   PropertyEvalResult,
@@ -112,12 +113,13 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   const propScores = [propertyResult.appeal_score, propertyResult.price_score, propertyResult.size_score].filter((s): s is number => s != null);
   const skipArea = propScores.length > 0 && propScores.every((s) => s < 3);
 
+  const validPriorContext = isValidAreaContext(priorContext?.content)
+    ? (priorContext!.content as Record<string, unknown>)
+    : undefined;
+
   const areaResult: AreaEvalResult = skipArea
     ? { area_score: null, area_summary: "Skipped — property scores too low.", notable_flags: [], raw: {} }
-    : await runAreaExpert(
-        areaPrompt,
-        priorContext?.content as Record<string, unknown> | undefined,
-      );
+    : await runAreaExpert(areaPrompt, validPriorContext);
 
   // Store area context for future use
   if (areaContext && !skipArea) {
@@ -232,10 +234,12 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     getLatestMortgageRate(),
   ]);
 
+  if (!updatedListing) return null;
+
   return {
     evaluation: eval_,
     listingId,
-    scorecardText: buildScorecardText(updatedListing!, eval_, mortgageRate, partialScore),
+    scorecardText: buildScorecardText(updatedListing, eval_, mortgageRate, partialScore),
     scorecardButtons: buildScorecardButtons(listingId),
   };
 }

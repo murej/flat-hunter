@@ -15,11 +15,15 @@ function checkAuth(request: Request): boolean {
   if (!authHeader) return false;
 
   const [scheme, credentials] = authHeader.split(" ");
-  if (scheme !== "Basic") return false;
+  if (scheme !== "Basic" || !credentials) return false;
 
-  const decoded = atob(credentials);
-  const password = decoded.split(":").slice(1).join(":");
-  return password === secret;
+  try {
+    const decoded = atob(credentials);
+    const password = decoded.split(":").slice(1).join(":");
+    return password === secret;
+  } catch {
+    return false;
+  }
 }
 
 /** Fire-and-forget: trigger the evaluate cron in a separate function invocation. */
@@ -30,7 +34,7 @@ function triggerEvaluationCron(): void {
   fetch(`${appUrl}/api/cron/evaluate`, {
     method: "GET",
     headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
-  }).catch(() => {});
+  }).catch((err) => console.error("[cron-trigger]", err));
 }
 
 export async function handleIngestWebhook(
