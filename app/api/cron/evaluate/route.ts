@@ -13,6 +13,16 @@ import "@/lib/agents/area-expert";
 
 export const maxDuration = 60;
 
+/** Fire-and-forget: trigger another invocation to drain remaining pending listings. */
+function triggerNextInvocation(cronSecret: string | undefined): void {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) return;
+  fetch(`${appUrl}/api/cron/evaluate`, {
+    method: "GET",
+    headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
+  }).catch(() => {});
+}
+
 export async function GET(request: Request) {
   // Verify caller (e.g. Supabase pg_net) when CRON_SECRET is set
   const authHeader = request.headers.get("authorization");
@@ -21,7 +31,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const batchSize = envIntClamped("EVALUATE_CRON_BATCH_SIZE", 1, 20, 2);
+  const batchSize = envIntClamped("EVALUATE_CRON_BATCH_SIZE", 1, 20, 1);
   const staleMinutes = getEvaluatingStaleMinutes();
 
   let ids: string[];
@@ -42,6 +52,9 @@ export async function GET(request: Request) {
     await reportError(err, { source: "api/cron/evaluate" });
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
+
+  // Chain: trigger another invocation to pick up remaining pending listings
+  triggerNextInvocation(cronSecret);
 
   return NextResponse.json({ ok: true, processed: ids.length });
 }
