@@ -120,7 +120,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
         agent_id: "area_expert",
         scope: "area",
         scope_value: listing.postcode,
-        content: areaResult.raw,
+        content: areaContext,
         expires_at: new Date(
           Date.now() + 30 * 24 * 60 * 60 * 1000,
         ).toISOString(),
