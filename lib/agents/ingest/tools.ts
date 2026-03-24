@@ -215,6 +215,16 @@ export async function deduplicateAndStore(
 ): Promise<{ newIds: string[]; unchangedDuplicateCount: number }> {
   const newIds: string[] = [];
   let unchangedDuplicateCount = 0;
+  const storeOutcomes: Array<{
+    portal_id: string;
+    outcome:
+      | "inserted"
+      | "updated"
+      | "unchanged_skip"
+      | "insert_conflict"
+      | "update_error";
+    listingRowId?: string;
+  }> = [];
 
   for (const listing of listings) {
     const { data: existing } = await getSupabaseAdmin()
@@ -227,6 +237,11 @@ export async function deduplicateAndStore(
       const row = existing as ListingMaterialRow;
       if (listingMaterialDataUnchanged(row, listing)) {
         unchangedDuplicateCount++;
+        storeOutcomes.push({
+          portal_id: String(listing.portal_id).slice(0, 48),
+          outcome: "unchanged_skip",
+          listingRowId: String(row.id),
+        });
         continue;
       }
 
@@ -243,10 +258,19 @@ export async function deduplicateAndStore(
           source: "ingest/deduplicateAndStore",
           telemetryTag: `portal_id:${listing.portal_id}`,
         });
+        storeOutcomes.push({
+          portal_id: String(listing.portal_id).slice(0, 48),
+          outcome: "update_error",
+        });
         continue;
       }
 
       newIds.push(String(row.id));
+      storeOutcomes.push({
+        portal_id: String(listing.portal_id).slice(0, 48),
+        outcome: "updated",
+        listingRowId: String(row.id),
+      });
       continue;
     }
 
@@ -261,7 +285,13 @@ export async function deduplicateAndStore(
 
     if (error) {
       // 23505 = unique_violation on portal_id
-      if (error.code === "23505") continue;
+      if (error.code === "23505") {
+        storeOutcomes.push({
+          portal_id: String(listing.portal_id).slice(0, 48),
+          outcome: "insert_conflict",
+        });
+        continue;
+      }
       await reportError(error, {
         source: "ingest/deduplicateAndStore",
         telemetryTag: `portal_id:${listing.portal_id}`,
@@ -269,8 +299,44 @@ export async function deduplicateAndStore(
       continue;
     }
 
-    if (inserted) newIds.push(String((inserted as { id: number | string }).id));
+    if (inserted) {
+      const id = String((inserted as { id: number | string }).id);
+      newIds.push(id);
+      storeOutcomes.push({
+        portal_id: String(listing.portal_id).slice(0, 48),
+        outcome: "inserted",
+        listingRowId: id,
+      });
+    }
   }
+
+  // #region agent log
+  {
+    const portalKeys = listings.map((l) => String(l.portal_id).slice(0, 48));
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "616deb",
+      },
+      body: JSON.stringify({
+        sessionId: "616deb",
+        runId: "pre-fix",
+        hypothesisId: "H-scorecard-dedup",
+        location: "tools.ts:deduplicateAndStore",
+        message: "Store outcomes per parsed listing",
+        data: {
+          parsedCount: listings.length,
+          uniquePortalIdsInBatch: new Set(portalKeys).size,
+          newIdsLength: newIds.length,
+          unchangedDuplicateCount,
+          outcomes: storeOutcomes,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
 
   return { newIds, unchangedDuplicateCount };
 }
@@ -309,6 +375,11 @@ export async function runEvaluationsAndNotify(
 
   // Process listings sequentially
   let firstListing = true;
+  const evalTrace: Array<{
+    id: string;
+    claimed: boolean;
+    pipelineOk: boolean;
+  }> = [];
   for (const id of ids) {
     if (!firstListing && listingGapMs > 0) {
       await sleep(listingGapMs);
@@ -316,18 +387,25 @@ export async function runEvaluationsAndNotify(
     firstListing = false;
 
     try {
+      let claimedOk = true;
       if (!preClaimed) {
         const ok = await claimListingForEvaluation(id, staleMinutes);
-        if (!ok) continue;
+        claimedOk = ok;
+        if (!ok) {
+          evalTrace.push({ id, claimed: false, pipelineOk: false });
+          continue;
+        }
       }
 
       try {
         const result = await runEvaluationPipeline(id);
         if (!result) {
           await releaseListingEvaluationClaim(id);
+          evalTrace.push({ id, claimed: claimedOk, pipelineOk: false });
           continue;
         }
         evaluatedCount++;
+        evalTrace.push({ id, claimed: claimedOk, pipelineOk: true });
         await getSupabaseAdmin().from("pending_notifications").insert({
           batch_id: batchId,
           sequence: sequence++,
@@ -341,6 +419,7 @@ export async function runEvaluationsAndNotify(
         });
       } catch (err) {
         await releaseListingEvaluationClaim(id);
+        evalTrace.push({ id, claimed: true, pipelineOk: false });
         await reportError(err, {
           source: "ingest/runEvaluationsAndNotify",
           telemetryTag: `listing:${id}`,
@@ -353,6 +432,31 @@ export async function runEvaluationsAndNotify(
       });
     }
   }
+
+  // #region agent log
+  {
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "616deb",
+      },
+      body: JSON.stringify({
+        sessionId: "616deb",
+        runId: "pre-fix",
+        hypothesisId: "H-scorecard-eval",
+        location: "tools.ts:runEvaluationsAndNotify",
+        message: "Evaluation trace",
+        data: {
+          inputIds: ids,
+          evaluatedCount,
+          evalTrace,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
 
   try {
     await consumePendingNotifications(batchId);
