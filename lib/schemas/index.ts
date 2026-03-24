@@ -64,7 +64,25 @@ export const ListingSchema = z.object({
   listed_date: z.string().nullable().describe("Date listed if available"),
 });
 
+export const IngestParseResultSchema = z.object({
+  isVerification: z
+    .boolean()
+    .describe("True if this is a verification/confirmation email, not a property alert"),
+  verificationUrl: z
+    .string()
+    .optional()
+    .describe("The verification URL if found (only when isVerification is true)"),
+  verificationCode: z
+    .string()
+    .optional()
+    .describe("The verification code if found (only when isVerification is true)"),
+  listings: z
+    .array(ListingSchema)
+    .describe("Extracted property listings (empty array if this is a verification email)"),
+});
+
 export type PropertyEvalOutput = z.infer<typeof PropertyEvalSchema>;
 export type AreaEvalOutput = z.infer<typeof AreaEvalSchema>;
 export type VerificationResultOutput = z.infer<typeof VerificationResultSchema>;
 export type ListingOutput = z.infer<typeof ListingSchema>;
+export type IngestParseResultOutput = z.infer<typeof IngestParseResultSchema>;

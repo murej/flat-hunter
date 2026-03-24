@@ -6,8 +6,8 @@ type AreaContextResult = Awaited<
 
 export function buildPropertyPrompt(listing: Listing, preferences: Preferences): string {
   const desc =
-    listing.description.length > 3500
-      ? listing.description.slice(0, 3500) + "..."
+    listing.description.length > 2000
+      ? listing.description.slice(0, 2000) + "..."
       : listing.description;
 
   return `Evaluate this property against the buyer's preferences.
@@ -25,9 +25,7 @@ export function buildPropertyPrompt(listing: Listing, preferences: Preferences):
 - Must-haves: ${preferences.must_haves.join(", ") || "None specified"}
 - Deal-breakers: ${preferences.deal_breakers.join(", ") || "None specified"}
 - Style: ${preferences.style_notes || "No style preference"}
-- Notes: ${preferences.freeform_notes || "None"}
-
-Read the buyer's full preferences from the database if you need more context.`;
+- Notes: ${preferences.freeform_notes || "None"}`;
 }
 
 export function buildAreaPrompt(

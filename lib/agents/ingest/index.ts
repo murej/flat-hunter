@@ -1,8 +1,7 @@
 import {
   computeIdempotencyKey,
   claimIdempotencyKey,
-  parseVerificationEmail,
-  parseEmailHtml,
+  parseEmail,
   deduplicateAndStore,
 } from "./tools";
 import type { DeduplicateResult } from "./tools";
@@ -52,21 +51,21 @@ export async function ingestAgent(
     return empty;
   }
 
-  // Check if verification email
-  const verification = await parseVerificationEmail(llmContent);
-  if (verification.isVerification) {
-    const msg = verification.verificationUrl
-      ? `🔐 Verification email received.\nURL: ${verification.verificationUrl}`
-      : verification.verificationCode
-        ? `🔐 Verification code: ${verification.verificationCode}`
+  // Parse email: classify (verification vs property alert) and extract listings in one call
+  const parseResult = await parseEmail(llmContent);
+
+  if (parseResult.isVerification) {
+    const msg = parseResult.verificationUrl
+      ? `🔐 Verification email received.\nURL: ${parseResult.verificationUrl}`
+      : parseResult.verificationCode
+        ? `🔐 Verification code: ${parseResult.verificationCode}`
         : "🔐 Verification email received (no URL/code extracted).";
     await sendMessage(msg);
     await updateIdempotencyStatus(key, 0, "done");
     return empty;
   }
 
-  // Parse listings
-  const listings = await parseEmailHtml(llmContent);
+  const listings = parseResult.listings;
   if (listings.length === 0) {
     console.log("No listings found in email.");
     if (envBool("TELEGRAM_VERBOSE_MODE")) {

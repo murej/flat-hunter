@@ -3,15 +3,14 @@ import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
 import { reportError } from "@/lib/core/reporting";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getIngestParseModel, getEmailVerificationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
-import { ListingSchema, VerificationResultSchema } from "@/lib/schemas";
-import type { VerificationResultOutput, ListingOutput } from "@/lib/schemas";
-import { INGEST_PARSE_SYSTEM, EMAIL_VERIFICATION_SYSTEM, INGEST_NOTIFICATION_SYSTEM } from "./prompts";
-import { TELEMETRY_TAG_VERIFICATION, TELEMETRY_TAG_PARSE, TELEMETRY_TAG_NOTIFICATION, MAX_PARSE_STEPS } from "./config";
+import { getIngestParseModel, getIngestNotificationModel } from "@/lib/config/agent-models";
+import { IngestParseResultSchema } from "@/lib/schemas";
+import type { IngestParseResultOutput, ListingOutput } from "@/lib/schemas";
+import { INGEST_PARSE_SYSTEM, INGEST_NOTIFICATION_SYSTEM } from "./prompts";
+import { TELEMETRY_TAG_PARSE, TELEMETRY_TAG_NOTIFICATION, MAX_PARSE_STEPS } from "./config";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
 import { sendMarkdown, sendWithButtons } from "@/lib/telegram";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
-import { z } from "zod";
 
 export function computeIdempotencyKey(content: string): string {
   return createHash("sha256").update(content).digest("hex");
@@ -27,30 +26,16 @@ export async function claimIdempotencyKey(key: string): Promise<boolean> {
   return true;
 }
 
-export async function parseVerificationEmail(
+export async function parseEmail(
   content: string,
-): Promise<VerificationResultOutput> {
-  const result = await runAgent({
-    systemPrompt: EMAIL_VERIFICATION_SYSTEM,
-    prompt: content,
-    model: getEmailVerificationModel(),
-    maxSteps: MAX_PARSE_STEPS,
-    telemetryTag: TELEMETRY_TAG_VERIFICATION,
-    output: Output.object({ schema: VerificationResultSchema }),
-  });
-  return JSON.parse(result.message);
-}
-
-export async function parseEmailHtml(
-  content: string,
-): Promise<ListingOutput[]> {
+): Promise<IngestParseResultOutput> {
   const result = await runAgent({
     systemPrompt: INGEST_PARSE_SYSTEM,
     prompt: content,
     model: getIngestParseModel(),
     maxSteps: MAX_PARSE_STEPS,
     telemetryTag: TELEMETRY_TAG_PARSE,
-    output: Output.object({ schema: z.array(ListingSchema) }),
+    output: Output.object({ schema: IngestParseResultSchema }),
   });
   return JSON.parse(result.message);
 }

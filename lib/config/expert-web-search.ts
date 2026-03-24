@@ -1,7 +1,7 @@
 import { envBool } from "@/lib/utils/env-utils";
 import type { ToolSet } from "@/lib/core/tools";
 
-export const EXPERT_MAX_STEPS = 8;
+export const EXPERT_MAX_STEPS = 3;
 
 export function getPropertyExpertToolSets(): ToolSet[] {
   const sets: ToolSet[] = ["db"];
