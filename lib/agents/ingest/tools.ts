@@ -182,7 +182,7 @@ export async function deduplicateAndStore(
 
 export async function runEvaluationsAndNotify(
   ids: string[],
-  _opts?: { preClaimed?: boolean },
+  opts?: { preClaimed?: boolean },
 ): Promise<void> {
   if (ids.length === 0) return;
 
@@ -202,6 +202,23 @@ export async function runEvaluationsAndNotify(
   // Process listings sequentially
   for (const id of ids) {
     try {
+      // Transition to "evaluating" so the pipeline can mark it "evaluated"
+      if (!opts?.preClaimed) {
+        const { error: claimError } = await getSupabaseAdmin()
+          .from("listings")
+          .update({ status: "evaluating", updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .in("status", ["pending_evaluation"]);
+
+        if (claimError) {
+          await reportError(claimError, {
+            source: "ingest/claim-for-evaluation",
+            telemetryTag: `listing:${id}`,
+          });
+          continue;
+        }
+      }
+
       const result = await runEvaluationPipeline(id);
       if (result) {
         await getSupabaseAdmin().from("pending_notifications").insert({
@@ -270,6 +287,21 @@ export async function runReEvaluationsAndNotify(
 
   for (const id of updatedIds) {
     try {
+      // Transition to "evaluating" so the pipeline can mark it "evaluated"
+      const { error: claimError } = await getSupabaseAdmin()
+        .from("listings")
+        .update({ status: "evaluating", updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .in("status", ["pending_evaluation"]);
+
+      if (claimError) {
+        await reportError(claimError, {
+          source: "ingest/claim-for-re-evaluation",
+          telemetryTag: `listing:${id}`,
+        });
+        continue;
+      }
+
       const result = await runEvaluationPipeline(id);
       if (!result) continue;
 
