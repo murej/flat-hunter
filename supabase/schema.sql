@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS listings (
   agent_name TEXT,
   agent_email TEXT,
   listed_date TEXT,
+  validation_flags TEXT[] NOT NULL DEFAULT '{}',
   status TEXT NOT NULL DEFAULT 'pending_evaluation'
     CHECK (status IN ('pending_evaluation', 'evaluating', 'evaluated', 'saved', 'dismissed', 'viewing_requested')),
   raw_email_html TEXT,
@@ -86,7 +87,10 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE INDEX IF NOT EXISTS idx_conversations_created ON conversations(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS ingest_idempotency (
-  idempotency_key TEXT PRIMARY KEY
+  idempotency_key TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  listing_count INTEGER,
+  status TEXT NOT NULL DEFAULT 'done'
 );
 
 CREATE TABLE IF NOT EXISTS pending_notifications (

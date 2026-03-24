@@ -1,25 +1,18 @@
 import { NextResponse } from "next/server";
-import { cloudmailinSecretFromEnv } from "@/lib/utils/env-utils";
 import { ingestAgent } from "./index";
-import { buildLlmContextFromParts, runEvaluationsAndNotify } from "./tools";
+import { runEvaluationsAndNotify, runReEvaluationsAndNotify } from "./tools";
 
 function checkAuth(request: Request): boolean {
-  const secret = cloudmailinSecretFromEnv();
+  const secret = process.env.CLOUDMAILIN_SECRET;
   if (!secret) return true; // No auth configured
 
   const authHeader = request.headers.get("authorization");
   if (!authHeader) return false;
 
   const [scheme, credentials] = authHeader.split(" ");
-  if (scheme !== "Basic" || !credentials) return false;
+  if (scheme !== "Basic") return false;
 
-  let decoded: string;
-  try {
-    decoded = atob(credentials);
-  } catch {
-    return false;
-  }
-
+  const decoded = atob(credentials);
   const password = decoded.split(":").slice(1).join(":");
   return password === secret;
 }
@@ -33,33 +26,42 @@ export async function handleIngestWebhook(
 
   const contentType = request.headers.get("content-type") || "";
   let content: string;
+  let rawEmail: string;
   let isRaw = false;
 
-  // CloudMailin supports either target (see README); both remain valid webhook shapes.
   if (contentType.includes("multipart/form-data")) {
-    // Raw RFC 5322 message in `message` field
+    // CloudMailin raw format — RFC 5322
     const formData = await request.formData();
     const raw = formData.get("message");
     if (!raw) {
       return { response: NextResponse.json({ error: "No message in form data" }, { status: 400 }) };
     }
     content = raw.toString();
+    rawEmail = content;
     isRaw = true;
   } else {
-    // JSON format
+    // JSON format — build LLM context from parts
     const body = (await request.json()) as Record<string, unknown>;
     const html = (body.html as string) || "";
     const plain = (body.plain as string) || "";
     const subject = (body.subject as string) || "";
-    content = buildLlmContextFromParts(html, subject, plain);
+    content = JSON.stringify({ html, plain, subject });
+    rawEmail = html || plain;
+    isRaw = false;
   }
 
-  const { newIds } = await ingestAgent(content, isRaw);
+  const { newIds, updatedIds, changes } = await ingestAgent(content, isRaw, rawEmail);
+  const totalProcessed = newIds.length + updatedIds.length;
 
   return {
-    response: NextResponse.json({ ok: true, newListings: newIds.length }),
-    backgroundWork: newIds.length > 0
-      ? () => runEvaluationsAndNotify(newIds)
+    response: NextResponse.json({ ok: true, newListings: newIds.length, updatedListings: updatedIds.length }),
+    backgroundWork: totalProcessed > 0
+      ? async () => {
+          await Promise.all([
+            runEvaluationsAndNotify(newIds),
+            runReEvaluationsAndNotify(updatedIds, changes),
+          ]);
+        }
       : undefined,
   };
 }

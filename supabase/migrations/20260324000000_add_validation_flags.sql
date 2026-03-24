@@ -1,0 +1,1 @@
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS validation_flags TEXT[] NOT NULL DEFAULT '{}';
