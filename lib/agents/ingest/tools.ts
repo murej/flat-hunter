@@ -182,19 +182,21 @@ export async function deduplicateAndStore(
 
 export async function runEvaluationsAndNotify(
   ids: string[],
-  opts?: { preClaimed?: boolean },
+  opts?: { preClaimed?: boolean; skipIntro?: boolean },
 ): Promise<void> {
   if (ids.length === 0) return;
 
   // Send intro notification immediately (before evaluation starts)
-  const intro = await runAgent({
-    systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-    prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
-    model: getIngestNotificationModel(),
-    maxSteps: 1,
-    telemetryTag: TELEMETRY_TAG_NOTIFICATION,
-  });
-  await sendMarkdown(intro.message);
+  if (!opts?.skipIntro) {
+    const intro = await runAgent({
+      systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+      prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
+      model: getIngestNotificationModel(),
+      maxSteps: 1,
+      telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+    });
+    await sendMarkdown(intro.message);
+  }
 
   const batchId = crypto.randomUUID();
   let sequence = 0;

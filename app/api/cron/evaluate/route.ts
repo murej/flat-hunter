@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    await runEvaluationsAndNotify(ids, { preClaimed: true });
+    await runEvaluationsAndNotify(ids, { preClaimed: true, skipIntro: true });
   } catch (err) {
     await reportError(err, { source: "api/cron/evaluate" });
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
