@@ -11,6 +11,7 @@ import { TELEMETRY_TAG_PARSE, TELEMETRY_TAG_NOTIFICATION, MAX_PARSE_STEPS } from
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
 import { sendMarkdown, sendWithButtons } from "@/lib/telegram";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
+import { envIntClamped } from "@/lib/utils/env-utils";
 
 export function computeIdempotencyKey(content: string): string {
   return createHash("sha256").update(content).digest("hex");
@@ -185,6 +186,7 @@ export async function runEvaluationsAndNotify(
 
   const batchId = crypto.randomUUID();
   let sequence = 0;
+  const minScore = envIntClamped("MIN_SCORECARD_SCORE", 1, 10, 6);
 
   // Process listings sequentially
   for (const id of ids) {
@@ -208,17 +210,38 @@ export async function runEvaluationsAndNotify(
 
       const result = await runEvaluationPipeline(id);
       if (result) {
-        await getSupabaseAdmin().from("pending_notifications").insert({
-          batch_id: batchId,
-          sequence: sequence++,
-          type: "scorecard",
-          payload: {
-            listing_id: result.listingId,
-            text: result.scorecardText,
-            buttons: result.scorecardButtons,
-            parse_mode: "Markdown",
-          },
-        });
+        if (result.evaluation.overall_score >= minScore) {
+          await getSupabaseAdmin().from("pending_notifications").insert({
+            batch_id: batchId,
+            sequence: sequence++,
+            type: "scorecard",
+            payload: {
+              listing_id: result.listingId,
+              text: result.scorecardText,
+              buttons: result.scorecardButtons,
+              parse_mode: "Markdown",
+            },
+          });
+        } else {
+          // Auto-dismiss and queue reject record for consolidated summary
+          const { data: dismissedListing } = await getSupabaseAdmin()
+            .from("listings")
+            .update({ status: "dismissed", updated_at: new Date().toISOString() })
+            .eq("id", id)
+            .select("title, url")
+            .single();
+          await getSupabaseAdmin().from("pending_notifications").insert({
+            batch_id: batchId,
+            sequence: sequence++,
+            type: "reject",
+            payload: {
+              listing_id: result.listingId,
+              title: dismissedListing?.title || "Untitled",
+              url: dismissedListing?.url || "",
+              score: result.evaluation.overall_score,
+            },
+          });
+        }
       }
     } catch (err) {
       await reportError(err, {
@@ -228,7 +251,7 @@ export async function runEvaluationsAndNotify(
     }
   }
 
-  // Consume scorecard notifications
+  // Consume scorecard notifications (rejects are flushed separately when backlog drains)
   await consumePendingNotifications(batchId);
 
   // Summary after all scorecards sent
@@ -271,6 +294,7 @@ export async function runReEvaluationsAndNotify(
 
   const batchId = crypto.randomUUID();
   let sequence = 0;
+  const minScore = envIntClamped("MIN_SCORECARD_SCORE", 1, 10, 6);
 
   for (const id of updatedIds) {
     try {
@@ -294,15 +318,15 @@ export async function runReEvaluationsAndNotify(
 
       const change = changes.get(id);
       if (change) {
-        // Was saved/dismissed — send change notification with button to view scorecard
+        // Was saved/dismissed — always notify (user interacted with this listing)
         const summary = formatChangeSummary(change.changedFields);
         const title = result.evaluation.property_summary?.split("\n")[0] || "Listing";
         const msg = `*Updated:* ${title}\n\nChanged: ${summary}\n\n_This listing was previously ${change.previousStatus}. It has been re\\-evaluated._`;
         await sendWithButtons(msg, [
           [{ text: "Show updated scorecard", callback_data: `why:${id}` }],
         ], "Markdown");
-      } else {
-        // Was in evaluated/pending state — send full scorecard as normal
+      } else if (result.evaluation.overall_score >= minScore) {
+        // Above threshold — send full scorecard
         await getSupabaseAdmin().from("pending_notifications").insert({
           batch_id: batchId,
           sequence: sequence++,
@@ -312,6 +336,25 @@ export async function runReEvaluationsAndNotify(
             text: result.scorecardText,
             buttons: result.scorecardButtons,
             parse_mode: "Markdown",
+          },
+        });
+      } else {
+        // Below threshold — auto-dismiss and queue reject for summary
+        const { data: dismissedListing } = await getSupabaseAdmin()
+          .from("listings")
+          .update({ status: "dismissed", updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .select("title, url")
+          .single();
+        await getSupabaseAdmin().from("pending_notifications").insert({
+          batch_id: batchId,
+          sequence: sequence++,
+          type: "reject",
+          payload: {
+            listing_id: result.listingId,
+            title: dismissedListing?.title || "Untitled",
+            url: dismissedListing?.url || "",
+            score: result.evaluation.overall_score,
           },
         });
       }

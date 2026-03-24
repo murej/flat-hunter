@@ -5,6 +5,7 @@ import {
   getEvaluatingStaleMinutes,
 } from "@/lib/supabase/evaluation-claim";
 import { runEvaluationsAndNotify } from "@/lib/agents/ingest/tools";
+import { flushRejectSummary } from "@/lib/agents/notifications";
 import { cronSecretFromEnv, envIntClamped } from "@/lib/utils/env-utils";
 
 // Import agents to trigger registration
@@ -43,6 +44,8 @@ export async function GET(request: Request) {
   }
 
   if (ids.length === 0) {
+    // Backlog drained — send consolidated reject summary if any
+    await flushRejectSummary();
     return NextResponse.json({ ok: true, processed: 0 });
   }
 

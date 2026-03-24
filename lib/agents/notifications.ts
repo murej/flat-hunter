@@ -1,6 +1,6 @@
 import { reportError } from "@/lib/core/reporting";
 import { getSupabaseAdmin, storeMessageListing } from "@/lib/supabase";
-import { sendMessage, sendWithButtons } from "@/lib/telegram";
+import { sendMessage, sendMarkdown, sendWithButtons } from "@/lib/telegram";
 import { sleep } from "@/lib/utils/retry";
 
 const SCORECARD_DELAY_MS = 500;
@@ -56,4 +56,48 @@ export async function consumePendingNotifications(
       });
     }
   }
+}
+
+export async function flushRejectSummary(): Promise<void> {
+  const { data: rejects } = await getSupabaseAdmin()
+    .from("pending_notifications")
+    .select("*")
+    .eq("type", "reject")
+    .is("consumed_at", null)
+    .order("sequence", { ascending: true });
+
+  if (!rejects || rejects.length === 0) return;
+
+  const lines = (rejects as NotificationRow[]).map((r) => {
+    const { title, url, score } = r.payload as {
+      title: string;
+      url: string;
+      score: number;
+    };
+    return url
+      ? `• [${title}](${url}) — ${score}/10`
+      : `• ${title} — ${score}/10`;
+  });
+
+  const text = `*Filtered out (below 6/10):*\n${lines.join("\n")}`;
+
+  try {
+    await sendMessage(text, {
+      parse_mode: "Markdown",
+      disable_web_page_preview: true,
+    });
+  } catch {
+    // Fallback without Markdown if formatting fails
+    const plain = `Filtered out (below 6/10):\n${(rejects as NotificationRow[]).map((r) => {
+      const { title, score } = r.payload as { title: string; score: number };
+      return `• ${title} — ${score}/10`;
+    }).join("\n")}`;
+    await sendMessage(plain, { disable_web_page_preview: true });
+  }
+
+  const ids = (rejects as NotificationRow[]).map((r) => r.id);
+  await getSupabaseAdmin()
+    .from("pending_notifications")
+    .update({ consumed_at: new Date().toISOString() })
+    .in("id", ids);
 }

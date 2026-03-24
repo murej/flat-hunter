@@ -5,6 +5,7 @@ const CHAT_ID = () => process.env.TELEGRAM_CHAT_ID!;
 type SendOptions = {
   parse_mode?: "Markdown" | "HTML";
   reply_markup?: unknown;
+  disable_web_page_preview?: boolean;
 };
 
 async function callTelegram(method: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
