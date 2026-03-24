@@ -108,13 +108,19 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     runPropertyExpert(propertyPrompt),
   ]);
 
-  const areaResult = await runAreaExpert(
-    areaPrompt,
-    priorContext?.content as Record<string, unknown> | undefined,
-  );
+  // Skip area expert if property scores are all below 3 (clear reject)
+  const propScores = [propertyResult.appeal_score, propertyResult.price_score, propertyResult.size_score].filter((s): s is number => s != null);
+  const skipArea = propScores.length > 0 && propScores.every((s) => s < 3);
+
+  const areaResult: AreaEvalResult = skipArea
+    ? { area_score: null, area_summary: "Skipped — property scores too low.", notable_flags: [], raw: {} }
+    : await runAreaExpert(
+        areaPrompt,
+        priorContext?.content as Record<string, unknown> | undefined,
+      );
 
   // Store area context for future use
-  if (areaContext) {
+  if (areaContext && !skipArea) {
     await getSupabaseAdmin().from("agent_context").upsert(
       {
         agent_id: "area_expert",
