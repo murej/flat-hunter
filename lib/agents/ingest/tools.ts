@@ -169,10 +169,42 @@ export async function parseEmailHtml(
     telemetryTag: TELEMETRY_TAG_PARSE,
     output: Output.object({ schema: z.array(ListingSchema) }),
   });
-  return (await parseAgentJsonMessage(result.message, {
+  const parsed = (await parseAgentJsonMessage(result.message, {
     source: "ingest/parse",
     telemetryTag: TELEMETRY_TAG_PARSE,
   })) as ListingOutput[];
+  // #region agent log
+  {
+    const portalIds = parsed.map((l) => l.portal_id);
+    const urls = parsed.map((l) => l.url?.slice(0, 120) ?? "");
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "616deb",
+      },
+      body: JSON.stringify({
+        sessionId: "616deb",
+        runId: "pre-fix",
+        hypothesisId: "H5",
+        location: "tools.ts:parseEmailHtml",
+        message: "LLM parse output summary",
+        data: {
+          count: parsed.length,
+          uniquePortalIds: new Set(portalIds).size,
+          uniqueUrls: new Set(urls).size,
+          sample: parsed.slice(0, 8).map((l) => ({
+            portal_id: String(l.portal_id).slice(0, 32),
+            price: l.price,
+            urlPrefix: (l.url ?? "").slice(0, 100),
+          })),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
+  return parsed;
 }
 
 const LISTING_MATERIAL_SELECT =
@@ -677,25 +709,95 @@ export function repairListingsFromEmailBody(
   emailText: string,
 ): ListingOutput[] {
   const candidates = extractListingUrlsFromText(emailText);
+  // #region agent log
+  {
+    const rmInBody = (emailText.match(/rightmove\.co\.uk\/properties\/\d+/gi) ?? [])
+      .length;
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "616deb",
+      },
+      body: JSON.stringify({
+        sessionId: "616deb",
+        runId: "pre-fix",
+        hypothesisId: "H2",
+        location: "tools.ts:repairListingsFromEmailBody",
+        message: "URL extraction vs email body",
+        data: {
+          candidateCount: candidates.length,
+          rmPropertyPathMatchesInBody: rmInBody,
+          candidateSample: candidates.slice(0, 6).map((u) => u.slice(0, 120)),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
   if (candidates.length === 0) return listings;
 
   const sortedCandidates = [...candidates].sort();
 
-  return listings.map((listing) => {
-    if (!needsListingUrlRepair(listing.url)) {
-      return listing;
+  const rows = listings.map((listing) => {
+    const needsRepair = needsListingUrlRepair(listing.url);
+    if (!needsRepair) {
+      return { listing, picked: null as string | null };
     }
 
     const picked = pickCandidateForListing(listing, sortedCandidates, listings.length);
-    if (!picked) return listing;
+    if (!picked) {
+      return { listing, picked: null as string | null };
+    }
 
     const derived = derivePortalIdAndCanonicalUrl(picked);
-    if (!derived) return { ...listing, url: picked };
+    if (!derived) {
+      return { listing: { ...listing, url: picked }, picked };
+    }
 
     return {
-      ...listing,
-      url: derived.url,
-      portal_id: derived.portal_id,
+      listing: {
+        ...listing,
+        url: derived.url,
+        portal_id: derived.portal_id,
+      },
+      picked,
     };
   });
+
+  // #region agent log
+  {
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "616deb",
+      },
+      body: JSON.stringify({
+        sessionId: "616deb",
+        runId: "pre-fix",
+        hypothesisId: "H1-H3",
+        location: "tools.ts:repairListingsFromEmailBody",
+        message: "Per-listing repair decisions",
+        data: {
+          listingCount: listings.length,
+          rows: rows.map((r, i) => ({
+            i,
+            portal_id: String(r.listing.portal_id).slice(0, 24),
+            price: r.listing.price,
+            needsRepair: needsListingUrlRepair(
+              listings[i]?.url ?? "",
+            ),
+            urlBefore: (listings[i]?.url ?? "").slice(0, 120),
+            picked: r.picked?.slice(0, 120) ?? null,
+            urlAfter: r.listing.url.slice(0, 120),
+          })),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
+
+  return rows.map((r) => r.listing);
 }

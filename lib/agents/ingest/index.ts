@@ -6,7 +6,9 @@ import {
   deduplicateAndStore,
   buildLlmContextFromRaw,
   repairListingsFromEmailBody,
+  extractListingUrlsFromText,
 } from "./tools";
+import { INGEST_LISTING_URLS_SECTION_HEADING } from "./config";
 import { envBool } from "@/lib/utils/env-utils";
 import {
   notifyVerificationEmailTelegram,
@@ -23,6 +25,33 @@ export async function ingestAgent(
   const llmContent = isRaw
     ? await buildLlmContextFromRaw(content)
     : content;
+
+  // #region agent log
+  {
+    const extracted = extractListingUrlsFromText(llmContent);
+    fetch("http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "616deb",
+      },
+      body: JSON.stringify({
+        sessionId: "616deb",
+        runId: "pre-fix",
+        hypothesisId: "H-context",
+        location: "ingest/index.ts:ingestAgent",
+        message: "LLM context shape (ingest)",
+        data: {
+          isRaw,
+          llmContentLen: llmContent.length,
+          hasListingUrlsSection: llmContent.includes(INGEST_LISTING_URLS_SECTION_HEADING),
+          regexExtractedUrlCount: extracted.length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  // #endregion
 
   // Idempotency check
   const key = computeIdempotencyKey(llmContent);
