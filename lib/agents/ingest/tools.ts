@@ -266,7 +266,7 @@ export async function runEvaluationsAndNotify(
             .eq("id", id)
             .select("title, url")
             .single();
-          await getSupabaseAdmin()
+          const { error: rejectInsertError } = await getSupabaseAdmin()
             .from("pending_notifications")
             .insert({
               batch_id: batchId,
@@ -279,6 +279,9 @@ export async function runEvaluationsAndNotify(
                 score: result.evaluation.overall_score,
               },
             });
+          if (rejectInsertError) {
+            await reportError(rejectInsertError, { source: "ingest/reject-notification", telemetryTag: `listing:${id}` });
+          }
         }
       }
     } catch (err) {

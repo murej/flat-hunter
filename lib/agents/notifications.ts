@@ -32,6 +32,7 @@ export async function consumePendingNotifications(
     .select("*")
     .eq("batch_id", batchId)
     .is("consumed_at", null)
+    .neq("type", "reject")
     .order("sequence", { ascending: true });
 
   const notifications = [...(stale ?? []), ...(current ?? [])];
@@ -46,14 +47,19 @@ export async function consumePendingNotifications(
           buttons: Array<Array<{ text: string; callback_data: string }>>;
           parse_mode?: "Markdown" | "HTML";
         };
-        const telegramMessageId = await sendWithButtons(text, buttons, parse_mode ?? "Markdown");
+        const telegramMessageId = await sendWithButtons(
+          text,
+          buttons,
+          parse_mode ?? "Markdown",
+        );
         if (listing_id) {
           await storeMessageListing(telegramMessageId, listing_id);
         }
         await sleep(SCORECARD_DELAY_MS);
       } else {
         await sendMessage(notif.payload.text as string, {
-          parse_mode: (notif.payload.parse_mode as "Markdown" | "HTML") ?? "Markdown",
+          parse_mode:
+            (notif.payload.parse_mode as "Markdown" | "HTML") ?? "Markdown",
         });
       }
 
@@ -91,14 +97,17 @@ export async function flushRejectSummary(): Promise<void> {
       : `• ${title} — ${score}/10`;
   });
 
-  const header = `*Filtered out (below 6/10):*`;
+  const header = `Ah, these are not worth your time:`;
   const MAX_MSG_LEN = 3800;
 
   // Chunk lines to stay under Telegram's 4096-char limit
   const chunks: string[][] = [[]];
   let currentLen = header.length + 1;
   for (const line of lines) {
-    if (currentLen + line.length + 1 > MAX_MSG_LEN && chunks[chunks.length - 1].length > 0) {
+    if (
+      currentLen + line.length + 1 > MAX_MSG_LEN &&
+      chunks[chunks.length - 1].length > 0
+    ) {
       chunks.push([]);
       currentLen = header.length + 1;
     }
@@ -114,7 +123,7 @@ export async function flushRejectSummary(): Promise<void> {
         disable_web_page_preview: true,
       });
     } catch {
-      const plain = `Filtered out (below 6/10):\n${chunk.map((l) => l.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")).join("\n")}`;
+      const plain = `${header}\n${chunk.map((l) => l.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")).join("\n")}`;
       await sendMessage(plain, { disable_web_page_preview: true });
     }
   }
