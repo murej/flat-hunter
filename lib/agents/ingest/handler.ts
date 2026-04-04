@@ -26,12 +26,23 @@ function checkAuth(request: Request): boolean {
   }
 }
 
-/** Fire-and-forget: trigger the evaluate cron in a separate function invocation. */
-function triggerEvaluationCron(): void {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+/** Derive the base URL for internal API calls.
+ *  In dev the request may arrive via a tunnel (HTTPS), but the dev server
+ *  only accepts plain HTTP on localhost — use that directly to avoid SSL errors.
+ *  In production the request URL origin is the correct public host. */
+function internalBaseUrl(requestUrl: string): string {
+  if (process.env.NODE_ENV === "development") {
+    const port = process.env.PORT ?? "3000";
+    return `http://localhost:${port}`;
+  }
+  return new URL(requestUrl).origin;
+}
+
+/** Fire-and-forget: trigger the evaluate cron on the same server that handled this request. */
+function triggerEvaluationCron(requestUrl: string): void {
+  const base = internalBaseUrl(requestUrl);
   const cronSecret = process.env.CRON_SECRET;
-  if (!appUrl) return;
-  fetch(`${appUrl}/api/cron/evaluate`, {
+  fetch(`${base}/api/cron/evaluate`, {
     method: "GET",
     headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
   }).catch((err) => console.error("[cron-trigger]", err));
@@ -41,7 +52,9 @@ export async function handleIngestWebhook(
   request: Request,
 ): Promise<{ response: NextResponse; backgroundWork?: () => Promise<void> }> {
   if (!checkAuth(request)) {
-    return { response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    return {
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
 
   const contentType = request.headers.get("content-type") || "";
@@ -54,7 +67,12 @@ export async function handleIngestWebhook(
     const formData = await request.formData();
     const raw = formData.get("message");
     if (!raw) {
-      return { response: NextResponse.json({ error: "No message in form data" }, { status: 400 }) };
+      return {
+        response: NextResponse.json(
+          { error: "No message in form data" },
+          { status: 400 },
+        ),
+      };
     }
     content = raw.toString();
     rawEmail = content;
@@ -72,29 +90,35 @@ export async function handleIngestWebhook(
 
   const { newIds, updatedIds } = await ingestAgent(content, isRaw, rawEmail);
   const totalProcessed = newIds.length + updatedIds.length;
+  const requestUrl = request.url;
 
   return {
-    response: NextResponse.json({ ok: true, newListings: newIds.length, updatedListings: updatedIds.length }),
-    backgroundWork: totalProcessed > 0
-      ? async () => {
-          // Send intro notification (fast: 1 LLM call + Telegram send)
-          if (newIds.length > 0) {
-            try {
-              const intro = await runAgent({
-                systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-                prompt: `${newIds.length} new listing${newIds.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
-                model: getIngestNotificationModel(),
-                maxSteps: 1,
-                telemetryTag: TELEMETRY_TAG_NOTIFICATION,
-              });
-              await sendMarkdown(intro.message);
-            } catch (err) {
-              await reportError(err, { source: "ingest/intro-notification" });
+    response: NextResponse.json({
+      ok: true,
+      newListings: newIds.length,
+      updatedListings: updatedIds.length,
+    }),
+    backgroundWork:
+      totalProcessed > 0
+        ? async () => {
+            // Send intro notification (fast: 1 LLM call + Telegram send)
+            if (newIds.length > 0) {
+              try {
+                const intro = await runAgent({
+                  systemPrompt: INGEST_NOTIFICATION_SYSTEM,
+                  prompt: `Write one message to the buyer: their app received ${newIds.length} new property listing(s) and scoring is starting. Excited Stath tone.`,
+                  model: getIngestNotificationModel(),
+                  maxSteps: 1,
+                  telemetryTag: TELEMETRY_TAG_NOTIFICATION,
+                });
+                await sendMarkdown(intro.message);
+              } catch (err) {
+                await reportError(err, { source: "ingest/intro-notification" });
+              }
             }
+            // Trigger evaluation on the same server that handled this request
+            triggerEvaluationCron(requestUrl);
           }
-          // Trigger evaluation in a separate function invocation (own 60s budget)
-          triggerEvaluationCron();
-        }
-      : undefined,
+        : undefined,
   };
 }

@@ -1,9 +1,11 @@
 import { preprocessString, toLlmContext } from "langmail";
 import PostalMime from "postal-mime";
 import { annotateUrlWithPortalId } from "./portal-id";
-import { LISTING_URL_PATTERN_SOURCES, INGEST_LISTING_URLS_SECTION_HEADING } from "./config";
-
-const MAX_INPUT_CHARS = 32_000;
+import {
+  LISTING_URL_PATTERN_SOURCES,
+  INGEST_LISTING_URLS_SECTION_HEADING,
+  MAX_INPUT_CHARS,
+} from "./config";
 
 export type LlmContextResult = {
   context: string;
@@ -16,9 +18,7 @@ type MimeParts = {
   subject: string;
 };
 
-export async function extractMimeParts(
-  rawMessage: string,
-): Promise<MimeParts> {
+export async function extractMimeParts(rawMessage: string): Promise<MimeParts> {
   const parser = new PostalMime();
   const email = await parser.parse(rawMessage);
   return {

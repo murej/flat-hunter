@@ -1,9 +1,33 @@
-import { sendMessage, sendMarkdown, sendWithButtons, answerCallbackQuery, deleteMessage, startTypingIndicator } from "@/lib/telegram";
-import { logConversation, getPreferences, deletePreferences, getConversationHistory, getSessionMode, setSessionMode, clearSessionMode, storeMessageListing } from "@/lib/supabase";
-import { getScorecard, getWhyContext, getFormattedPreferences, getFormattedSavedList } from "@/lib/tools/listing";
+import {
+  sendMessage,
+  sendMarkdown,
+  sendWithButtons,
+  answerCallbackQuery,
+  deleteMessage,
+  startTypingIndicator,
+} from "@/lib/telegram";
+import {
+  logConversation,
+  getPreferences,
+  deletePreferences,
+  getConversationHistory,
+  getSessionMode,
+  setSessionMode,
+  clearSessionMode,
+  storeMessageListing,
+} from "@/lib/supabase";
+import {
+  getScorecard,
+  getWhyContext,
+  getFormattedPreferences,
+  getFormattedSavedList,
+} from "@/lib/tools/listing";
 import { runPreferenceAgent } from "@/lib/agents/preference";
 import { runAgent } from "@/lib/core/agent";
-import { getWhyExplanationModel, getIngestNotificationModel } from "@/lib/config/agent-models";
+import {
+  getWhyExplanationModel,
+  getIngestNotificationModel,
+} from "@/lib/config/agent-models";
 import { WHY_EXPLANATION_SYSTEM } from "./prompts";
 import { INGEST_NOTIFICATION_SYSTEM } from "@/lib/agents/ingest/prompts";
 import { TELEMETRY_TAG_WHY, SUB_AGENT_MAX_STEPS } from "./config";
@@ -26,7 +50,9 @@ export async function handleTelegramUpdate(input: {
 
   // Acknowledge callback query immediately (non-critical, don't crash on failure)
   if (callbackQueryId) {
-    try { await answerCallbackQuery(callbackQueryId); } catch {}
+    try {
+      await answerCallbackQuery(callbackQueryId);
+    } catch {}
   }
 
   const typing = startTypingIndicator();
@@ -35,37 +61,52 @@ export async function handleTelegramUpdate(input: {
     // /stop — stop any active flow
     if (text === "/stop") {
       await clearSessionMode();
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "stop" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        intent: "stop",
+      });
       const stopResult = await runAgent({
         systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-        prompt: "The user just stopped the current flow. Acknowledge briefly and ask what else they need.",
+        prompt:
+          "The user just stopped the current flow. Acknowledge briefly and ask what else they need.",
         model: getIngestNotificationModel(),
         maxSteps: 1,
         telemetryTag: "stop_notification",
       });
       await sendMarkdown(stopResult.message);
-      await logConversation({ telegram_message_id: messageId, direction: "outbound", message: stopResult.message, intent: "stop" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "outbound",
+        message: stopResult.message,
+        intent: "stop",
+      });
       return;
     }
 
     // /restart — reset preferences with confirmation
     if (text === "/restart") {
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "restart" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        intent: "restart",
+      });
       const confirm = await runAgent({
         systemPrompt: INGEST_NOTIFICATION_SYSTEM,
         prompt:
-          "The user typed /restart to reset their property search preferences and start fresh. Write the confirmation question for Telegram. They will see two buttons: \"Yes, reset\" and \"No, keep\". Ask if they are sure and warn that saved preferences will be deleted. One short paragraph.",
+          'The user typed /restart to reset their property search preferences and start fresh. Write the confirmation question for Telegram. They will see two buttons: "Yes, reset" and "No, keep". Ask if they are sure and warn that saved preferences will be deleted. One short paragraph.',
         model: getIngestNotificationModel(),
         maxSteps: 1,
         telemetryTag: "restart_confirm",
       });
-      await sendWithButtons(
-        confirm.message,
-        [[
+      await sendWithButtons(confirm.message, [
+        [
           { text: "Yes, reset", callback_data: "restart_confirm" },
           { text: "No, keep", callback_data: "restart_deny" },
-        ]],
-      );
+        ],
+      ]);
       return;
     }
 
@@ -75,7 +116,9 @@ export async function handleTelegramUpdate(input: {
       await clearSessionMode();
       await deleteMessage(messageId);
       await setSessionMode("preference");
-      const result = await runPreferenceAgent("The user just reset. Begin collecting their property search preferences.\n\n[No preferences saved yet]");
+      const result = await runPreferenceAgent(
+        "The user just reset. Begin collecting their property search preferences.\n\n[No preferences saved yet]",
+      );
       await sendMarkdown(result.message);
       return;
     }
@@ -95,7 +138,12 @@ export async function handleTelegramUpdate(input: {
 
     // /preferences — show current preferences
     if (text === "/preferences") {
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "preferences" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        intent: "preferences",
+      });
       const msg = await getFormattedPreferences();
       await sendMarkdown(msg);
       return;
@@ -103,7 +151,12 @@ export async function handleTelegramUpdate(input: {
 
     // /liked — show liked (saved) properties
     if (text === "/liked") {
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "liked" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        intent: "liked",
+      });
       const msg = await getFormattedSavedList();
       await sendMarkdown(msg);
       return;
@@ -111,10 +164,7 @@ export async function handleTelegramUpdate(input: {
 
     // Check preference mode (skip for action callbacks)
     const sessionMode = await getSessionMode();
-    if (
-      sessionMode === "preference" &&
-      !/^(why|scorecard):/.test(text)
-    ) {
+    if (sessionMode === "preference" && !/^(why|scorecard):/.test(text)) {
       const [, prefsBefore, history] = await Promise.all([
         logConversation({
           telegram_message_id: messageId,
@@ -125,7 +175,10 @@ export async function handleTelegramUpdate(input: {
         getPreferences(),
         getConversationHistory(),
       ]);
-      const result = await runPreferenceAgent(text + prefsContext(prefsBefore), history);
+      const result = await runPreferenceAgent(
+        text + prefsContext(prefsBefore),
+        history,
+      );
       const prefsAfter = await getPreferences();
 
       const prefsSaved =
@@ -155,7 +208,13 @@ export async function handleTelegramUpdate(input: {
     const whyMatch = text.match(/^why:(.+)$/);
     if (whyMatch) {
       const id = whyMatch[1];
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, listing_id: id, intent: "why" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        listing_id: id,
+        intent: "why",
+      });
 
       const context = await getWhyContext(id);
       if (!context) {
@@ -187,7 +246,11 @@ export async function handleTelegramUpdate(input: {
       const id = scorecardMatch[1];
       const scorecard = await getScorecard(id);
       if (scorecard) {
-        const msgId = await sendWithButtons(scorecard.text, scorecard.buttons, "Markdown");
+        const msgId = await sendWithButtons(
+          scorecard.text,
+          scorecard.buttons,
+          "Markdown",
+        );
         await storeMessageListing(msgId, id);
       } else {
         await sendMessage("Listing not found.");
@@ -205,7 +268,12 @@ export async function handleTelegramUpdate(input: {
       const category = isUpdateCategoryCallback
         ? trimmedInbound.slice(trimmedInbound.indexOf(":") + 1) || undefined
         : undefined;
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "update_preferences" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        intent: "update_preferences",
+      });
       await setSessionMode("preference");
 
       const prefs = await getPreferences();
@@ -214,14 +282,25 @@ export async function handleTelegramUpdate(input: {
         : "The user wants to update their preferences. Ask what they'd like to change.";
       const result = await runPreferenceAgent(prompt + prefsContext(prefs));
       await sendMarkdown(result.message);
-      await logConversation({ telegram_message_id: messageId, direction: "outbound", message: result.message, intent: "update_preferences" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "outbound",
+        message: result.message,
+        intent: "update_preferences",
+      });
       return;
     }
 
     // Route: bare greetings — respond without invoking the agent
-    const GREETING_WORDS = /^(h(ello|i|ey|owdy|iya)|yo|sup|morning|evening|afternoon|what'?s up|alright)[!?.]*$/i;
+    const GREETING_WORDS =
+      /^(h(ello|i|ey|owdy|iya)|yo|sup|morning|evening|afternoon|what'?s up|alright)[!?.]*$/i;
     if (GREETING_WORDS.test(text.trim())) {
-      await logConversation({ telegram_message_id: messageId, direction: "inbound", message: text, intent: "greeting" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "inbound",
+        message: text,
+        intent: "greeting",
+      });
       const greetResult = await runAgent({
         systemPrompt: INGEST_NOTIFICATION_SYSTEM,
         prompt: `The user just said "${text}". Greet them back briefly and ask what they need.`,
@@ -230,7 +309,12 @@ export async function handleTelegramUpdate(input: {
         telemetryTag: "greeting",
       });
       await sendMarkdown(greetResult.message);
-      await logConversation({ telegram_message_id: messageId, direction: "outbound", message: greetResult.message, intent: "greeting" });
+      await logConversation({
+        telegram_message_id: messageId,
+        direction: "outbound",
+        message: greetResult.message,
+        intent: "greeting",
+      });
       return;
     }
 

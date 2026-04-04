@@ -39,7 +39,11 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
     stopWhen: stepCountIs(input.maxSteps ?? 5),
     maxTokens: 4096,
     maxRetries: 4,
-    onStepFinish({ usage }: { usage: { inputTokens?: number; outputTokens?: number } }) {
+    onStepFinish({
+      usage,
+    }: {
+      usage: { inputTokens?: number; outputTokens?: number };
+    }) {
       logLlmUsage(input.telemetryTag, model, usage);
     },
   };

@@ -14,11 +14,19 @@ import "@/lib/agents/area-expert";
 
 export const maxDuration = 60;
 
-/** Fire-and-forget: trigger another invocation to drain remaining pending listings. */
-function triggerNextInvocation(cronSecret: string | undefined): void {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (!appUrl) return;
-  fetch(`${appUrl}/api/cron/evaluate`, {
+/** Derive the base URL for internal API calls — localhost in dev, request origin in production. */
+function internalBaseUrl(requestUrl: string): string {
+  if (process.env.NODE_ENV === "development") {
+    const port = process.env.PORT ?? "3000";
+    return `http://localhost:${port}`;
+  }
+  return new URL(requestUrl).origin;
+}
+
+/** Fire-and-forget: trigger another invocation on the same server to drain remaining pending listings. */
+function triggerNextInvocation(cronSecret: string | undefined, requestUrl: string): void {
+  const base = internalBaseUrl(requestUrl);
+  fetch(`${base}/api/cron/evaluate`, {
     method: "GET",
     headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
   }).catch((err) => console.error("[cron-trigger]", err));
@@ -56,8 +64,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 
-  // Chain: trigger another invocation to pick up remaining pending listings
-  triggerNextInvocation(cronSecret);
+  // Chain: trigger another invocation on the same server to pick up remaining pending listings
+  triggerNextInvocation(cronSecret, request.url);
 
   return NextResponse.json({ ok: true, processed: ids.length });
 }

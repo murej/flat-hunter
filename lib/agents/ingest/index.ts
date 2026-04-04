@@ -5,7 +5,10 @@ import {
   deduplicateAndStore,
 } from "./tools";
 import type { DeduplicateResult } from "./tools";
-import { buildLlmContextFromParts, buildLlmContextFromRaw } from "./email-llm-input";
+import {
+  buildLlmContextFromParts,
+  buildLlmContextFromRaw,
+} from "./email-llm-input";
 import { validateAndCleanListings } from "./validation";
 import { reportError } from "@/lib/core/reporting";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -23,14 +26,22 @@ export async function ingestAgent(
   isRaw: boolean,
   rawEmail: string,
 ): Promise<IngestResult> {
-  const empty: IngestResult = { newIds: [], updatedIds: [], changes: new Map() };
+  const empty: IngestResult = {
+    newIds: [],
+    updatedIds: [],
+    changes: new Map(),
+  };
 
   // Build LLM-friendly content
   let llmResult;
   if (isRaw) {
     llmResult = await buildLlmContextFromRaw(content);
   } else {
-    const { html, plain, subject } = JSON.parse(content) as { html: string; plain: string; subject: string };
+    const { html, plain, subject } = JSON.parse(content) as {
+      html: string;
+      plain: string;
+      subject: string;
+    };
     llmResult = buildLlmContextFromParts(html, subject, plain);
   }
 
@@ -70,7 +81,9 @@ export async function ingestAgent(
     console.log("No listings found in email.");
     if (envBool("TELEGRAM_VERBOSE_MODE")) {
       const snippet = llmContent.slice(0, 300);
-      await sendMessage(`📭 No listings found in email.\n\nContent preview:\n${snippet}…`);
+      await sendMessage(
+        `📭 No listings found in email.\n\nContent preview:\n${snippet}…`,
+      );
     }
     await updateIdempotencyStatus(key, 0, "empty");
     return empty;
@@ -85,13 +98,18 @@ export async function ingestAgent(
   }
 
   // Dedup and store
-  const { newIds, updatedIds, changes } = await deduplicateAndStore(validated, rawEmail);
+  const { newIds, updatedIds, changes } = await deduplicateAndStore(
+    validated,
+    rawEmail,
+  );
   const totalProcessed = newIds.length + updatedIds.length;
 
   if (totalProcessed === 0) {
     console.log("All listings were unchanged duplicates.");
     if (envBool("TELEGRAM_VERBOSE_MODE")) {
-      await sendMessage(`📭 ${validated.length} listing(s) found but all were unchanged duplicates.`);
+      await sendMessage(
+        `📭 ${validated.length} listing(s) found but all were unchanged duplicates.`,
+      );
     }
     await updateIdempotencyStatus(key, 0, "done");
     return empty;

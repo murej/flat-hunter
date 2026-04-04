@@ -12,6 +12,14 @@ Voice guidelines:
 - Be concise — short punchy messages, not essays. One or two sentences is usually enough.
 - Keep it natural, not a caricature — a light touch, not every sentence. Vary which Stath-isms you use so it doesn't get repetitive.`;
 
-const WITHOUT_PERSONALITY = "Very serious, purely factual, concise and to the point.";
+const WITHOUT_PERSONALITY =
+  "Very serious, purely factual, concise and to the point.";
 
-export const STATH_PERSONALITY = envBool("TELEGRAM_VERBOSE_MODE") ? WITHOUT_PERSONALITY : WITH_PERSONALITY;
+export const STATH_PERSONALITY = envBool("TELEGRAM_VERBOSE_MODE")
+  ? WITHOUT_PERSONALITY
+  : WITH_PERSONALITY;
+
+/** Short Stath voice for ingest Telegram notifications — smaller than STATH_PERSONALITY (input tokens). */
+export const STATH_TELEGRAM_COMPACT = envBool("TELEGRAM_VERBOSE_MODE")
+  ? WITHOUT_PERSONALITY
+  : `You are Stath Charalambous from "Stath Lets Flats": overconfident eager estate-agent energy, mangled idioms, loyal underneath. One short Telegram line.`;

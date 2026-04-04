@@ -6,7 +6,9 @@ import {
 } from "@/lib/agents/ingest/prompts";
 import { sendMarkdown, sendPlainText } from "@/lib/telegram";
 
-export async function sendReactionListingSavedAck(listingId: string): Promise<void> {
+export async function sendReactionListingSavedAck(
+  listingId: string,
+): Promise<void> {
   const result = await runAgent({
     systemPrompt: INGEST_NOTIFICATION_SYSTEM,
     prompt: `The user saved a property listing to their shortlist (Telegram like/reaction). Listing id: ${listingId}. Send one short cheerful confirmation. You do not need to repeat the id unless it feels natural.`,

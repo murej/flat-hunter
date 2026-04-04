@@ -3,13 +3,19 @@ import { z } from "zod";
 export const PropertyEvalSchema = z.object({
   price_score: z
     .number()
-    .describe("Price value score 1-10 (10 = great value vs comparable local sales and budget). Excludes size."),
+    .describe(
+      "Price value score 1-10 (10 = great value vs comparable local sales and budget). Excludes size.",
+    ),
   size_score: z
     .number()
-    .describe("Space adequacy score 1-10 (10 = very spacious for buyer needs: bedrooms, sqft, layout). Excludes style and price."),
+    .describe(
+      "Space adequacy score 1-10 (10 = very spacious for buyer needs: bedrooms, sqft, layout). Excludes style and price.",
+    ),
   appeal_score: z
     .number()
-    .describe("Appeal score 1-10 (10 = strong draw — design, style, character, light, outdoor space, condition). Excludes size and price."),
+    .describe(
+      "Appeal score 1-10 (10 = strong draw — design, style, character, light, outdoor space, condition). Excludes size and price.",
+    ),
   deal_breaker_flags: z
     .array(z.string())
     .describe("List of deal-breaker preferences that this property violates"),
@@ -21,9 +27,7 @@ export const PropertyEvalSchema = z.object({
 });
 
 export const AreaEvalSchema = z.object({
-  area_score: z
-    .number()
-    .describe("Area desirability score 1-10"),
+  area_score: z.number().describe("Area desirability score 1-10"),
   area_summary: z
     .string()
     .describe("One short punchy sentence — the headline verdict on this area"),
@@ -35,7 +39,9 @@ export const AreaEvalSchema = z.object({
 export const VerificationResultSchema = z.object({
   isVerification: z
     .boolean()
-    .describe("True if this is a verification/confirmation email, not a property alert"),
+    .describe(
+      "True if this is a verification/confirmation email, not a property alert",
+    ),
   verificationUrl: z
     .string()
     .optional()
@@ -56,7 +62,7 @@ export const ListingSchema = z.object({
   bedrooms: z.number().describe("Number of bedrooms"),
   bathrooms: z.number().describe("Number of bathrooms"),
   sqft: z.number().nullable().describe("Square footage if available"),
-  description: z.string().describe("Property description (max 3500 chars)"),
+  description: z.string().describe("Property description (max 2000 chars)"),
   image_urls: z.array(z.string()).describe("Property image URLs"),
   floorplan_url: z.string().nullable().describe("Floorplan URL if available"),
   agent_name: z.string().nullable().describe("Estate agent name"),
@@ -67,18 +73,26 @@ export const ListingSchema = z.object({
 export const IngestParseResultSchema = z.object({
   isVerification: z
     .boolean()
-    .describe("True if this is a verification/confirmation email, not a property alert"),
+    .describe(
+      "True if this is a verification/confirmation email, not a property alert",
+    ),
   verificationUrl: z
     .string()
     .optional()
-    .describe("The verification URL if found (only when isVerification is true)"),
+    .describe(
+      "The verification URL if found (only when isVerification is true)",
+    ),
   verificationCode: z
     .string()
     .optional()
-    .describe("The verification code if found (only when isVerification is true)"),
+    .describe(
+      "The verification code if found (only when isVerification is true)",
+    ),
   listings: z
     .array(ListingSchema)
-    .describe("Extracted property listings (empty array if this is a verification email)"),
+    .describe(
+      "Extracted property listings (empty array if this is a verification email)",
+    ),
 });
 
 export type PropertyEvalOutput = z.infer<typeof PropertyEvalSchema>;

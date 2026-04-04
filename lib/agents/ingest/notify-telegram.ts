@@ -10,7 +10,8 @@ export async function notifyVerificationEmailTelegram(payload: {
 }): Promise<void> {
   const facts = [
     payload.verificationUrl && `Verification URL: ${payload.verificationUrl}`,
-    payload.verificationCode && `Verification code: ${payload.verificationCode}`,
+    payload.verificationCode &&
+      `Verification code: ${payload.verificationCode}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -32,7 +33,9 @@ export async function notifyVerificationEmailTelegram(payload: {
   }
 }
 
-export async function notifyNoListingsParsedVerbose(snippet: string): Promise<void> {
+export async function notifyNoListingsParsedVerbose(
+  snippet: string,
+): Promise<void> {
   try {
     const result = await runAgent({
       systemPrompt: INGEST_NOTIFICATION_SYSTEM,

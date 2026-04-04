@@ -28,7 +28,7 @@ APP_HOST="${APP_HOST#http://}"
 if [ "$BLOCK" = true ]; then
   echo ""
   if [ -n "${CLOUDMAILIN_SECRET:-}" ]; then
-    echo "📬 Copy to CloudMailin as target URL:"
+    echo "📬 Set CloudMailin target URL to:"
     echo "———————————————————————————————————————————————————————————————————————————————————————————————————————————"
     echo "https://cloudmailin:${CLOUDMAILIN_SECRET}@${APP_HOST}/api/ingest"
 

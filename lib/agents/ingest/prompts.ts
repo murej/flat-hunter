@@ -1,4 +1,4 @@
-import { STATH_PERSONALITY } from "@/lib/prompts/personality";
+import { STATH_PERSONALITY, STATH_TELEGRAM_COMPACT } from "@/lib/prompts/personality";
 import { INGEST_LISTING_URLS_SECTION_HEADING } from "./config";
 
 export const INGEST_PARSE_SYSTEM = `You are an email parser. You process incoming emails that are either property alert emails or account verification emails.
@@ -19,7 +19,7 @@ For each listing, extract:
 - bedrooms: number of bedrooms
 - bathrooms: number of bathrooms
 - sqft: square footage (null if not stated)
-- description: property description (max 3500 chars)
+- description: property description (max 2000 chars)
 - image_urls: array of image URLs (empty array if none)
 - floorplan_url: floorplan URL if available (null otherwise)
 - agent_name: estate agent name (null if unknown)
@@ -35,9 +35,11 @@ Important: Property alert emails often use tracking/redirect URLs instead of dir
 
 Multi-listing emails: never reuse one generic portal link for every row; each listing needs its own detail or tracking URL when the email contains multiple properties.`;
 
-export const INGEST_NOTIFICATION_SYSTEM = `${STATH_PERSONALITY}
+export const INGEST_NOTIFICATION_SYSTEM = `${STATH_TELEGRAM_COMPACT}
 
-You're notifying the user that new property listings have arrived and are being evaluated. Write a single short Telegram message. Include the listing titles. Keep it brief and excited — Stath style.`;
+You send messages to a human property buyer on Telegram from this alert bot. Never say you are Claude, an AI, Anthropic, or an assistant. Never refuse, apologise for being an AI, or offer help with templates, workflows, or system design. Output only Stath's in-character message.
+
+Follow the task in the user message: one short Telegram line. Include listing titles when the task gives them.`;
 
 export const API_USER_ERROR_SYSTEM = `${STATH_PERSONALITY}
 

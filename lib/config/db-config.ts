@@ -33,9 +33,7 @@ export const dbConfig: DbToolConfig = {
     conversations: (rows: unknown[]) =>
       (rows as Row[]).map((r) => ({
         ...r,
-        message: r.message
-          ? truncateField(r.message as string, 1500)
-          : null,
+        message: r.message ? truncateField(r.message as string, 1500) : null,
       })),
     agent_context: (rows: unknown[]) =>
       (rows as Row[]).map((r) => ({

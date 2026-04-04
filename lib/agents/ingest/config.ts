@@ -16,7 +16,10 @@ export const TELEMETRY_TAG_NOTIFICATION = "ingest_notification";
 export const MAX_PARSE_STEPS = 1;
 
 /** Max characters of email-derived body text passed to the listing parser (before listing URL block). */
-export const MAX_INPUT_CHARS = 32_000;
+export const MAX_INPUT_CHARS = 20_000;
+
+/** Stored listing description cap after parse (reduces parse completion + evaluation prompt size). */
+export const MAX_LISTING_DESCRIPTION_CHARS = 2000;
 
 /**
  * Regex sources for UK portal property detail URLs (flags applied when compiling).

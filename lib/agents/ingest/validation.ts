@@ -1,3 +1,4 @@
+import { MAX_LISTING_DESCRIPTION_CHARS } from "./config";
 import { normalizePortalId } from "./portal-id";
 import { reportError } from "@/lib/core/reporting";
 import type { ListingOutput } from "@/lib/schemas";
@@ -19,7 +20,9 @@ export async function validateAndCleanListings(
     const result = validateOne(listing);
     if (!result) {
       await reportError(
-        new Error(`Listing dropped: title="${listing.title}" portal_id="${listing.portal_id}"`),
+        new Error(
+          `Listing dropped: title="${listing.title}" portal_id="${listing.portal_id}"`,
+        ),
         { source: "ingest/validation" },
       );
       continue;
@@ -32,7 +35,12 @@ export async function validateAndCleanListings(
 
 function validateOne(listing: ListingOutput): ValidatedListing | null {
   const flags: string[] = [];
-  let { url, price, postcode, title, portal_id } = listing;
+  let { url, price, postcode, title, portal_id, description } = listing;
+
+  if (description.length > MAX_LISTING_DESCRIPTION_CHARS) {
+    description = description.slice(0, MAX_LISTING_DESCRIPTION_CHARS);
+    flags.push("description_truncated");
+  }
 
   // Title required
   if (!title?.trim()) return null;
@@ -61,7 +69,7 @@ function validateOne(listing: ListingOutput): ValidatedListing | null {
   portal_id = normalizePortalId({ portal_id, url, postcode });
 
   return {
-    listing: { ...listing, url, price, postcode, title, portal_id },
+    listing: { ...listing, url, price, postcode, title, portal_id, description },
     flags,
   };
 }

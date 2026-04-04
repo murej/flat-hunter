@@ -296,7 +296,8 @@ Every agent directory contains a `config.ts` — the single place to tune that a
 | ingest       | `TELEMETRY_TAG_VERIFICATION` | `"email_verification"` | Verification parse log label        |
 | ingest       | `TELEMETRY_TAG_PARSE`        | `"ingest_parse"`       | Listing parse log label             |
 | ingest       | `MAX_PARSE_STEPS`            | `1`                    | One-shot structured output          |
-| ingest       | `MAX_INPUT_CHARS`            | `32000`                | Truncate email body before URL block |
+| ingest       | `MAX_INPUT_CHARS`            | `20000`                | Truncate email body before URL block |
+| ingest       | `MAX_LISTING_DESCRIPTION_CHARS` | `2000`             | Cap stored listing description after parse |
 | ingest       | `LISTING_URL_PATTERN_SOURCES` | (regex strings)     | Portal listing URL extraction       |
 | ingest       | `INGEST_LISTING_URLS_SECTION_HEADING` | (string)      | LLM context label; referenced in `prompts.ts` |
 | conversation | `TELEMETRY_TAG_WHY`          | `"why_explanation"`    | Why-chain log label                 |

@@ -3,11 +3,18 @@ import { Output } from "ai";
 import { runAgent } from "@/lib/core/agent";
 import { reportError } from "@/lib/core/reporting";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getIngestParseModel, getIngestNotificationModel } from "@/lib/config/agent-models";
+import {
+  getIngestParseModel,
+  getIngestNotificationModel,
+} from "@/lib/config/agent-models";
 import { IngestParseResultSchema } from "@/lib/schemas";
 import type { IngestParseResultOutput, ListingOutput } from "@/lib/schemas";
 import { INGEST_PARSE_SYSTEM, INGEST_NOTIFICATION_SYSTEM } from "./prompts";
-import { TELEMETRY_TAG_PARSE, TELEMETRY_TAG_NOTIFICATION, MAX_PARSE_STEPS } from "./config";
+import {
+  TELEMETRY_TAG_PARSE,
+  TELEMETRY_TAG_NOTIFICATION,
+  MAX_PARSE_STEPS,
+} from "./config";
 import { runEvaluationPipeline } from "@/lib/tools/evaluation-pipeline";
 import { sendMarkdown, sendWithButtons } from "@/lib/telegram";
 import { consumePendingNotifications } from "@/lib/agents/notifications";
@@ -54,12 +61,22 @@ export type DeduplicateResult = {
 };
 
 const MATERIAL_FIELDS = [
-  "price", "title", "description", "address", "postcode",
-  "bedrooms", "bathrooms", "sqft", "floorplan_url",
-  "agent_name", "agent_email", "listed_date",
+  "price",
+  "title",
+  "description",
+  "address",
+  "postcode",
+  "bedrooms",
+  "bathrooms",
+  "sqft",
+  "floorplan_url",
+  "agent_name",
+  "agent_email",
+  "listed_date",
 ] as const;
 
-const LISTING_SELECT_FIELDS = "id, status, price, title, description, address, postcode, bedrooms, bathrooms, sqft, image_urls, floorplan_url, agent_name, agent_email, listed_date";
+const LISTING_SELECT_FIELDS =
+  "id, status, price, title, description, address, postcode, bedrooms, bathrooms, sqft, image_urls, floorplan_url, agent_name, agent_email, listed_date";
 
 function detectChanges(
   existing: Record<string, unknown>,
@@ -74,7 +91,9 @@ function detectChanges(
   }
 
   // Compare image_urls by sorted content
-  const oldImages = [...((existing.image_urls as string[]) || [])].sort().join(",");
+  const oldImages = [...((existing.image_urls as string[]) || [])]
+    .sort()
+    .join(",");
   const newImages = [...(incoming.image_urls || [])].sort().join(",");
   if (oldImages !== newImages) changed.push("image_urls");
 
@@ -89,7 +108,10 @@ export async function deduplicateAndStore(
 ): Promise<DeduplicateResult> {
   const newIds: string[] = [];
   const updatedIds: string[] = [];
-  const changes = new Map<string, { changedFields: string[]; previousStatus: string }>();
+  const changes = new Map<
+    string,
+    { changedFields: string[]; previousStatus: string }
+  >();
 
   for (const { listing, flags } of validatedListings) {
     // Check for existing by portal_id
@@ -100,7 +122,10 @@ export async function deduplicateAndStore(
       .single();
 
     if (existing) {
-      const changedFields = detectChanges(existing as Record<string, unknown>, listing);
+      const changedFields = detectChanges(
+        existing as Record<string, unknown>,
+        listing,
+      );
       if (changedFields.length === 0) continue; // Unchanged duplicate
 
       const existingId = (existing as { id: string }).id;
@@ -128,7 +153,10 @@ export async function deduplicateAndStore(
       // Queue for re-evaluation
       await getSupabaseAdmin()
         .from("listings")
-        .update({ status: "pending_evaluation", updated_at: new Date().toISOString() })
+        .update({
+          status: "pending_evaluation",
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", existingId);
 
       updatedIds.push(existingId);
@@ -176,7 +204,7 @@ export async function runEvaluationsAndNotify(
   if (!opts?.skipIntro) {
     const intro = await runAgent({
       systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-      prompt: `${ids.length} new listing${ids.length > 1 ? "s" : ""} received. Checking match with your preferences...`,
+      prompt: `Write one message to the buyer: their app received ${ids.length} new property listing(s) and scoring is starting. Excited Stath tone.`,
       model: getIngestNotificationModel(),
       maxSteps: 1,
       telemetryTag: TELEMETRY_TAG_NOTIFICATION,
@@ -195,7 +223,10 @@ export async function runEvaluationsAndNotify(
       if (!opts?.preClaimed) {
         const { error: claimError } = await getSupabaseAdmin()
           .from("listings")
-          .update({ status: "evaluating", updated_at: new Date().toISOString() })
+          .update({
+            status: "evaluating",
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", id)
           .in("status", ["pending_evaluation"]);
 
@@ -211,36 +242,43 @@ export async function runEvaluationsAndNotify(
       const result = await runEvaluationPipeline(id);
       if (result) {
         if (result.evaluation.overall_score >= minScore) {
-          await getSupabaseAdmin().from("pending_notifications").insert({
-            batch_id: batchId,
-            sequence: sequence++,
-            type: "scorecard",
-            payload: {
-              listing_id: result.listingId,
-              text: result.scorecardText,
-              buttons: result.scorecardButtons,
-              parse_mode: "Markdown",
-            },
-          });
+          await getSupabaseAdmin()
+            .from("pending_notifications")
+            .insert({
+              batch_id: batchId,
+              sequence: sequence++,
+              type: "scorecard",
+              payload: {
+                listing_id: result.listingId,
+                text: result.scorecardText,
+                buttons: result.scorecardButtons,
+                parse_mode: "Markdown",
+              },
+            });
         } else {
           // Auto-dismiss and queue reject record for consolidated summary
           const { data: dismissedListing } = await getSupabaseAdmin()
             .from("listings")
-            .update({ status: "dismissed", updated_at: new Date().toISOString() })
+            .update({
+              status: "dismissed",
+              updated_at: new Date().toISOString(),
+            })
             .eq("id", id)
             .select("title, url")
             .single();
-          await getSupabaseAdmin().from("pending_notifications").insert({
-            batch_id: batchId,
-            sequence: sequence++,
-            type: "reject",
-            payload: {
-              listing_id: result.listingId,
-              title: dismissedListing?.title || "Untitled",
-              url: dismissedListing?.url || "",
-              score: result.evaluation.overall_score,
-            },
-          });
+          await getSupabaseAdmin()
+            .from("pending_notifications")
+            .insert({
+              batch_id: batchId,
+              sequence: sequence++,
+              type: "reject",
+              payload: {
+                listing_id: result.listingId,
+                title: dismissedListing?.title || "Untitled",
+                url: dismissedListing?.url || "",
+                score: result.evaluation.overall_score,
+              },
+            });
         }
       }
     } catch (err) {
@@ -258,7 +296,7 @@ export async function runEvaluationsAndNotify(
   if (ids.length > 1) {
     const summary = await runAgent({
       systemPrompt: INGEST_NOTIFICATION_SYSTEM,
-      prompt: `You just finished evaluating ${ids.length} listings and sent scorecards. Write a short wrap-up message reminding the user to react (like) the ones they want to save.`,
+      prompt: `Write one wrap-up to the buyer: scoring finished for ${ids.length} listings and scorecards were sent. Remind them to heart/like the ones they want to save.`,
       model: getIngestNotificationModel(),
       maxSteps: 1,
       telemetryTag: TELEMETRY_TAG_NOTIFICATION,
@@ -320,24 +358,29 @@ export async function runReEvaluationsAndNotify(
       if (change) {
         // Was saved/dismissed — always notify (user interacted with this listing)
         const summary = formatChangeSummary(change.changedFields);
-        const title = result.evaluation.property_summary?.split("\n")[0] || "Listing";
+        const title =
+          result.evaluation.property_summary?.split("\n")[0] || "Listing";
         const msg = `*Updated:* ${title}\n\nChanged: ${summary}\n\n_This listing was previously ${change.previousStatus}. It has been re\\-evaluated._`;
-        await sendWithButtons(msg, [
-          [{ text: "Show updated scorecard", callback_data: `why:${id}` }],
-        ], "Markdown");
+        await sendWithButtons(
+          msg,
+          [[{ text: "Show updated scorecard", callback_data: `why:${id}` }]],
+          "Markdown",
+        );
       } else if (result.evaluation.overall_score >= minScore) {
         // Above threshold — send full scorecard
-        await getSupabaseAdmin().from("pending_notifications").insert({
-          batch_id: batchId,
-          sequence: sequence++,
-          type: "scorecard",
-          payload: {
-            listing_id: result.listingId,
-            text: result.scorecardText,
-            buttons: result.scorecardButtons,
-            parse_mode: "Markdown",
-          },
-        });
+        await getSupabaseAdmin()
+          .from("pending_notifications")
+          .insert({
+            batch_id: batchId,
+            sequence: sequence++,
+            type: "scorecard",
+            payload: {
+              listing_id: result.listingId,
+              text: result.scorecardText,
+              buttons: result.scorecardButtons,
+              parse_mode: "Markdown",
+            },
+          });
       } else {
         // Below threshold — auto-dismiss and queue reject for summary
         const { data: dismissedListing } = await getSupabaseAdmin()
@@ -346,17 +389,19 @@ export async function runReEvaluationsAndNotify(
           .eq("id", id)
           .select("title, url")
           .single();
-        await getSupabaseAdmin().from("pending_notifications").insert({
-          batch_id: batchId,
-          sequence: sequence++,
-          type: "reject",
-          payload: {
-            listing_id: result.listingId,
-            title: dismissedListing?.title || "Untitled",
-            url: dismissedListing?.url || "",
-            score: result.evaluation.overall_score,
-          },
-        });
+        await getSupabaseAdmin()
+          .from("pending_notifications")
+          .insert({
+            batch_id: batchId,
+            sequence: sequence++,
+            type: "reject",
+            payload: {
+              listing_id: result.listingId,
+              title: dismissedListing?.title || "Untitled",
+              url: dismissedListing?.url || "",
+              score: result.evaluation.overall_score,
+            },
+          });
       }
     } catch (err) {
       await reportError(err, {
