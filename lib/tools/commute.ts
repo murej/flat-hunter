@@ -1,5 +1,8 @@
 import type { CommuteEvalResult } from "@/types";
 import { retryWithBackoff, nominatimThrottle } from "@/lib/utils/retry";
+import { getSupabaseAdmin } from "@/lib/supabase";
+
+const COMMUTE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const API_TIMEOUT = 8000;
 
@@ -137,12 +140,7 @@ function computeCommuteScore(
   maxMinutes: number,
 ): number {
   const ratio = minutes / maxMinutes;
-  if (ratio <= 0.5) return 10;
-  if (ratio <= 0.75) return 8;
-  if (ratio <= 1.0) return 6;
-  if (ratio <= 1.25) return 4;
-  if (ratio <= 1.5) return 2;
-  return 1;
+  return Math.max(1, Math.round(10 - 9 * (ratio / 1.5)));
 }
 
 export async function evaluateCommute(
@@ -154,6 +152,27 @@ export async function evaluateCommute(
   if (!toPostcode) {
     console.error("[commute] No commute destination postcode configured");
     return { commute_score: null, commute_minutes: null, commute_route: null };
+  }
+
+  // Check cache
+  const cacheKey = `${fromPostcode.trim().toUpperCase()}:${toPostcode.trim().toUpperCase()}`;
+  const { data: cached } = await getSupabaseAdmin()
+    .from("agent_context")
+    .select("content, expires_at")
+    .eq("agent_id", "commute")
+    .eq("scope", "postcode_pair")
+    .eq("scope_value", cacheKey)
+    .single();
+
+  if (cached && cached.content && (!cached.expires_at || new Date(cached.expires_at) > new Date())) {
+    const c = cached.content as { commute_score: number; commute_minutes: number; commute_route: string };
+    if (c.commute_minutes != null) {
+      return {
+        commute_score: computeCommuteScore(c.commute_minutes, maxMinutes),
+        commute_minutes: c.commute_minutes,
+        commute_route: c.commute_route,
+      };
+    }
   }
 
   // Resolve origin
@@ -184,6 +203,18 @@ export async function evaluateCommute(
     console.error("[commute] TfL journey returned null for", fromPostcode, "->", toPostcode);
     return { commute_score: null, commute_minutes: null, commute_route: null };
   }
+
+  // Store in cache (score is excluded — recomputed from minutes so maxMinutes changes are reflected)
+  await getSupabaseAdmin().from("agent_context").upsert(
+    {
+      agent_id: "commute",
+      scope: "postcode_pair",
+      scope_value: cacheKey,
+      content: { commute_minutes: journey.minutes, commute_route: journey.route },
+      expires_at: new Date(Date.now() + COMMUTE_CACHE_TTL_MS).toISOString(),
+    },
+    { onConflict: "agent_id,scope,scope_value" },
+  );
 
   return {
     commute_score: computeCommuteScore(journey.minutes, maxMinutes),

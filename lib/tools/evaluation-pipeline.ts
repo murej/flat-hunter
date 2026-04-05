@@ -109,9 +109,10 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     runPropertyExpert(propertyPrompt),
   ]);
 
-  // Skip area expert if property scores are all below 3 (clear reject)
+  // Skip area expert if average property score is below 4 (clear reject)
   const propScores = [propertyResult.appeal_score, propertyResult.price_score, propertyResult.size_score].filter((s): s is number => s != null);
-  const skipArea = propScores.length > 0 && propScores.every((s) => s < 3);
+  const propAvg = propScores.length > 0 ? propScores.reduce((a, b) => a + b, 0) / propScores.length : null;
+  const skipArea = propAvg !== null && propAvg < 4;
 
   const validPriorContext = isValidAreaContext(priorContext?.content)
     ? (priorContext!.content as Record<string, unknown>)
