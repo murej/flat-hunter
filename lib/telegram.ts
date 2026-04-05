@@ -68,6 +68,7 @@ export function parseInbound(body: Record<string, unknown>): {
   text: string;
   messageId: number;
   callbackQueryId?: string;
+  replyToMessageId?: number;
 } {
   // Callback query (inline button press)
   if (body.callback_query) {
@@ -82,9 +83,13 @@ export function parseInbound(body: Record<string, unknown>): {
 
   // Regular message
   const msg = body.message as Record<string, unknown> | undefined;
+  const replyTo = msg?.reply_to_message as Record<string, unknown> | undefined;
   return {
     text: (msg?.text as string) || "",
     messageId: (msg?.message_id as number) || 0,
+    ...(replyTo?.message_id !== undefined && {
+      replyToMessageId: replyTo.message_id as number,
+    }),
   };
 }
 

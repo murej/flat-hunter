@@ -327,7 +327,9 @@ export async function getFormattedSavedList(): Promise<string> {
     .join("\n\n");
 }
 
-export async function getFormattedPreferences(): Promise<string> {
+export type PreferenceSection = { key: string; text: string };
+
+export async function getPreferenceSections(): Promise<PreferenceSection[]> {
   const { data } = await getSupabaseAdmin()
     .from("preferences")
     .select("*")
@@ -335,20 +337,27 @@ export async function getFormattedPreferences(): Promise<string> {
     .limit(1)
     .single();
 
-  if (!data) return "No preferences set. Use /start to set up.";
+  if (!data) {
+    return [{ key: "none", text: "No preferences set. Use /start to set up." }];
+  }
 
   const p = data as Preferences;
-  const lines = [
-    `📍 *Areas:* ${p.areas.join(", ")}`,
-    `💰 *Max price:* £${p.max_price.toLocaleString("en-GB")}`,
-    `🏦 *Deposit:* £${p.deposit.toLocaleString("en-GB")}`,
-    `🛏 *Min bedrooms:* ${p.min_bedrooms}`,
-    `🚇 *Commute:* ${p.commute_anchor} (${p.commute_postcode}), max ${p.commute_max_minutes} min`,
-    `✅ *Must-haves:* ${p.must_haves.join(", ") || "None"}`,
-    `🚫 *Deal-breakers:* ${p.deal_breakers.join(", ") || "None"}`,
+  const sections: PreferenceSection[] = [
+    { key: "areas", text: `📍 *Areas:* ${p.areas.join(", ")}` },
+    { key: "max_price", text: `💰 *Max price:* £${p.max_price.toLocaleString("en-GB")}` },
+    { key: "deposit", text: `🏦 *Deposit:* £${p.deposit.toLocaleString("en-GB")}` },
+    { key: "min_bedrooms", text: `🛏 *Min bedrooms:* ${p.min_bedrooms}` },
+    { key: "commute", text: `🚇 *Commute:* ${p.commute_anchor} (${p.commute_postcode}), max ${p.commute_max_minutes} min` },
+    { key: "must_haves", text: `✅ *Must-haves:* ${p.must_haves.join(", ") || "None"}` },
+    { key: "deal_breakers", text: `🚫 *Deal-breakers:* ${p.deal_breakers.join(", ") || "None"}` },
   ];
-  if (p.style_notes) lines.push(`🎨 *Style:* ${p.style_notes}`);
-  if (p.freeform_notes) lines.push(`📝 *Notes:* ${p.freeform_notes}`);
+  if (p.style_notes) sections.push({ key: "style_notes", text: `🎨 *Style:* ${p.style_notes}` });
+  if (p.freeform_notes) sections.push({ key: "freeform_notes", text: `📝 *Notes:* ${p.freeform_notes}` });
 
-  return lines.join("\n");
+  return sections;
+}
+
+export async function getFormattedPreferences(): Promise<string> {
+  const sections = await getPreferenceSections();
+  return sections.map((s) => s.text).join("\n");
 }

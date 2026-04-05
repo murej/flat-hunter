@@ -163,6 +163,26 @@ export async function getListingByMessageId(
   return (data as { listing_id: string } | null)?.listing_id ?? null;
 }
 
+export async function storeMessagePreferenceSection(
+  telegramMessageId: number,
+  sectionKey: string,
+): Promise<void> {
+  await getSupabaseAdmin()
+    .from("message_preference_sections")
+    .upsert({ telegram_message_id: telegramMessageId, section_key: sectionKey });
+}
+
+export async function getPreferenceSectionForMessage(
+  telegramMessageId: number,
+): Promise<string | null> {
+  const { data } = await getSupabaseAdmin()
+    .from("message_preference_sections")
+    .select("section_key")
+    .eq("telegram_message_id", telegramMessageId)
+    .single();
+  return (data as { section_key: string } | null)?.section_key ?? null;
+}
+
 export async function getActiveListingId(
   lookback = 10,
 ): Promise<string | null> {

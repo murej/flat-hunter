@@ -15,11 +15,13 @@ import {
   setSessionMode,
   clearSessionMode,
   storeMessageListing,
+  storeMessagePreferenceSection,
+  getPreferenceSectionForMessage,
 } from "@/lib/supabase";
 import {
   getScorecard,
   getWhyContext,
-  getFormattedPreferences,
+  getPreferenceSections,
   getFormattedSavedList,
 } from "@/lib/tools/listing";
 import { runPreferenceAgent } from "@/lib/agents/preference";
@@ -43,8 +45,9 @@ export async function handleTelegramUpdate(input: {
   text: string;
   messageId: number;
   callbackQueryId?: string;
+  replyToMessageId?: number;
 }): Promise<void> {
-  const { text, messageId, callbackQueryId } = input;
+  const { text, messageId, callbackQueryId, replyToMessageId } = input;
 
   if (!text) return;
 
@@ -136,7 +139,7 @@ export async function handleTelegramUpdate(input: {
       return;
     }
 
-    // /preferences — show current preferences
+    // /preferences — show current preferences (one message per section)
     if (text === "/preferences") {
       await logConversation({
         telegram_message_id: messageId,
@@ -144,8 +147,13 @@ export async function handleTelegramUpdate(input: {
         message: text,
         intent: "preferences",
       });
-      const msg = await getFormattedPreferences();
-      await sendMarkdown(msg);
+      const sections = await getPreferenceSections();
+      for (const section of sections) {
+        const msgId = await sendMarkdown(section.text);
+        if (section.key !== "none") {
+          await storeMessagePreferenceSection(msgId, section.key);
+        }
+      }
       return;
     }
 
@@ -160,6 +168,43 @@ export async function handleTelegramUpdate(input: {
       const msg = await getFormattedSavedList();
       await sendMarkdown(msg);
       return;
+    }
+
+    // Reply to a preference section message → route to preference update
+    if (replyToMessageId) {
+      const sectionKey = await getPreferenceSectionForMessage(replyToMessageId);
+      if (sectionKey) {
+        await logConversation({
+          telegram_message_id: messageId,
+          direction: "inbound",
+          message: text,
+          intent: "preference_reply",
+        });
+        await setSessionMode("preference");
+        const prefs = await getPreferences();
+        const result = await runPreferenceAgent(
+          `The user replied to the "${sectionKey}" section of their preferences. ` +
+            `Their message: "${text}". ` +
+            `Update the ${sectionKey} field if the reply fits it; ` +
+            `otherwise update whichever field(s) the data best fits.` +
+            prefsContext(prefs),
+        );
+        const prefsAfter = await getPreferences();
+        const prefsSaved =
+          (!prefs && prefsAfter) ||
+          (prefs && prefsAfter && prefsAfter.updated_at !== prefs.updated_at);
+        if (prefsSaved) {
+          await clearSessionMode();
+        }
+        await sendMarkdown(result.message);
+        await logConversation({
+          telegram_message_id: messageId,
+          direction: "outbound",
+          message: result.message,
+          intent: "preference_reply",
+        });
+        return;
+      }
     }
 
     // Check preference mode (skip for action callbacks)
