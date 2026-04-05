@@ -51,12 +51,17 @@ export async function runPropertyExpert(
     source: "property-expert",
     telemetryTag: TELEMETRY_TAG,
   })) as Record<string, unknown>;
+
+  const clampOrNull = (v: unknown): number | null =>
+    v == null ? null : clampScore(v as number);
+
   return {
-    price_score: clampScore(parsed.price_score as number),
-    size_score: clampScore(parsed.size_score as number),
-    appeal_score: clampScore(parsed.appeal_score as number),
+    price_score: clampOrNull(parsed.price_score),
+    size_score: clampOrNull(parsed.size_score),
+    appeal_score: clampOrNull(parsed.appeal_score),
     deal_breaker_flags: (parsed.deal_breaker_flags as string[] | undefined) || [],
     property_summary: parsed.property_summary as string,
+    property_unknown: (parsed.property_unknown as string | undefined) ?? undefined,
     raw: parsed,
   };
 }

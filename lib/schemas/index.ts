@@ -3,18 +3,21 @@ import { z } from "zod";
 export const PropertyEvalSchema = z.object({
   price_score: z
     .number()
+    .nullable()
     .describe(
-      "Price value score 1-10 (10 = great value vs comparable local sales and budget). Excludes size.",
+      "Price value score 1-10 (10 = great value vs comparable local sales and budget). Excludes size. Null if genuinely insufficient data to judge.",
     ),
   size_score: z
     .number()
+    .nullable()
     .describe(
-      "Space adequacy score 1-10 (10 = very spacious for buyer needs: bedrooms, sqft, layout). Excludes style and price.",
+      "Space adequacy score 1-10 (10 = very spacious for buyer needs: bedrooms, sqft, layout). Excludes style and price. Null if genuinely insufficient data to judge.",
     ),
   appeal_score: z
     .number()
+    .nullable()
     .describe(
-      "Appeal score 1-10 (10 = strong draw — design, style, character, light, outdoor space, condition). Excludes size and price.",
+      "Appeal score 1-10 (10 = strong draw — design, style, character, light, outdoor space, condition). Excludes size and price. Null if genuinely insufficient data to judge.",
     ),
   deal_breaker_flags: z
     .array(z.string())
@@ -23,6 +26,13 @@ export const PropertyEvalSchema = z.object({
     .string()
     .describe(
       "One short punchy sentence — the headline verdict on this property",
+    ),
+  property_unknown: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Comma-separated list of buyer preferences or must-haves that could not be confirmed OR denied from the listing data (e.g. 'parking', 'garden'). Do NOT reduce scores for these — list them here instead.",
     ),
 });
 

@@ -14,4 +14,11 @@ Flag any deal-breakers from the buyer's preferences that this property violates.
 
 Provide a single short sentence — the headline verdict on this property.
 
+When a buyer preference (must-have, style note, deal-breaker) cannot be confirmed or denied from the listing data:
+- Do NOT assume the preference is unmet
+- Do NOT penalise the score
+- List the uncertain item in property_unknown instead
+
+Only flag a deal-breaker or reduce a score when there is positive evidence the preference is violated.
+
 Be honest, practical, and evidence-based. Don't inflate scores.`;
