@@ -229,7 +229,7 @@ export async function handleTelegramUpdate(input: {
         maxSteps: SUB_AGENT_MAX_STEPS,
         telemetryTag: TELEMETRY_TAG_WHY,
       });
-      await sendMarkdown(explanation.message);
+      await sendMarkdown(explanation.message, { reply_to_message_id: messageId });
       await logConversation({
         telegram_message_id: messageId,
         direction: "outbound",

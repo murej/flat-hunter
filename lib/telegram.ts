@@ -6,6 +6,7 @@ type SendOptions = {
   parse_mode?: "Markdown" | "HTML";
   reply_markup?: unknown;
   disable_web_page_preview?: boolean;
+  reply_to_message_id?: number;
 };
 
 async function callTelegram(method: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
