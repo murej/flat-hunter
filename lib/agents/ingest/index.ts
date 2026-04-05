@@ -71,17 +71,11 @@ export async function ingestAgent(
         ? parseResult.verificationUrl
         : undefined;
     const verificationCode = parseResult.verificationCode?.trim() || undefined;
-    // #region agent log
-    fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a6a391'},body:JSON.stringify({sessionId:'a6a391',location:'ingest/index.ts:68',message:'verification branch entered (post-fix)',data:{rawUrl:parseResult.verificationUrl,rawCode:parseResult.verificationCode,resolvedUrl:verificationUrl,resolvedCode:verificationCode},timestamp:Date.now(),runId:'post-fix',hypothesisId:'H-A'})}).catch(()=>{});
-    // #endregion
     const msg = verificationUrl
       ? `🔐 Verification email received.\nURL: ${verificationUrl}`
       : verificationCode
         ? `🔐 Verification code: ${verificationCode}`
         : "🔐 Verification email received (no URL/code extracted).";
-    // #region agent log
-    fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a6a391'},body:JSON.stringify({sessionId:'a6a391',location:'ingest/index.ts:74',message:'verification message built (post-fix)',data:{msg},timestamp:Date.now(),runId:'post-fix',hypothesisId:'H-A'})}).catch(()=>{});
-    // #endregion
     await sendMessage(msg);
     await updateIdempotencyStatus(key, 0, "done");
     return empty;
