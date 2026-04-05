@@ -19,7 +19,7 @@ export async function tryHandleMessageReaction(
     if (reaction.added) {
       await saveListing(listingId);
       try {
-        await sendReactionListingSavedAck(listingId);
+        await sendReactionListingSavedAck(listingId, reaction.messageId);
       } catch (err) {
         await reportError(err, { source: "api/telegram/reaction_save_ack" });
       }

@@ -8,6 +8,7 @@ import { sendMarkdown, sendPlainText } from "@/lib/telegram";
 
 export async function sendReactionListingSavedAck(
   listingId: string,
+  replyToMessageId?: number,
 ): Promise<void> {
   const result = await runAgent({
     systemPrompt: INGEST_NOTIFICATION_SYSTEM,
@@ -16,7 +17,7 @@ export async function sendReactionListingSavedAck(
     maxSteps: 1,
     telemetryTag: "reaction_save_ack",
   });
-  await sendMarkdown(result.message);
+  await sendMarkdown(result.message, { reply_to_message_id: replyToMessageId });
 }
 
 export async function sendTelegramRouteCatchUserMessage(): Promise<void> {
