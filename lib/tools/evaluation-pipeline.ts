@@ -106,7 +106,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
       listing.address,
     ),
     evaluateFinance(listing.price, preferences.deposit),
-    runPropertyExpert(propertyPrompt),
+    runPropertyExpert(propertyPrompt, listing.image_urls ?? []),
   ]);
 
   // Skip area expert if average property score is below 4 (clear reject)

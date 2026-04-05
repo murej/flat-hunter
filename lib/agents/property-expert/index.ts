@@ -12,6 +12,7 @@ import { getAgentConfig } from "@/lib/core/registry";
 
 export async function runPropertyExpert(
   prompt: string,
+  imageUrls: string[] = [],
 ): Promise<PropertyEvalResult> {
   await ensureDbToolAgentsRegistered();
   const cfg = getAgentConfig(AGENT_NAME);
@@ -19,9 +20,25 @@ export async function runPropertyExpert(
     throw new Error("Property expert agent not registered");
   }
 
+  const imageParts = imageUrls.slice(0, 3).map((url) => ({
+    type: "image" as const,
+    image: new URL(url),
+  }));
+
+  const messages =
+    imageParts.length > 0
+      ? [
+          {
+            role: "user" as const,
+            content: [{ type: "text" as const, text: prompt }, ...imageParts],
+          },
+        ]
+      : undefined;
+
   const result = await runAgent({
     systemPrompt: PROPERTY_EXPERT_SYSTEM,
-    prompt,
+    prompt: messages ? undefined : prompt,
+    messages,
     tools: cfg.tools,
     providerTools: cfg.providerTools,
     model: getPropertyExpertModel(),

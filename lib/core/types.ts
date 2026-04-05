@@ -1,4 +1,4 @@
-import type { Tool } from "ai";
+import type { Tool, CoreMessage } from "ai";
 
 export type RunAgentInput = {
   systemPrompt: string;
@@ -6,7 +6,7 @@ export type RunAgentInput = {
   tools?: Record<string, Tool>;
   providerTools?: unknown[];
   model?: string;
-  messages?: Array<{ role: "user" | "assistant"; content: string }>;
+  messages?: CoreMessage[];
   maxSteps?: number;
   telemetryTag?: string;
   output?: unknown;
