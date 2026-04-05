@@ -86,46 +86,27 @@ export async function flushRejectSummary(): Promise<void> {
 
   if (!rejects || rejects.length === 0) return;
 
-  const lines = (rejects as NotificationRow[]).map((r) => {
-    const { title, url, score } = r.payload as {
+  const buttonRows = (rejects as NotificationRow[]).map((r) => {
+    const { listing_id, title, score } = r.payload as {
+      listing_id: string;
       title: string;
       url: string;
       score: number;
     };
-    return url
-      ? `• [${title}](${url}) — ${score}/10`
-      : `• ${title} — ${score}/10`;
+    return [
+      {
+        text: `${title} — ${score}/10`,
+        callback_data: `scorecard:${listing_id}`,
+      },
+    ];
   });
 
-  const header = `Ah, these are not worth your time:`;
-  const MAX_MSG_LEN = 3800;
+  const header = `🤦 Ah, these are not worth your time:`;
+  const CHUNK_SIZE = 30;
 
-  // Chunk lines to stay under Telegram's 4096-char limit
-  const chunks: string[][] = [[]];
-  let currentLen = header.length + 1;
-  for (const line of lines) {
-    if (
-      currentLen + line.length + 1 > MAX_MSG_LEN &&
-      chunks[chunks.length - 1].length > 0
-    ) {
-      chunks.push([]);
-      currentLen = header.length + 1;
-    }
-    chunks[chunks.length - 1].push(line);
-    currentLen += line.length + 1;
-  }
-
-  for (const chunk of chunks) {
-    const text = `${header}\n${chunk.join("\n")}`;
-    try {
-      await sendMessage(text, {
-        parse_mode: "Markdown",
-        disable_web_page_preview: true,
-      });
-    } catch {
-      const plain = `${header}\n${chunk.map((l) => l.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")).join("\n")}`;
-      await sendMessage(plain, { disable_web_page_preview: true });
-    }
+  for (let i = 0; i < buttonRows.length; i += CHUNK_SIZE) {
+    const chunk = buttonRows.slice(i, i + CHUNK_SIZE);
+    await sendWithButtons(header, chunk);
   }
 
   const ids = (rejects as NotificationRow[]).map((r) => r.id);
