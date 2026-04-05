@@ -45,6 +45,9 @@ export async function parseEmail(
     telemetryTag: TELEMETRY_TAG_PARSE,
     output: Output.object({ schema: IngestParseResultSchema }),
   });
+  // #region agent log
+  fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a6a391'},body:JSON.stringify({sessionId:'a6a391',location:'ingest/tools.ts:48',message:'parseEmail raw LLM output',data:{rawMessage:result.message.slice(0,500)},timestamp:Date.now(),hypothesisId:'H-A,H-B'})}).catch(()=>{});
+  // #endregion
   return JSON.parse(result.message);
 }
 

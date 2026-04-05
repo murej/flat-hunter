@@ -66,11 +66,17 @@ export async function ingestAgent(
   const parseResult = await parseEmail(llmContent);
 
   if (parseResult.isVerification) {
+    // #region agent log
+    fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a6a391'},body:JSON.stringify({sessionId:'a6a391',location:'ingest/index.ts:68',message:'verification branch entered',data:{verificationUrl:parseResult.verificationUrl,verificationUrlType:typeof parseResult.verificationUrl,verificationCode:parseResult.verificationCode,verificationCodeType:typeof parseResult.verificationCode,urlIsTruthy:!!parseResult.verificationUrl,codeIsTruthy:!!parseResult.verificationCode},timestamp:Date.now(),hypothesisId:'H-A,H-B,H-C'})}).catch(()=>{});
+    // #endregion
     const msg = parseResult.verificationUrl
       ? `🔐 Verification email received.\nURL: ${parseResult.verificationUrl}`
       : parseResult.verificationCode
         ? `🔐 Verification code: ${parseResult.verificationCode}`
         : "🔐 Verification email received (no URL/code extracted).";
+    // #region agent log
+    fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a6a391'},body:JSON.stringify({sessionId:'a6a391',location:'ingest/index.ts:74',message:'verification message built',data:{msg},timestamp:Date.now(),hypothesisId:'H-A,H-B,H-C'})}).catch(()=>{});
+    // #endregion
     await sendMessage(msg);
     await updateIdempotencyStatus(key, 0, "done");
     return empty;
