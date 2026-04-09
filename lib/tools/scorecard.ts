@@ -44,6 +44,15 @@ export function buildScorecardText(
   if (listing.council_tax_band) factParts.push(`Band ${listing.council_tax_band}`);
   const factsLine = factParts.length > 0 ? factParts.join(" · ") : null;
 
+  const anyComponentMissing = [
+    evaluation.appeal_score,
+    evaluation.price_score,
+    evaluation.size_score,
+    evaluation.area_score,
+    evaluation.commute_score,
+  ].some((s) => s == null);
+  const showAsterisk = anyComponentMissing || partialScore === true;
+
   const lines = [
     `🏠 *${escapeMarkdown(listing.title)}*`,
     `📍 ${escapeMarkdown(listing.address)}`,
@@ -51,7 +60,7 @@ export function buildScorecardText(
     `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${Math.round(listing.sqft / 10.764)} m²` : ""}`,
     ...(factsLine ? [escapeMarkdown(factsLine)] : []),
     "",
-    `*Overall: ${evaluation.overall_score}/10${partialScore ?? [evaluation.appeal_score, evaluation.price_score, evaluation.size_score, evaluation.area_score, evaluation.commute_score].some((s) => s == null) ? "\\*" : ""}*`,
+    `*Overall: ${evaluation.overall_score}/10${showAsterisk ? "\\*" : ""}*`,
     "",
     scoreLine("Appeal: ", evaluation.appeal_score),
     scoreLine("Price:  ", evaluation.price_score),

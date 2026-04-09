@@ -49,7 +49,8 @@ export async function runAreaExpert(
     telemetryTag: TELEMETRY_TAG,
   })) as Record<string, unknown>;
   return {
-    area_score: clampScore(parsed.area_score as number),
+    area_score:
+      parsed.area_score == null ? null : clampScore(parsed.area_score as number),
     area_summary: parsed.area_summary as string,
     notable_flags: (parsed.notable_flags as string[] | undefined) || [],
     area_unknown: (parsed.area_unknown as string | undefined) ?? undefined,

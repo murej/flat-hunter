@@ -58,4 +58,4 @@ Domain-free, reusable LLM agent runtime. Depends only on Vercel AI SDK, Zod, and
 | `env-utils.ts` | `envBool()`, `envIntClamped()`, `envModel()` |
 | `retry.ts` | `retryWithBackoff()`, `isRateLimitError()`, `sleep()` — for external APIs only |
 | `tool-result.ts` | `truncateForToolResult()` — cap tool output at ~8000 chars |
-| `agent-output.ts` | `clampScore(n, fallback)` — clamp to [1, 10] |
+| `agent-output.ts` | `clampScore(n)` — clamp to [1, 10]; non-finite → `null` |

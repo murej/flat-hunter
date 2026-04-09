@@ -33,6 +33,11 @@ import type {
 
 const UK_POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 
+/**
+ * Weighted mean over non-null component scores only. Null dimensions are omitted
+ * from both numerator and denominator (they do not pull the overall down).
+ * `partial` is for UX (e.g. scorecard asterisk = fewer inputs), not a numeric penalty.
+ */
 function computeOverallScore(
   property: PropertyEvalResult,
   area: AreaEvalResult,
@@ -257,7 +262,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
 
   // Property and area experts are Sonnet (TPM); never run concurrently.
   // Commute + finance overlap with property only (non-Anthropic).
-  const [commuteResult, financeResult, propertyResult] = await Promise.all([
+  const [commuteResult, financeResult, initialPropertyResult] = await Promise.all([
     evaluateCommute(
       listing.postcode,
       preferences.commute_postcode,
@@ -267,6 +272,8 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     evaluateFinance(listing.price, preferences.deposit),
     runPropertyExpert(propertyPrompt, imageData),
   ]);
+
+  let propertyResult = initialPropertyResult;
 
   // If commute resolved the postcode via Nominatim address fallback and ingest didn't
   // already enrich it (listing still has an outward-code-only or blank postcode), persist it.
@@ -311,6 +318,11 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
       postcode: enrichedPostcode,
       portal_id: enrichedPortalId,
     };
+  }
+
+  // No structured size signal — do not persist a model guess as size_score
+  if (listing.sqft == null && listing.floorplan_url == null) {
+    propertyResult = { ...propertyResult, size_score: null };
   }
 
   // Skip area expert if average property score is below 4 (clear reject)

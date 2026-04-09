@@ -160,7 +160,7 @@ type DbToolConfig = {
 - **`env-utils.ts`**: `envBool()`, `envIntClamped()`, `envModel()`
 - **`retry.ts`**: `retryWithBackoff()`, `isRateLimitError()`, `sleep()` — for external APIs only; LLM retries handled by AI SDK `maxRetries`
 - **`tool-result.ts`**: `truncateForToolResult()` — cap ~8000 chars
-- **`agent-output.ts`**: `clampScore(n, fallback)` — clamp [1,10]
+- **`agent-output.ts`**: `clampScore(n)` — clamp [1,10]; non-finite → `null`
 
 ---
 
