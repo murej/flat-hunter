@@ -33,11 +33,15 @@ export function buildAreaPrompt(
   preferences: Preferences,
   areaContext: AreaContextResult,
 ): string {
-  return `Evaluate the area around ${listing.address} (${listing.postcode}) for a buyer interested in: ${preferences.areas.join(", ")}.
+  return `Evaluate the area around ${listing.address} (${listing.postcode}).
 
-${preferences.area_preferences?.length ? `Area preferences: ${preferences.area_preferences.join(", ")}` : ""}
+**Buyer preferences:**
+- Interested areas: ${preferences.areas.join(", ")}
+${preferences.area_preferences?.length ? `- Area preferences: ${preferences.area_preferences.join(", ")}` : ""}
+- Must-haves: ${preferences.must_haves.join(", ") || "None specified"}
+- Deal-breakers: ${preferences.deal_breakers.join(", ") || "None specified"}
+- Style: ${preferences.style_notes || "No style preference"}
+- Notes: ${preferences.freeform_notes || "None"}
 
-${areaContext ? `Pre-fetched area data is provided separately.` : "No pre-fetched area data available. Use database tools to check for existing area profiles."}
-
-Read the buyer's preferences from the database for full context.`;
+${areaContext ? `Pre-fetched area data is provided separately.` : "No pre-fetched area data available. Use database tools to check for existing area profiles."}`;
 }

@@ -1,6 +1,6 @@
-const MAX_CHARS = 8000;
+const DEFAULT_MAX_CHARS = 4000;
 
-export function truncateForToolResult(text: string): string {
-  if (text.length <= MAX_CHARS) return text;
-  return text.slice(0, MAX_CHARS) + "\n...[truncated]";
+export function truncateForToolResult(text: string, maxChars = DEFAULT_MAX_CHARS): string {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n...[truncated]";
 }

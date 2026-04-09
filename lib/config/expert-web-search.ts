@@ -10,7 +10,7 @@ export function getPropertyExpertToolSets(): ToolSet[] {
 }
 
 export function getAreaExpertToolSets(): ToolSet[] {
-  const sets: ToolSet[] = ["db"];
+  const sets: ToolSet[] = ["db_read"];
   if (envBool("AREA_EXPERT_WEB_SEARCH")) sets.push("web_search");
   return sets;
 }

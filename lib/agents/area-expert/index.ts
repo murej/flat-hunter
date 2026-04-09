@@ -27,13 +27,18 @@ export async function runAreaExpert(
     ? `\n\nPre-fetched area data:\n${JSON.stringify(slimAreaContext(areaContext), null, 2)}`
     : "";
 
+  // When pre-fetched area context is provided all data is already in the prompt,
+  // so no tool calls are needed — cap at 1 step. Fall back to the registered
+  // maxSteps only when the agent must look things up itself.
+  const maxSteps = areaContext ? 1 : cfg.maxSteps;
+
   const result = await runAgent({
     systemPrompt: AREA_EXPERT_SYSTEM,
     prompt: prompt + contextStr,
     tools: cfg.tools,
     providerTools: cfg.providerTools,
     model: getAreaExpertModel(),
-    maxSteps: cfg.maxSteps,
+    maxSteps,
     telemetryTag: TELEMETRY_TAG,
     output: Output.object({ schema: AreaEvalSchema }),
   });
