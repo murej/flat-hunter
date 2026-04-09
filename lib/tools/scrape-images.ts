@@ -19,8 +19,21 @@ function detectPortal(url: string): Portal {
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent": BROWSER_UA,
+  "Accept":
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-GB,en;q=0.5",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+};
+
 const FETCH_TIMEOUT_MS = 10_000;
+const IMAGE_TIMEOUT_MS = 8_000;
 const MAX_IMAGES = 10;
+const MAX_DOWNLOAD = 3;
 
 // --- Per-portal extractors ---
 
@@ -136,7 +149,7 @@ export async function scrapeListingImages(url: string): Promise<string[]> {
     retryWithBackoff(
       async () => {
         const res = await fetch(url, {
-          headers: { "User-Agent": BROWSER_UA },
+          headers: BROWSER_HEADERS,
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
           redirect: "follow",
         });
@@ -169,4 +182,39 @@ export async function scrapeListingImages(url: string): Promise<string[]> {
 
   // Dedupe and cap
   return [...new Set(urls)].slice(0, MAX_IMAGES);
+}
+
+/**
+ * Download image URLs with proper headers (Referer, User-Agent).
+ * Returns successfully downloaded images as Uint8Array[].
+ * Skips failures silently — caller gets whatever succeeded.
+ */
+export async function downloadImages(
+  imageUrls: string[],
+  referer: string,
+): Promise<Uint8Array[]> {
+  const toDownload = imageUrls.slice(0, MAX_DOWNLOAD);
+  const results = await Promise.allSettled(
+    toDownload.map(async (url) => {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": BROWSER_UA,
+          Referer: referer,
+          Accept: "image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8",
+        },
+        signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS),
+        redirect: "follow",
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} downloading ${url}`);
+      }
+      return new Uint8Array(await res.arrayBuffer());
+    }),
+  );
+
+  const images: Uint8Array[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") images.push(r.value);
+  }
+  return images;
 }

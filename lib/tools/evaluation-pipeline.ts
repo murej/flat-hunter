@@ -8,7 +8,7 @@ import { generateHighlights } from "./highlights";
 import { getLatestMortgageRate } from "./mortgage-rate";
 import { runPropertyExpert, filterImageUrls } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
-import { scrapeListingImages } from "./scrape-images";
+import { scrapeListingImages, downloadImages } from "./scrape-images";
 import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
 import { isValidAreaContext } from "@/lib/agents/area-expert/context";
@@ -111,6 +111,23 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     }
   }
 
+  // Download images with proper headers (Referer) so CDNs don't block
+  let imageData: Uint8Array[] = [];
+  const validUrls = filterImageUrls(imageUrls);
+  if (validUrls.length > 0) {
+    try {
+      imageData = await downloadImages(
+        validUrls.map((u) => u.toString()),
+        listing.url,
+      );
+      if (validUrls.length > 0 && imageData.length === 0) {
+        console.warn(`[eval] All ${validUrls.length} image downloads failed for ${listingId}`);
+      }
+    } catch (err) {
+      console.warn(`[eval] Image download failed for ${listingId}:`, err);
+    }
+  }
+
   // Build prompts
   const propertyPrompt = buildPropertyPrompt(listing, preferences);
   const areaPrompt = buildAreaPrompt(listing, preferences, areaContext);
@@ -125,7 +142,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
       listing.address,
     ),
     evaluateFinance(listing.price, preferences.deposit),
-    runPropertyExpert(propertyPrompt, imageUrls),
+    runPropertyExpert(propertyPrompt, imageData),
   ]);
 
   // Skip area expert if average property score is below 4 (clear reject)

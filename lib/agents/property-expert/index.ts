@@ -36,7 +36,7 @@ export function filterImageUrls(urls: string[]): URL[] {
 
 export async function runPropertyExpert(
   prompt: string,
-  imageUrls: string[] = [],
+  imageData: Uint8Array[] = [],
 ): Promise<PropertyEvalResult> {
   await ensureDbToolAgentsRegistered();
   const cfg = getAgentConfig(AGENT_NAME);
@@ -44,15 +44,9 @@ export async function runPropertyExpert(
     throw new Error("Property expert agent not registered");
   }
 
-  const validImageUrls = filterImageUrls(imageUrls);
-  if (imageUrls.length > 0 && validImageUrls.length === 0) {
-    console.warn(
-      `[property-expert] 0 valid images from ${imageUrls.length} URLs — falling back to text-only`,
-    );
-  }
-  const imageParts = validImageUrls.slice(0, 3).map((u) => ({
+  const imageParts = imageData.slice(0, 3).map((data) => ({
     type: "image" as const,
-    image: u,
+    image: data,
   }));
 
   const messages =
