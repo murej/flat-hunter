@@ -9,7 +9,7 @@ import {
 import {
   decodeQuotedPrintableIfNeeded,
   extractHttpHrefsFromHtml,
-  extractListingImageCandidatesFromHtml,
+  extractListingImageCandidatesForListing,
   isPortalListingHref,
   maxBodyCharsForLlm,
 } from "./email-html-extract";
@@ -83,11 +83,15 @@ function appendListingAndImageSections(
     context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${annotated.join("\n")}`;
   }
 
-  const imageSrcs = htmlDecoded
-    ? extractListingImageCandidatesFromHtml(htmlDecoded)
-    : [];
-  if (imageSrcs.length > 0) {
-    context += `\n\nProperty image URLs found in email HTML (assign to the correct listing's image_urls):\n${imageSrcs.join("\n")}`;
+  if (htmlDecoded && allUrls.length > 0) {
+    for (const listingUrl of allUrls) {
+      const imgs = extractListingImageCandidatesForListing(
+        htmlDecoded,
+        listingUrl,
+      );
+      if (imgs.length === 0) continue;
+      context += `\n\nProperty image URLs for this listing (${listingUrl}) — use only these for that row's image_urls:\n${imgs.join("\n")}`;
+    }
   }
 
   return context;

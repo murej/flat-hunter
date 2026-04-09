@@ -19,7 +19,8 @@ import { normalizePortalId } from "@/lib/agents/ingest/portal-id";
 import { extractMimeParts } from "@/lib/agents/ingest/email-llm-input";
 import {
   decodeQuotedPrintableIfNeeded,
-  extractListingImageCandidatesFromHtml,
+  extractListingImageCandidatesForListing,
+  filterPersistedListingImageUrls,
 } from "@/lib/agents/ingest/email-html-extract";
 import type {
   Preferences,
@@ -91,6 +92,22 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
 
   // Use a mutable reference so scraped details can be merged before prompt building
   let listing = fetchedListing;
+
+  const prevUrls = listing.image_urls ?? [];
+  const sanitizedUrls = filterPersistedListingImageUrls(prevUrls);
+  if (JSON.stringify(sanitizedUrls) !== JSON.stringify(prevUrls)) {
+    await getSupabaseAdmin()
+      .from("listings")
+      .update({
+        image_urls: sanitizedUrls,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", listingId);
+    listing = { ...listing, image_urls: sanitizedUrls };
+    console.log(
+      `[eval] Sanitized image_urls for ${listingId}: removed ${prevUrls.length - sanitizedUrls.length} noise URL(s)`,
+    );
+  }
 
   // Fetch area context
   const areaContext = await fetchAreaContext(
@@ -183,12 +200,16 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
 
   if (
     filterImageUrls(imageUrls).length === 0 &&
-    listing.raw_email_html?.trim()
+    listing.raw_email_html?.trim() &&
+    listing.url?.trim()
   ) {
     try {
       const parts = await extractMimeParts(listing.raw_email_html);
       const html = decodeQuotedPrintableIfNeeded(parts.html);
-      const candidates = extractListingImageCandidatesFromHtml(html);
+      const candidates = extractListingImageCandidatesForListing(
+        html,
+        listing.url,
+      );
       if (candidates.length > 0) {
         imageUrls = candidates;
         listing = { ...listing, image_urls: candidates };
