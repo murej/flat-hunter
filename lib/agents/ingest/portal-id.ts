@@ -3,9 +3,12 @@ const PORTAL_ID_EXTRACTORS: Array<{ portal: string; pattern: RegExp }> = [
   { portal: "zoopla", pattern: /zoopla\.co\.uk\/(?:for-sale|to-rent)\/details\/(\d+)/ },
   { portal: "onthemarket", pattern: /onthemarket\.com\/details\/(\d+)/ },
   { portal: "primelocation", pattern: /primelocation\.com\/(?:for-sale|to-rent)\/details\/(\d+)/ },
+  { portal: "ostrich", pattern: /ostrich\.co\.uk\/property\/([a-z0-9-]+)/ },
+  { portal: "ostrich", pattern: /ostrich\.co\.uk\/sign-up\/\?slug=([a-z0-9-]+)/ },
 ];
 
-const VALID_PORTAL_ID = /^(rightmove|zoopla|onthemarket|primelocation)-\d+$/;
+const VALID_PORTAL_ID =
+  /^(rightmove|zoopla|onthemarket|primelocation)-\d+$|^ostrich-[a-z0-9-]+$/;
 
 export function extractPortalIdFromUrl(url: string): string | null {
   for (const { portal, pattern } of PORTAL_ID_EXTRACTORS) {

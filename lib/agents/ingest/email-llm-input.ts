@@ -50,6 +50,27 @@ export function extractAllHrefs(html: string): string[] {
   return hrefs;
 }
 
+const PORTAL_CDN_HOST_RE =
+  /^https?:\/\/(?:lid\.zoocdn\.com|lc\.zoocdn\.com|listing-images\.zoocdn\.com|media\.rightmove\.co\.uk|images\.onthemarket\.com|images\.primelocation\.com)\//;
+
+/** Extract property image URLs from <img src="..."> attributes in portal alert email HTML. */
+export function extractPortalImageSrcs(html: string): string[] {
+  const srcPattern = /\bsrc="([^"]+)"/g;
+  const urls = new Set<string>();
+  let match;
+  while ((match = srcPattern.exec(html)) !== null) {
+    if (PORTAL_CDN_HOST_RE.test(match[1])) urls.add(match[1]);
+  }
+  // Also scan raw text for CDN URLs (handles srcset, CSS background-image, etc.)
+  const rawPattern =
+    /https?:\/\/(?:lid\.zoocdn\.com|lc\.zoocdn\.com|listing-images\.zoocdn\.com|media\.rightmove\.co\.uk|images\.onthemarket\.com|images\.primelocation\.com)\/[^\s"'<>]+/g;
+  let m;
+  while ((m = rawPattern.exec(html)) !== null) {
+    urls.add(m[0]);
+  }
+  return [...urls];
+}
+
 function stripHtmlTags(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -91,13 +112,19 @@ export function buildLlmContextFromParts(
       h.includes("rightmove.co.uk") ||
       h.includes("zoopla.co.uk") ||
       h.includes("onthemarket.com") ||
-      h.includes("primelocation.com"),
+      h.includes("primelocation.com") ||
+      h.includes("ostrich.co.uk"),
   );
 
   const allUrls = [...new Set([...urls, ...listingHrefs])];
   if (allUrls.length > 0) {
     const annotated = allUrls.map(annotateUrlWithPortalId);
     context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${annotated.join("\n")}`;
+  }
+
+  const imageSrcs = html ? extractPortalImageSrcs(html) : [];
+  if (imageSrcs.length > 0) {
+    context += `\n\nProperty image URLs found in email HTML (assign to the correct listing's image_urls):\n${imageSrcs.join("\n")}`;
   }
 
   return { context, truncated };
@@ -120,12 +147,19 @@ export async function buildLlmContextFromRaw(
         h.includes("rightmove.co.uk") ||
         h.includes("zoopla.co.uk") ||
         h.includes("onthemarket.com") ||
-        h.includes("primelocation.com"),
+        h.includes("primelocation.com") ||
+        h.includes("ostrich.co.uk"),
     );
     const allUrls = [...new Set([...urls, ...listingHrefs])];
     if (allUrls.length > 0) {
       const annotated = allUrls.map(annotateUrlWithPortalId);
       context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${annotated.join("\n")}`;
+    }
+
+    // Extract portal CDN image URLs from raw HTML parts of the message
+    const imageSrcs = extractPortalImageSrcs(rawMessage);
+    if (imageSrcs.length > 0) {
+      context += `\n\nProperty image URLs found in email HTML (assign to the correct listing's image_urls):\n${imageSrcs.join("\n")}`;
     }
 
     if (context.length > MAX_INPUT_CHARS) {

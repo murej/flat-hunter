@@ -32,6 +32,8 @@ export const LISTING_URL_PATTERN_SOURCES = [
   String.raw`https?://(?:www\.)?onthemarket\.com/details/\d+`,
   String.raw`https?://(?:www\.)?primelocation\.com/(?:for-sale|to-rent)/details/\d+`,
   String.raw`https?://(?:www\.)?primelocation\.com/details/\d+`,
+  String.raw`https?://(?:www\.)?ostrich\.co\.uk/property/[a-z0-9][a-z0-9-]*`,
+  String.raw`https?://(?:www\.)?ostrich\.co\.uk/sign-up/\?slug=[a-z0-9][a-z0-9-]*`,
 ] as const;
 
 /** Shown in LLM context and referenced in parse instructions (no trailing colon). */

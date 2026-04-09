@@ -1,6 +1,6 @@
 import { retryWithBackoff, sleep } from "@/lib/utils/retry";
 
-type Portal = "rightmove" | "zoopla" | "onthemarket" | "primelocation" | "themodernhouse" | "unknown";
+type Portal = "rightmove" | "zoopla" | "onthemarket" | "primelocation" | "themodernhouse" | "ostrich" | "unknown";
 
 const PORTAL_DETECTORS: Array<{ portal: Portal; pattern: RegExp }> = [
   { portal: "rightmove", pattern: /rightmove\.co\.uk/ },
@@ -8,6 +8,7 @@ const PORTAL_DETECTORS: Array<{ portal: Portal; pattern: RegExp }> = [
   { portal: "onthemarket", pattern: /onthemarket\.com/ },
   { portal: "primelocation", pattern: /primelocation\.com/ },
   { portal: "themodernhouse", pattern: /themodernhouse\.com/ },
+  { portal: "ostrich", pattern: /ostrich\.co\.uk/ },
 ];
 
 function detectPortal(url: string): Portal {
@@ -17,8 +18,8 @@ function detectPortal(url: string): Portal {
   return "unknown";
 }
 
-// Portals that block server-side scraping (e.g. Cloudflare JS challenge, 403).
-const SCRAPE_BLOCKED_PORTALS: Set<Portal> = new Set(["zoopla", "themodernhouse"]);
+// Portals that block server-side scraping (e.g. Cloudflare JS challenge, 403, walled garden).
+const SCRAPE_BLOCKED_PORTALS: Set<Portal> = new Set(["zoopla", "themodernhouse", "ostrich"]);
 
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
