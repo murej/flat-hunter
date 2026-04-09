@@ -480,7 +480,7 @@ function mergePartial<T extends object>(
       target[key] == null ||
       (Array.isArray(target[key]) && (target[key] as unknown[]).length === 0)
     ) {
-      target[key] = val;
+      target[key] = val as Partial<T>[typeof key];
     }
   }
 }
