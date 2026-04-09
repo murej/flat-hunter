@@ -44,6 +44,13 @@ export const AreaEvalSchema = z.object({
   notable_flags: z
     .array(z.string())
     .describe("Notable area concerns or highlights"),
+  area_unknown: z
+    .string()
+    .nullable()
+    .optional()
+    .describe(
+      "Comma-separated area qualities that could not be confirmed from available data (e.g. 'school quality', 'park proximity'). Do NOT reduce score for these — list them here instead.",
+    ),
 });
 
 export const VerificationResultSchema = z.object({

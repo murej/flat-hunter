@@ -8,6 +8,8 @@ export type DbToolConfig = {
   allowlistedTables: string[];
   columnOverrides?: Record<string, string>;
   rowShaping?: Record<string, (rows: unknown[]) => unknown[]>;
+  /** When false, omits the relationships/status section from the db_read tool description. Default: true. */
+  includeRelationships?: boolean;
 };
 
 function validateTable(table: string, allowed: string[]): string | null {

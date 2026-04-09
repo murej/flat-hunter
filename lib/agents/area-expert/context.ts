@@ -29,15 +29,24 @@ export function slimAreaContext(ctx: AreaContextData): Record<string, unknown> {
     }
   }
 
+  // Extract only the 4 decile scores from the raw ArcGIS IMD response.
+  // Deciles run 1 (most deprived) to 10 (least deprived).
+  const imdRaw = ctx.imd as Record<string, unknown> | null;
+  const imd = imdRaw
+    ? {
+        overall_decile: imdRaw.IMDDecile,
+        income_decile: imdRaw.IncDecile,
+        crime_decile: imdRaw.CriDecile,
+        living_env_decile: imdRaw.LEDDecile,
+      }
+    : null;
+
   return {
     ward: ctx.postcode.admin_ward,
-    parish: ctx.postcode.parish,
-    lsoa: ctx.postcode.lsoa,
-    msoa: ctx.postcode.msoa,
     region: ctx.postcode.region,
     matchedArea: ctx.matchedArea,
     crimeSummary: crimeCounts,
-    totalCrimes: ctx.crime.length,
-    imd: ctx.imd,
+    totalCrimes: Array.isArray(ctx.crime) ? ctx.crime.length : 0,
+    imd,
   };
 }

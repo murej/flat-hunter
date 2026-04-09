@@ -4,6 +4,7 @@ import type { DbToolConfig } from "@/lib/core/tools";
 export const areaExpertDbConfig: DbToolConfig = {
   supabaseClient: getSupabaseAdmin(),
   allowlistedTables: ["preferences", "agent_context"],
+  includeRelationships: false,
   rowShaping: {
     agent_context: (rows) =>
       (rows as Array<Record<string, unknown>>).map((r) => ({

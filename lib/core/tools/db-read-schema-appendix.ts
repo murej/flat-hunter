@@ -96,19 +96,26 @@ async function fetchRows(
   return data as SchemaRow[];
 }
 
-function toolSemanticsAppendix(): string {
-  return [
+function toolSemanticsAppendix(includeRelationships = true): string {
+  const lines = [
     "### db_read usage",
     "- `filters`: equality (`.eq`) only — no substring or range.",
     "- `order_by`: column name; prefix `-` for descending (e.g. `-created_at`).",
     "- `limit`: default 20.",
     "- Omitting `columns` uses the **default column set** per table (subset above where columnOverrides apply).",
-    "### Relationships",
-    "- `evaluations.listing_id` → `listings.id`",
-    "- `conversations.listing_id` → `listings.id` (nullable)",
-    "### listings.status",
-    "Values: `pending_evaluation`, `evaluating`, `evaluated`, `saved`, `dismissed`, `viewing_requested`.",
-  ].join("\n");
+  ];
+
+  if (includeRelationships) {
+    lines.push(
+      "### Relationships",
+      "- `evaluations.listing_id` → `listings.id`",
+      "- `conversations.listing_id` → `listings.id` (nullable)",
+      "### listings.status",
+      "Values: `pending_evaluation`, `evaluating`, `evaluated`, `saved`, `dismissed`, `viewing_requested`.",
+    );
+  }
+
+  return lines.join("\n");
 }
 
 /**
@@ -140,7 +147,8 @@ export async function getDbReadSchemaDescriptionAppendix(
     schemaBlock = staticFallbackAppendix(config);
   }
 
-  const full = `${schemaBlock}\n\n${toolSemanticsAppendix()}`;
+  const includeRelationships = config.includeRelationships !== false;
+  const full = `${schemaBlock}\n\n${toolSemanticsAppendix(includeRelationships)}`;
   cache = { configKey: key, text: full, fetchedAt: now };
   return full;
 }
