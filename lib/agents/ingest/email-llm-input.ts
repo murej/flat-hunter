@@ -6,6 +6,13 @@ import {
   INGEST_LISTING_URLS_SECTION_HEADING,
   MAX_INPUT_CHARS,
 } from "./config";
+import {
+  decodeQuotedPrintableIfNeeded,
+  extractHttpHrefsFromHtml,
+  extractListingImageCandidatesFromHtml,
+  isPortalListingHref,
+  maxBodyCharsForLlm,
+} from "./email-html-extract";
 
 export type LlmContextResult = {
   context: string;
@@ -40,37 +47,6 @@ export function extractListingUrls(text: string): string[] {
   return [...urls];
 }
 
-export function extractAllHrefs(html: string): string[] {
-  const hrefPattern = /href="([^"]+)"/g;
-  const hrefs: string[] = [];
-  let match;
-  while ((match = hrefPattern.exec(html)) !== null) {
-    hrefs.push(match[1]);
-  }
-  return hrefs;
-}
-
-const PORTAL_CDN_HOST_RE =
-  /^https?:\/\/(?:lid\.zoocdn\.com|lc\.zoocdn\.com|listing-images\.zoocdn\.com|media\.rightmove\.co\.uk|images\.onthemarket\.com|images\.primelocation\.com)\//;
-
-/** Extract property image URLs from <img src="..."> attributes in portal alert email HTML. */
-export function extractPortalImageSrcs(html: string): string[] {
-  const srcPattern = /\bsrc="([^"]+)"/g;
-  const urls = new Set<string>();
-  let match;
-  while ((match = srcPattern.exec(html)) !== null) {
-    if (PORTAL_CDN_HOST_RE.test(match[1])) urls.add(match[1]);
-  }
-  // Also scan raw text for CDN URLs (handles srcset, CSS background-image, etc.)
-  const rawPattern =
-    /https?:\/\/(?:lid\.zoocdn\.com|lc\.zoocdn\.com|listing-images\.zoocdn\.com|media\.rightmove\.co\.uk|images\.onthemarket\.com|images\.primelocation\.com)\/[^\s"'<>]+/g;
-  let m;
-  while ((m = rawPattern.exec(html)) !== null) {
-    urls.add(m[0]);
-  }
-  return [...urls];
-}
-
 function stripHtmlTags(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -85,46 +61,62 @@ function stripHtmlTags(html: string): string {
     .trim();
 }
 
-export function buildLlmContextFromParts(
-  html: string,
-  subject?: string,
-  plain?: string,
-): LlmContextResult {
-  // Extract text from HTML, preferring plain text if available
-  const bodyText = plain || (html ? stripHtmlTags(html) : "");
-  let context = "";
-  let truncated = false;
-
-  if (subject) context += `Subject: ${subject}\n\n`;
-  context += bodyText;
-
-  if (context.length > MAX_INPUT_CHARS) {
-    truncated = true;
-    context = context.slice(0, MAX_INPUT_CHARS) + "\n...[truncated]";
-  }
-
-  // Extract and append listing URLs from original HTML
-  const allText = html + " " + (plain || "");
-  const urls = extractListingUrls(allText);
-  const hrefs = html ? extractAllHrefs(html) : [];
-  const listingHrefs = hrefs.filter(
-    (h) =>
-      h.includes("rightmove.co.uk") ||
-      h.includes("zoopla.co.uk") ||
-      h.includes("onthemarket.com") ||
-      h.includes("primelocation.com") ||
-      h.includes("ostrich.co.uk"),
-  );
-
+function appendListingAndImageSections(
+  base: string,
+  htmlDecoded: string,
+  plain: string | undefined,
+  /** Extra text for regex URL discovery (e.g. raw RFC 5322) so headers/plain parts are scanned. */
+  extraRegexHaystack?: string,
+): string {
+  const allText = htmlDecoded + " " + (plain || "");
+  const urlHaystack = extraRegexHaystack
+    ? `${allText} ${extraRegexHaystack}`
+    : allText;
+  const urls = extractListingUrls(urlHaystack);
+  const hrefs = htmlDecoded ? extractHttpHrefsFromHtml(htmlDecoded) : [];
+  const listingHrefs = hrefs.filter(isPortalListingHref);
   const allUrls = [...new Set([...urls, ...listingHrefs])];
+
+  let context = base;
   if (allUrls.length > 0) {
     const annotated = allUrls.map(annotateUrlWithPortalId);
     context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${annotated.join("\n")}`;
   }
 
-  const imageSrcs = html ? extractPortalImageSrcs(html) : [];
+  const imageSrcs = htmlDecoded
+    ? extractListingImageCandidatesFromHtml(htmlDecoded)
+    : [];
   if (imageSrcs.length > 0) {
     context += `\n\nProperty image URLs found in email HTML (assign to the correct listing's image_urls):\n${imageSrcs.join("\n")}`;
+  }
+
+  return context;
+}
+
+export function buildLlmContextFromParts(
+  html: string,
+  subject?: string,
+  plain?: string,
+): LlmContextResult {
+  const htmlDecoded = decodeQuotedPrintableIfNeeded(html);
+  const bodyText = plain || (htmlDecoded ? stripHtmlTags(htmlDecoded) : "");
+  let truncated = false;
+
+  let context = "";
+  if (subject) context += `Subject: ${subject}\n\n`;
+  context += bodyText;
+
+  const bodyLimit = maxBodyCharsForLlm();
+  if (context.length > bodyLimit) {
+    truncated = true;
+    context = context.slice(0, bodyLimit) + "\n...[truncated]";
+  }
+
+  context = appendListingAndImageSections(context, htmlDecoded, plain);
+
+  if (context.length > MAX_INPUT_CHARS) {
+    truncated = true;
+    context = context.slice(0, MAX_INPUT_CHARS) + "\n...[truncated]";
   }
 
   return { context, truncated };
@@ -133,34 +125,26 @@ export function buildLlmContextFromParts(
 export async function buildLlmContextFromRaw(
   rawMessage: string,
 ): Promise<LlmContextResult> {
-  // Use langmail for RFC 5322 raw email processing
   try {
     const processed = preprocessString(rawMessage);
     let context = toLlmContext(processed);
     let truncated = false;
 
-    // Extract direct listing URLs and all hrefs from the raw message
-    const urls = extractListingUrls(rawMessage);
-    const hrefs = extractAllHrefs(rawMessage);
-    const listingHrefs = hrefs.filter(
-      (h) =>
-        h.includes("rightmove.co.uk") ||
-        h.includes("zoopla.co.uk") ||
-        h.includes("onthemarket.com") ||
-        h.includes("primelocation.com") ||
-        h.includes("ostrich.co.uk"),
-    );
-    const allUrls = [...new Set([...urls, ...listingHrefs])];
-    if (allUrls.length > 0) {
-      const annotated = allUrls.map(annotateUrlWithPortalId);
-      context += `\n\n${INGEST_LISTING_URLS_SECTION_HEADING}:\n${annotated.join("\n")}`;
+    const parts = await extractMimeParts(rawMessage);
+    const htmlDecoded = decodeQuotedPrintableIfNeeded(parts.html);
+
+    const bodyLimit = maxBodyCharsForLlm();
+    if (context.length > bodyLimit) {
+      truncated = true;
+      context = context.slice(0, bodyLimit) + "\n...[truncated]";
     }
 
-    // Extract portal CDN image URLs from raw HTML parts of the message
-    const imageSrcs = extractPortalImageSrcs(rawMessage);
-    if (imageSrcs.length > 0) {
-      context += `\n\nProperty image URLs found in email HTML (assign to the correct listing's image_urls):\n${imageSrcs.join("\n")}`;
-    }
+    context = appendListingAndImageSections(
+      context,
+      htmlDecoded,
+      parts.plain,
+      rawMessage,
+    );
 
     if (context.length > MAX_INPUT_CHARS) {
       truncated = true;
@@ -169,7 +153,6 @@ export async function buildLlmContextFromRaw(
 
     return { context, truncated };
   } catch {
-    // Fallback to postal-mime if langmail fails
     const parts = await extractMimeParts(rawMessage);
     return buildLlmContextFromParts(parts.html, parts.subject, parts.plain);
   }

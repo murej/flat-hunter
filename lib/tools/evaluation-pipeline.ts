@@ -6,13 +6,21 @@ import { evaluateFinance } from "./finance";
 import { buildScorecardText, buildScorecardButtons } from "./scorecard";
 import { generateHighlights } from "./highlights";
 import { getLatestMortgageRate } from "./mortgage-rate";
-import { runPropertyExpert, filterImageUrls } from "@/lib/agents/property-expert";
+import {
+  runPropertyExpert,
+  filterImageUrls,
+} from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
 import { scrapeListingPage, downloadImages } from "./scrape-images";
 import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
 import { isValidAreaContext } from "@/lib/agents/area-expert/context";
 import { normalizePortalId } from "@/lib/agents/ingest/portal-id";
+import { extractMimeParts } from "@/lib/agents/ingest/email-llm-input";
+import {
+  decodeQuotedPrintableIfNeeded,
+  extractListingImageCandidatesFromHtml,
+} from "@/lib/agents/ingest/email-html-extract";
 import type {
   Preferences,
   PropertyEvalResult,
@@ -61,7 +69,8 @@ function computeOverallScore(
     totalWeight += weight;
   }
 
-  const score = totalWeight > 0 ? Math.round((weighted / totalWeight) * 10) / 10 : 0;
+  const score =
+    totalWeight > 0 ? Math.round((weighted / totalWeight) * 10) / 10 : 0;
   return { score, partial };
 }
 
@@ -104,7 +113,9 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   const needsImages = filterImageUrls(imageUrls).length === 0;
   if (listing.url) {
     try {
-      const { imageUrls: scraped, details } = await scrapeListingPage(listing.url);
+      const { imageUrls: scraped, details } = await scrapeListingPage(
+        listing.url,
+      );
 
       // Build the DB update payload — only persist non-null / non-empty values
       const enrichment: Record<string, unknown> = {
@@ -116,15 +127,21 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
         enrichment.image_urls = scraped;
       }
 
-      if (details.tenure)                           enrichment.tenure = details.tenure;
-      if (details.lease_length_years != null)       enrichment.lease_length_years = details.lease_length_years;
-      if (details.property_type)                    enrichment.property_type = details.property_type;
-      if (details.key_features.length > 0)          enrichment.key_features = details.key_features;
-      if (details.epc_rating)                       enrichment.epc_rating = details.epc_rating;
-      if (details.council_tax_band)                 enrichment.council_tax_band = details.council_tax_band;
+      if (details.tenure) enrichment.tenure = details.tenure;
+      if (details.lease_length_years != null)
+        enrichment.lease_length_years = details.lease_length_years;
+      if (details.property_type)
+        enrichment.property_type = details.property_type;
+      if (details.key_features.length > 0)
+        enrichment.key_features = details.key_features;
+      if (details.epc_rating) enrichment.epc_rating = details.epc_rating;
+      if (details.council_tax_band)
+        enrichment.council_tax_band = details.council_tax_band;
       // Backfill sqft/floorplan only if the listing currently lacks them
-      if (details.sqft != null && listing.sqft == null)           enrichment.sqft = details.sqft;
-      if (details.floorplan_url && listing.floorplan_url == null) enrichment.floorplan_url = details.floorplan_url;
+      if (details.sqft != null && listing.sqft == null)
+        enrichment.sqft = details.sqft;
+      if (details.floorplan_url && listing.floorplan_url == null)
+        enrichment.floorplan_url = details.floorplan_url;
 
       const hasChanges = Object.keys(enrichment).length > 1; // more than just updated_at
       if (hasChanges) {
@@ -132,20 +149,65 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
           .from("listings")
           .update(enrichment)
           .eq("id", listingId);
-        console.log(`[eval] Enriched listing ${listingId}:`, Object.keys(enrichment).filter((k) => k !== "updated_at").join(", "));
+        console.log(
+          `[eval] Enriched listing ${listingId}:`,
+          Object.keys(enrichment)
+            .filter((k) => k !== "updated_at")
+            .join(", "),
+        );
       }
 
       // Merge scraped details into the in-memory listing so prompts see them
-      if (details.tenure)                           listing = { ...listing, tenure: details.tenure };
-      if (details.lease_length_years != null)       listing = { ...listing, lease_length_years: details.lease_length_years };
-      if (details.property_type)                    listing = { ...listing, property_type: details.property_type };
-      if (details.key_features.length > 0)          listing = { ...listing, key_features: details.key_features };
-      if (details.epc_rating)                       listing = { ...listing, epc_rating: details.epc_rating };
-      if (details.council_tax_band)                 listing = { ...listing, council_tax_band: details.council_tax_band };
-      if (details.sqft != null && listing.sqft == null)           listing = { ...listing, sqft: details.sqft };
-      if (details.floorplan_url && listing.floorplan_url == null) listing = { ...listing, floorplan_url: details.floorplan_url };
+      if (details.tenure) listing = { ...listing, tenure: details.tenure };
+      if (details.lease_length_years != null)
+        listing = {
+          ...listing,
+          lease_length_years: details.lease_length_years,
+        };
+      if (details.property_type)
+        listing = { ...listing, property_type: details.property_type };
+      if (details.key_features.length > 0)
+        listing = { ...listing, key_features: details.key_features };
+      if (details.epc_rating)
+        listing = { ...listing, epc_rating: details.epc_rating };
+      if (details.council_tax_band)
+        listing = { ...listing, council_tax_band: details.council_tax_band };
+      if (details.sqft != null && listing.sqft == null)
+        listing = { ...listing, sqft: details.sqft };
+      if (details.floorplan_url && listing.floorplan_url == null)
+        listing = { ...listing, floorplan_url: details.floorplan_url };
     } catch (err) {
       console.warn(`[eval] Page scraping failed for ${listingId}:`, err);
+    }
+  }
+
+  if (
+    filterImageUrls(imageUrls).length === 0 &&
+    listing.raw_email_html?.trim()
+  ) {
+    try {
+      const parts = await extractMimeParts(listing.raw_email_html);
+      const html = decodeQuotedPrintableIfNeeded(parts.html);
+      const candidates = extractListingImageCandidatesFromHtml(html);
+      if (candidates.length > 0) {
+        imageUrls = candidates;
+        listing = { ...listing, image_urls: candidates };
+        await getSupabaseAdmin()
+          .from("listings")
+          .update({
+            image_urls: candidates,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", listingId);
+        console.log(
+          `[eval] image_urls backfilled from stored email for ${listingId}`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[eval] Email HTML image fallback failed for ${listingId}:`,
+        err,
+      );
     }
   }
 
@@ -159,7 +221,9 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
         listing.url,
       );
       if (validUrls.length > 0 && imageData.length === 0) {
-        console.warn(`[eval] All ${validUrls.length} image downloads failed for ${listingId}`);
+        console.warn(
+          `[eval] All ${validUrls.length} image downloads failed for ${listingId}`,
+        );
       }
     } catch (err) {
       console.warn(`[eval] Image download failed for ${listingId}:`, err);
@@ -201,7 +265,8 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
       .single();
 
     const currentFlags: string[] =
-      (flagsRow as { validation_flags: string[] } | null)?.validation_flags ?? [];
+      (flagsRow as { validation_flags: string[] } | null)?.validation_flags ??
+      [];
     const updatedFlags = [
       ...currentFlags.filter((f) => f !== "postcode_invalid"),
       "postcode_geocoded",
@@ -217,13 +282,26 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
       })
       .eq("id", listingId);
 
-    console.log(`[eval] Enriched postcode for listing ${listingId}: ${listing.postcode} → ${enrichedPostcode}`);
-    listing = { ...listing, postcode: enrichedPostcode, portal_id: enrichedPortalId };
+    console.log(
+      `[eval] Enriched postcode for listing ${listingId}: ${listing.postcode} → ${enrichedPostcode}`,
+    );
+    listing = {
+      ...listing,
+      postcode: enrichedPostcode,
+      portal_id: enrichedPortalId,
+    };
   }
 
   // Skip area expert if average property score is below 4 (clear reject)
-  const propScores = [propertyResult.appeal_score, propertyResult.price_score, propertyResult.size_score].filter((s): s is number => s != null);
-  const propAvg = propScores.length > 0 ? propScores.reduce((a, b) => a + b, 0) / propScores.length : null;
+  const propScores = [
+    propertyResult.appeal_score,
+    propertyResult.price_score,
+    propertyResult.size_score,
+  ].filter((s): s is number => s != null);
+  const propAvg =
+    propScores.length > 0
+      ? propScores.reduce((a, b) => a + b, 0) / propScores.length
+      : null;
   const skipArea = propAvg !== null && propAvg < 4;
 
   const validPriorContext = isValidAreaContext(priorContext?.content)
@@ -231,23 +309,30 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     : undefined;
 
   const areaResult: AreaEvalResult = skipArea
-    ? { area_score: null, area_summary: "Skipped — property scores too low.", notable_flags: [], raw: {} }
+    ? {
+        area_score: null,
+        area_summary: "Skipped — property scores too low.",
+        notable_flags: [],
+        raw: {},
+      }
     : await runAreaExpert(areaPrompt, validPriorContext);
 
   // Store area context for future use
   if (areaContext && !skipArea) {
-    await getSupabaseAdmin().from("agent_context").upsert(
-      {
-        agent_id: "area_expert",
-        scope: "area",
-        scope_value: listing.postcode,
-        content: areaContext,
-        expires_at: new Date(
-          Date.now() + 30 * 24 * 60 * 60 * 1000,
-        ).toISOString(),
-      },
-      { onConflict: "agent_id,scope,scope_value" },
-    );
+    await getSupabaseAdmin()
+      .from("agent_context")
+      .upsert(
+        {
+          agent_id: "area_expert",
+          scope: "area",
+          scope_value: listing.postcode,
+          content: areaContext,
+          expires_at: new Date(
+            Date.now() + 30 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        },
+        { onConflict: "agent_id,scope,scope_value" },
+      );
   }
 
   const { score: overallScore, partial: partialScore } = computeOverallScore(
@@ -259,12 +344,18 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   );
 
   const preferenceSummary = [
-    preferences.must_haves.length ? `Must-haves: ${preferences.must_haves.join(", ")}` : "",
-    preferences.deal_breakers.length ? `Deal-breakers: ${preferences.deal_breakers.join(", ")}` : "",
+    preferences.must_haves.length
+      ? `Must-haves: ${preferences.must_haves.join(", ")}`
+      : "",
+    preferences.deal_breakers.length
+      ? `Deal-breakers: ${preferences.deal_breakers.join(", ")}`
+      : "",
     `Budget: £${preferences.max_price.toLocaleString("en-GB")}`,
     `Commute: max ${preferences.commute_max_minutes} min`,
     preferences.style_notes ? `Style: ${preferences.style_notes}` : "",
-  ].filter(Boolean).join(". ");
+  ]
+    .filter(Boolean)
+    .join(". ");
 
   const highlights = await generateHighlights(
     propertyResult,
@@ -352,7 +443,12 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   return {
     evaluation: eval_,
     listingId,
-    scorecardText: buildScorecardText(updatedListing, eval_, mortgageRate, partialScore),
+    scorecardText: buildScorecardText(
+      updatedListing,
+      eval_,
+      mortgageRate,
+      partialScore,
+    ),
     scorecardButtons: buildScorecardButtons(listingId),
   };
 }

@@ -1,6 +1,13 @@
 import { retryWithBackoff, sleep } from "@/lib/utils/retry";
 
-type Portal = "rightmove" | "zoopla" | "onthemarket" | "primelocation" | "themodernhouse" | "ostrich" | "unknown";
+type Portal =
+  | "rightmove"
+  | "zoopla"
+  | "onthemarket"
+  | "primelocation"
+  | "themodernhouse"
+  | "ostrich"
+  | "unknown";
 
 const PORTAL_DETECTORS: Array<{ portal: Portal; pattern: RegExp }> = [
   { portal: "rightmove", pattern: /rightmove\.co\.uk/ },
@@ -19,14 +26,18 @@ function detectPortal(url: string): Portal {
 }
 
 // Portals that block server-side scraping (e.g. Cloudflare JS challenge, 403, walled garden).
-const SCRAPE_BLOCKED_PORTALS: Set<Portal> = new Set(["zoopla", "themodernhouse", "ostrich"]);
+const SCRAPE_BLOCKED_PORTALS: Set<Portal> = new Set([
+  "zoopla",
+  "themodernhouse",
+  "ostrich",
+]);
 
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 const BROWSER_HEADERS: Record<string, string> = {
   "User-Agent": BROWSER_UA,
-  "Accept":
+  Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
   "Accept-Language": "en-GB,en;q=0.5",
   "Accept-Encoding": "gzip, deflate, br",
@@ -77,9 +88,7 @@ const EMPTY_DETAILS: ScrapedDetails = {
 function scanForCdnUrls(text: string, hostFragments: string[]): string[] {
   const urlPattern = /https?:\/\/[^\s"'<>]+/g;
   const matches = text.match(urlPattern) ?? [];
-  return matches.filter((u) =>
-    hostFragments.some((h) => u.includes(h)),
-  );
+  return matches.filter((u) => hostFragments.some((h) => u.includes(h)));
 }
 
 /** Safe JSON.parse — returns null on any error. */
@@ -117,7 +126,9 @@ function normaliseCtaxBand(raw: string | null | undefined): string | null {
 }
 
 /** Extract lease length years from a string like "125 years" or "999 year lease". */
-function parseLeaseYears(raw: string | number | null | undefined): number | null {
+function parseLeaseYears(
+  raw: string | number | null | undefined,
+): number | null {
   if (raw == null) return null;
   const match = String(raw).match(/(\d+)/);
   if (!match) return null;
@@ -128,27 +139,43 @@ function parseLeaseYears(raw: string | number | null | undefined): number | null
 // --- Per-portal image extractors (unchanged from original) ---
 
 function extractRightmoveImages(html: string): string[] {
-  const match = html.match(/window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/);
+  const match = html.match(
+    /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/,
+  );
   if (match) {
     try {
       const json = match[1];
       const urls = scanForCdnUrls(json, ["media.rightmove.co.uk"]);
       if (urls.length > 0) return urls;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
   return scanForCdnUrls(html, ["media.rightmove.co.uk"]);
 }
 
 function extractZooplaImages(html: string): string[] {
-  const match = html.match(/<script\s+id="__NEXT_DATA__"\s+type="application\/json">([\s\S]+?)<\/script>/);
+  const match = html.match(
+    /<script\s+id="__NEXT_DATA__"\s+type="application\/json">([\s\S]+?)<\/script>/,
+  );
   if (match) {
     try {
       const json = match[1];
-      const urls = scanForCdnUrls(json, ["lc.zoocdn.com", "lid.zoocdn.com", "listing-images.zoocdn.com"]);
+      const urls = scanForCdnUrls(json, [
+        "lc.zoocdn.com",
+        "lid.zoocdn.com",
+        "listing-images.zoocdn.com",
+      ]);
       if (urls.length > 0) return urls;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
-  return scanForCdnUrls(html, ["lc.zoocdn.com", "lid.zoocdn.com", "listing-images.zoocdn.com"]);
+  return scanForCdnUrls(html, [
+    "lc.zoocdn.com",
+    "lid.zoocdn.com",
+    "listing-images.zoocdn.com",
+  ]);
 }
 
 function extractOnTheMarketImages(html: string): string[] {
@@ -163,7 +190,8 @@ function extractPrimeLocationImages(html: string): string[] {
 function extractJsonLdAndOgImages(html: string, cdnHosts: string[]): string[] {
   const urls: string[] = [];
 
-  const ldPattern = /<script\s+type="application\/ld\+json">([\s\S]+?)<\/script>/g;
+  const ldPattern =
+    /<script\s+type="application\/ld\+json">([\s\S]+?)<\/script>/g;
   let ldMatch;
   while ((ldMatch = ldPattern.exec(html)) !== null) {
     try {
@@ -178,7 +206,9 @@ function extractJsonLdAndOgImages(html: string, cdnHosts: string[]): string[] {
           else if (img?.contentUrl) urls.push(img.contentUrl);
         }
       }
-    } catch { /* skip malformed JSON-LD */ }
+    } catch {
+      /* skip malformed JSON-LD */
+    }
   }
 
   if (urls.length > 0) return urls;
@@ -217,7 +247,9 @@ function extractOgImages(html: string): string[] {
  *   propertyData.floorplanImages[].url
  */
 function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
-  const stateMatch = html.match(/window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/);
+  const stateMatch = html.match(
+    /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/,
+  );
   if (!stateMatch) return {};
 
   const state = tryParseJson(stateMatch[1]) as Record<string, unknown> | null;
@@ -228,14 +260,18 @@ function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
   // Tenure
   const tenureObj = (pd.tenure ?? {}) as Record<string, unknown>;
   const tenure = normaliseTenure(tenureObj.tenureType as string | undefined);
-  const lease_length_years = tenure === "Leasehold"
-    ? parseLeaseYears(tenureObj.yearsRemainingOnLease as string | number | undefined)
-    : null;
+  const lease_length_years =
+    tenure === "Leasehold"
+      ? parseLeaseYears(
+          tenureObj.yearsRemainingOnLease as string | number | undefined,
+        )
+      : null;
 
   // Property type
-  const property_type = typeof pd.propertySubType === "string" && pd.propertySubType
-    ? capitalise(pd.propertySubType)
-    : null;
+  const property_type =
+    typeof pd.propertySubType === "string" && pd.propertySubType
+      ? capitalise(pd.propertySubType)
+      : null;
 
   // Key features
   const rawFeatures = pd.keyFeatures;
@@ -244,7 +280,9 @@ function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
     : [];
 
   // Council tax band
-  const council_tax_band = normaliseCtaxBand(pd.councilTaxBand as string | undefined);
+  const council_tax_band = normaliseCtaxBand(
+    pd.councilTaxBand as string | undefined,
+  );
 
   // EPC — numeric current rating mapped to band letter
   let epc_rating: string | null = null;
@@ -291,7 +329,16 @@ function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
     if (typeof fp.url === "string") floorplan_url = fp.url;
   }
 
-  return { tenure, lease_length_years, property_type, key_features, council_tax_band, epc_rating, sqft, floorplan_url };
+  return {
+    tenure,
+    lease_length_years,
+    property_type,
+    key_features,
+    council_tax_band,
+    epc_rating,
+    sqft,
+    floorplan_url,
+  };
 }
 
 /**
@@ -300,7 +347,8 @@ function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
 function extractJsonLdDetails(html: string): Partial<ScrapedDetails> {
   const details: Partial<ScrapedDetails> = {};
 
-  const ldPattern = /<script\s+type="application\/ld\+json">([\s\S]+?)<\/script>/g;
+  const ldPattern =
+    /<script\s+type="application\/ld\+json">([\s\S]+?)<\/script>/g;
   let ldMatch;
   while ((ldMatch = ldPattern.exec(html)) !== null) {
     const obj = tryParseJson(ldMatch[1]) as Record<string, unknown> | null;
@@ -309,7 +357,11 @@ function extractJsonLdDetails(html: string): Partial<ScrapedDetails> {
     // Property type from @type
     if (!details.property_type) {
       const typeVal = obj["@type"];
-      if (typeof typeVal === "string" && typeVal !== "Product" && typeVal !== "Thing") {
+      if (
+        typeof typeVal === "string" &&
+        typeVal !== "Product" &&
+        typeVal !== "Thing"
+      ) {
         details.property_type = capitalise(typeVal);
       }
     }
@@ -339,10 +391,16 @@ function extractKeyFactsFromHtml(html: string): Partial<ScrapedDetails> {
   const details: Partial<ScrapedDetails> = {};
 
   // Strip tags from a snippet to get plain text
-  const stripTags = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const stripTags = (s: string) =>
+    s
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
   // Tenure
-  const tenureMatch = html.match(/tenure[^<]{0,30}?(?:<[^>]+>\s*)*([^<]{4,60})/i);
+  const tenureMatch = html.match(
+    /tenure[^<]{0,30}?(?:<[^>]+>\s*)*([^<]{4,60})/i,
+  );
   if (tenureMatch) {
     const raw = stripTags(tenureMatch[1]);
     const t = normaliseTenure(raw);
@@ -354,30 +412,38 @@ function extractKeyFactsFromHtml(html: string): Partial<ScrapedDetails> {
 
   // Lease length when not already captured
   if (!details.lease_length_years) {
-    const leaseMatch = html.match(/(?:lease(?:\s+length)?|years\s+remaining)[^<]{0,30}?(?:<[^>]+>\s*)*(\d+\s*years?)/i);
+    const leaseMatch = html.match(
+      /(?:lease(?:\s+length)?|years\s+remaining)[^<]{0,30}?(?:<[^>]+>\s*)*(\d+\s*years?)/i,
+    );
     if (leaseMatch) {
       details.lease_length_years = parseLeaseYears(leaseMatch[1]);
     }
   }
 
   // EPC
-  const epcMatch = html.match(/epc[^<]{0,40}?(?:rating|band)?[^<]{0,10}?(?:<[^>]+>\s*)*([A-G])\b/i);
+  const epcMatch = html.match(
+    /epc[^<]{0,40}?(?:rating|band)?[^<]{0,10}?(?:<[^>]+>\s*)*([A-G])\b/i,
+  );
   if (epcMatch && !details.epc_rating) {
     details.epc_rating = normaliseEpc(epcMatch[1]);
   }
 
   // Council tax band
-  const ctaxMatch = html.match(/council\s+tax[^<]{0,30}?(?:<[^>]+>\s*)*Band\s*([A-H])\b/i);
+  const ctaxMatch = html.match(
+    /council\s+tax[^<]{0,30}?(?:<[^>]+>\s*)*Band\s*([A-H])\b/i,
+  );
   if (ctaxMatch && !details.council_tax_band) {
     details.council_tax_band = normaliseCtaxBand(ctaxMatch[1]);
   }
 
   // Property type from meta og:type or page title patterns
-  const typeMatch = html.match(/<meta[^>]+property="og:type"[^>]+content="([^"]+)"/i)
-    ?? html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:type"/i);
+  const typeMatch =
+    html.match(/<meta[^>]+property="og:type"[^>]+content="([^"]+)"/i) ??
+    html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:type"/i);
   if (typeMatch && !details.property_type) {
     const t = typeMatch[1];
-    if (t !== "website" && t !== "article") details.property_type = capitalise(t);
+    if (t !== "website" && t !== "article")
+      details.property_type = capitalise(t);
   }
 
   return details;
@@ -393,7 +459,7 @@ function epcRatingFromNumber(rating: number): string | null {
   if (rating >= 55) return "D";
   if (rating >= 39) return "E";
   if (rating >= 21) return "F";
-  if (rating >= 1)  return "G";
+  if (rating >= 1) return "G";
   return null;
 }
 
@@ -402,12 +468,18 @@ function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
-function mergePartial<T extends object>(target: Partial<T>, source: Partial<T>): void {
+function mergePartial<T extends object>(
+  target: Partial<T>,
+  source: Partial<T>,
+): void {
   for (const key of Object.keys(source) as Array<keyof T>) {
     const val = source[key];
     if (val == null) continue;
     if (Array.isArray(val) && (val as unknown[]).length === 0) continue;
-    if (target[key] == null || (Array.isArray(target[key]) && (target[key] as unknown[]).length === 0)) {
+    if (
+      target[key] == null ||
+      (Array.isArray(target[key]) && (target[key] as unknown[]).length === 0)
+    ) {
       target[key] = val;
     }
   }
@@ -543,7 +615,12 @@ export async function downloadImages(
     }),
   );
 
-  const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+  const SUPPORTED_IMAGE_TYPES = new Set([
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+  ]);
   const images: Uint8Array[] = [];
   for (const r of results) {
     if (r.status === "fulfilled") {
