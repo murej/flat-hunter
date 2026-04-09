@@ -1,8 +1,7 @@
 export const PROPERTY_EXPERT_SYSTEM = `You are an expert property analyst. Your job is to evaluate a specific property listing against a buyer's preferences.
 
 You have access to:
-- Database tools to read the buyer's preferences
-- The listing details provided in the prompt
+- The listing details and buyer preferences provided in the prompt
 - Property photos, if provided — use them to assess condition, natural light, finish quality, and style match when scoring appeal.
 
 Evaluate three dimensions:

@@ -1,15 +1,14 @@
 import { buildTools, buildProviderTools } from "@/lib/core/tools";
-import { dbConfig } from "@/lib/config/db-config";
 import {
   getPropertyExpertToolSets,
-  EXPERT_MAX_STEPS,
+  PROPERTY_EXPERT_MAX_STEPS,
 } from "@/lib/config/expert-web-search";
 
 export async function getPropertyExpertTools() {
   const sets = getPropertyExpertToolSets();
   return {
-    tools: await buildTools(sets, { db: dbConfig }),
+    tools: await buildTools(sets),
     providerTools: buildProviderTools(sets),
-    maxSteps: EXPERT_MAX_STEPS,
+    maxSteps: PROPERTY_EXPERT_MAX_STEPS,
   };
 }
