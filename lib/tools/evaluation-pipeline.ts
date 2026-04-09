@@ -96,9 +96,6 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
   // Resolve image URLs — scrape from portal page if none available
   let imageUrls = listing.image_urls ?? [];
   if (filterImageUrls(imageUrls).length === 0 && listing.url) {
-    // #region agent log
-    fetch('http://127.0.0.1:7790/ingest/52ceec03-3746-4d68-bfe2-e446cee5c158',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'562dd7'},body:JSON.stringify({sessionId:'562dd7',location:'evaluation-pipeline.ts:scrape-trigger',message:'no images in DB, triggering scrape',data:{listingId,url:listing.url,rawImageUrls:imageUrls},timestamp:Date.now(),hypothesisId:'H3',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
     try {
       const scraped = await scrapeListingImages(listing.url);
       if (scraped.length > 0) {
