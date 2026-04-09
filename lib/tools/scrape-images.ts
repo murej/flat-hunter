@@ -208,13 +208,21 @@ export async function downloadImages(
       if (!res.ok) {
         throw new Error(`HTTP ${res.status} downloading ${url}`);
       }
-      return new Uint8Array(await res.arrayBuffer());
+      const data = new Uint8Array(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type") ?? "unknown";
+      return { data, contentType };
     }),
   );
 
+  const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
   const images: Uint8Array[] = [];
   for (const r of results) {
-    if (r.status === "fulfilled") images.push(r.value);
+    if (r.status === "fulfilled") {
+      const mimeBase = r.value.contentType.split(";")[0].trim();
+      if (SUPPORTED_IMAGE_TYPES.has(mimeBase)) {
+        images.push(r.value.data);
+      }
+    }
   }
   return images;
 }

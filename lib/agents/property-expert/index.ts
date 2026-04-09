@@ -24,8 +24,13 @@ export function filterImageUrls(urls: string[]): URL[] {
     try {
       const u = new URL(raw);
       if (!["http:", "https:"].includes(u.protocol)) return [];
-      if (IMAGE_EXTENSIONS.test(u.pathname) || PORTAL_CDN_HOSTS.has(u.hostname)) {
-        return [u];
+      if (IMAGE_EXTENSIONS.test(u.pathname)) return [u];
+      // For known portal CDN hosts, allow only extension-less paths (dynamic CDN URLs).
+      // Reject paths with a non-image extension (e.g. .ico, .svg).
+      if (PORTAL_CDN_HOSTS.has(u.hostname)) {
+        const lastSegment = u.pathname.slice(u.pathname.lastIndexOf("/") + 1);
+        const dotIdx = lastSegment.lastIndexOf(".");
+        if (dotIdx === -1) return [u]; // no extension — likely a dynamic CDN URL
       }
       return [];
     } catch {
