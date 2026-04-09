@@ -60,6 +60,6 @@ fi
 echo "⏳ supabase migration fetch --linked (sync migration files with remote history)…"
 printf 'y\n' | npx supabase migration fetch --linked --yes
 
-echo "⏳ supabase db push --linked (pending migrations)…"
-npx supabase db push --linked -p "$SUPABASE_DB_PASSWORD"
+echo "⏳ supabase db push --linked --include-all (pending migrations, including reordered history)…"
+npx supabase db push --linked --include-all --yes -p "$SUPABASE_DB_PASSWORD"
 echo "✅ Supabase migrations applied (or already up to date)."
