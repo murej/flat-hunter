@@ -1,5 +1,6 @@
 import { preprocessString, toLlmContext } from "langmail";
 import PostalMime from "postal-mime";
+import { dedupeOstrichPropertyUrlsBySlugQuality } from "./canonical-listing-url";
 import { annotateUrlWithPortalId } from "./portal-id";
 import {
   LISTING_URL_PATTERN_SOURCES,
@@ -75,7 +76,9 @@ function appendListingAndImageSections(
   const urls = extractListingUrls(urlHaystack);
   const hrefs = htmlDecoded ? extractHttpHrefsFromHtml(htmlDecoded) : [];
   const listingHrefs = hrefs.filter(isPortalListingHref);
-  const allUrls = [...new Set([...urls, ...listingHrefs])];
+  const allUrls = dedupeOstrichPropertyUrlsBySlugQuality([
+    ...new Set([...urls, ...listingHrefs]),
+  ]);
 
   let context = base;
   if (allUrls.length > 0) {

@@ -1,4 +1,5 @@
 import { MAX_LISTING_DESCRIPTION_CHARS } from "./config";
+import { canonicalizeListingUrl } from "./canonical-listing-url";
 import { normalizePortalId } from "./portal-id";
 import { reportError } from "@/lib/core/reporting";
 import { geocodeAddress, passesOutwardCheck } from "@/lib/utils/geocode";
@@ -94,6 +95,9 @@ function validateOne(listing: ListingOutput): ValidatedListing | null {
   if (url && !url.startsWith("http://") && !url.startsWith("https://")) {
     url = `https://${url}`;
     flags.push("url_prefixed");
+  }
+  if (url) {
+    url = canonicalizeListingUrl(url);
   }
   if (!url) flags.push("url_missing");
 

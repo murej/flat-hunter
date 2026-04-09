@@ -27,7 +27,7 @@ For each listing, extract:
 - listed_date: date listed if shown (null otherwise)
 
 Portal ID rules:
-- If a direct portal URL exists, extract the ID from it (e.g. Rightmove /properties/NNNNNN → use that numeric id as portal_id; Zoopla /details/NNNNNN → use "zoopla-" plus that numeric id; OnTheMarket /details/NNNNNN → "otm-" plus id; PrimeLocation → "pl-" plus id; Ostrich /property/SLUG or /sign-up/?slug=SLUG → "ostrich-" plus the slug)
+- If a direct portal URL exists, extract the ID from it (e.g. Rightmove /properties/NNNNNN → use that numeric id as portal_id; Zoopla /details/NNNNNN → use "zoopla-" plus that numeric id; OnTheMarket /details/NNNNNN → "otm-" plus id; PrimeLocation → "pl-" plus id; Ostrich /properties/SLUG (preferred) or /property/SLUG or /sign-up/?slug=SLUG → "ostrich-" plus the slug)
 - If only tracking/redirect URLs are available, derive an ID from the listing details: "<portal>-<postcode>-<price>" (e.g. "zoopla-N1-485000")
 - The portal_id must be stable: the same listing should always produce the same ID
 
