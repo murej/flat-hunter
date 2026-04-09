@@ -6,8 +6,9 @@ import { evaluateFinance } from "./finance";
 import { buildScorecardText, buildScorecardButtons } from "./scorecard";
 import { generateHighlights } from "./highlights";
 import { getLatestMortgageRate } from "./mortgage-rate";
-import { runPropertyExpert } from "@/lib/agents/property-expert";
+import { runPropertyExpert, filterImageUrls } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
+import { scrapeListingImages } from "./scrape-images";
 import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
 import { isValidAreaContext } from "@/lib/agents/area-expert/context";
@@ -92,6 +93,24 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     .eq("scope_value", listing.postcode)
     .single();
 
+  // Resolve image URLs — scrape from portal page if none available
+  let imageUrls = listing.image_urls ?? [];
+  if (filterImageUrls(imageUrls).length === 0 && listing.url) {
+    try {
+      const scraped = await scrapeListingImages(listing.url);
+      if (scraped.length > 0) {
+        imageUrls = scraped;
+        await getSupabaseAdmin()
+          .from("listings")
+          .update({ image_urls: scraped, updated_at: new Date().toISOString() })
+          .eq("id", listingId);
+        console.log(`[eval] Scraped ${scraped.length} images for ${listingId}`);
+      }
+    } catch (err) {
+      console.warn(`[eval] Image scraping failed for ${listingId}:`, err);
+    }
+  }
+
   // Build prompts
   const propertyPrompt = buildPropertyPrompt(listing, preferences);
   const areaPrompt = buildAreaPrompt(listing, preferences, areaContext);
@@ -106,7 +125,7 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
       listing.address,
     ),
     evaluateFinance(listing.price, preferences.deposit),
-    runPropertyExpert(propertyPrompt, listing.image_urls ?? []),
+    runPropertyExpert(propertyPrompt, imageUrls),
   ]);
 
   // Skip area expert if average property score is below 4 (clear reject)

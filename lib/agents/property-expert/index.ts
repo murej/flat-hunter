@@ -10,8 +10,8 @@ import { AGENT_NAME, TELEMETRY_TAG } from "./config";
 import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { getAgentConfig } from "@/lib/core/registry";
 
-const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|gif|avif)(\?|$)/i;
-const PORTAL_CDN_HOSTS = new Set([
+export const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|gif|avif)(\?|$)/i;
+export const PORTAL_CDN_HOSTS = new Set([
   "media.rightmove.co.uk",
   "lc.zoocdn.com",
   "listing-images.zoocdn.com",
@@ -19,7 +19,7 @@ const PORTAL_CDN_HOSTS = new Set([
   "images.primelocation.com",
 ]);
 
-function filterImageUrls(urls: string[]): URL[] {
+export function filterImageUrls(urls: string[]): URL[] {
   return urls.flatMap((raw) => {
     try {
       const u = new URL(raw);
