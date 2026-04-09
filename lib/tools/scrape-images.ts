@@ -514,14 +514,6 @@ export async function scrapeListingPage(url: string): Promise<ScrapedListing> {
 }
 
 /**
- * Backwards-compatible wrapper — returns only the image URLs.
- */
-export async function scrapeListingImages(url: string): Promise<string[]> {
-  const { imageUrls } = await scrapeListingPage(url);
-  return imageUrls;
-}
-
-/**
  * Download image URLs with proper headers (Referer, User-Agent).
  * Returns successfully downloaded images as Uint8Array[].
  * Skips failures silently — caller gets whatever succeeded.
