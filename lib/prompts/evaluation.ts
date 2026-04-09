@@ -10,6 +10,24 @@ export function buildPropertyPrompt(listing: Listing, preferences: Preferences):
       ? listing.description.slice(0, 2000) + "..."
       : listing.description;
 
+  // Build tenure string e.g. "Leasehold (85 years remaining)" or "Freehold"
+  const tenureStr = listing.tenure
+    ? listing.tenure === "Leasehold" && listing.lease_length_years
+      ? `Leasehold (${listing.lease_length_years} years remaining)`
+      : listing.tenure
+    : null;
+
+  // Key facts lines — only emit when data is present
+  const keyFactParts: string[] = [];
+  if (listing.property_type) keyFactParts.push(`Type: ${listing.property_type}`);
+  if (tenureStr)             keyFactParts.push(`Tenure: ${tenureStr}`);
+  if (listing.epc_rating)    keyFactParts.push(`EPC: ${listing.epc_rating}`);
+  if (listing.council_tax_band) keyFactParts.push(`Council tax: Band ${listing.council_tax_band}`);
+
+  const keyFactsSection = keyFactParts.length > 0 || (listing.key_features?.length ?? 0) > 0
+    ? `\n**Key facts:**\n${keyFactParts.length > 0 ? `- ${keyFactParts.join(" | ")}\n` : ""}${listing.key_features?.length ? `- Key features: ${listing.key_features.join(", ")}` : ""}`
+    : "";
+
   return `Evaluate this property against the buyer's preferences.
 
 **Property:**
@@ -17,7 +35,7 @@ export function buildPropertyPrompt(listing: Listing, preferences: Preferences):
 - Price: £${listing.price.toLocaleString("en-GB")}
 - Address: ${listing.address} (${listing.postcode})
 - Bedrooms: ${listing.bedrooms} | Bathrooms: ${listing.bathrooms}${listing.sqft ? ` | Sqft: ${listing.sqft}` : ""}
-- Description: ${desc}
+- Description: ${desc}${keyFactsSection}
 
 **Buyer preferences:**
 - Max price: £${preferences.max_price.toLocaleString("en-GB")}

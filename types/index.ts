@@ -45,6 +45,13 @@ export type Listing = {
   listed_date: string | null;
   status: ListingStatus;
   raw_email_html: string | null;
+  // Enriched from portal HTML scrape
+  tenure: string | null;
+  lease_length_years: number | null;
+  property_type: string | null;
+  key_features: string[];
+  epc_rating: string | null;
+  council_tax_band: string | null;
   created_at: string;
   updated_at: string;
 };

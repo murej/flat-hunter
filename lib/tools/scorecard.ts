@@ -31,11 +31,25 @@ export function buildScorecardText(
     priceLine += ` · ${formatMoney(evaluation.mortgage_monthly)}/mo (${mortgageRate}%)`;
   }
 
+  // Compact key-facts line: "Flat · Leasehold 85 yrs · EPC C · Band D"
+  const factParts: string[] = [];
+  if (listing.property_type) factParts.push(listing.property_type);
+  if (listing.tenure) {
+    const tenurePart = listing.tenure === "Leasehold" && listing.lease_length_years
+      ? `Leasehold ${listing.lease_length_years} yrs`
+      : listing.tenure;
+    factParts.push(tenurePart);
+  }
+  if (listing.epc_rating)       factParts.push(`EPC ${listing.epc_rating}`);
+  if (listing.council_tax_band) factParts.push(`Band ${listing.council_tax_band}`);
+  const factsLine = factParts.length > 0 ? factParts.join(" · ") : null;
+
   const lines = [
     `🏠 *${escapeMarkdown(listing.title)}*`,
     `📍 ${escapeMarkdown(listing.address)}`,
     priceLine,
     `🛏 ${listing.bedrooms} bed | 🛁 ${listing.bathrooms} bath${listing.sqft ? ` | 📐 ${Math.round(listing.sqft / 10.764)} m²` : ""}`,
+    ...(factsLine ? [escapeMarkdown(factsLine)] : []),
     "",
     `*Overall: ${evaluation.overall_score}/10${partialScore ?? [evaluation.appeal_score, evaluation.price_score, evaluation.size_score, evaluation.area_score, evaluation.commute_score].some((s) => s == null) ? "\\*" : ""}*`,
     "",

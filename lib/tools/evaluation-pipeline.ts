@@ -8,7 +8,7 @@ import { generateHighlights } from "./highlights";
 import { getLatestMortgageRate } from "./mortgage-rate";
 import { runPropertyExpert, filterImageUrls } from "@/lib/agents/property-expert";
 import { runAreaExpert } from "@/lib/agents/area-expert";
-import { scrapeListingImages, downloadImages } from "./scrape-images";
+import { scrapeListingPage, downloadImages } from "./scrape-images";
 import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
 import { isValidAreaContext } from "@/lib/agents/area-expert/context";
@@ -70,12 +70,15 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
 } | null> {
   await ensureDbToolAgentsRegistered();
 
-  const [listing, preferences] = await Promise.all([
+  const [fetchedListing, preferences] = await Promise.all([
     getListing(listingId),
     getPreferences(),
   ]);
 
-  if (!listing || !preferences) return null;
+  if (!fetchedListing || !preferences) return null;
+
+  // Use a mutable reference so scraped details can be merged before prompt building
+  let listing = fetchedListing;
 
   // Fetch area context
   const areaContext = await fetchAreaContext(
@@ -93,21 +96,53 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     .eq("scope_value", listing.postcode)
     .single();
 
-  // Resolve image URLs — scrape from portal page if none available
+  // Scrape portal page for images and structured details
   let imageUrls = listing.image_urls ?? [];
-  if (filterImageUrls(imageUrls).length === 0 && listing.url) {
+  const needsImages = filterImageUrls(imageUrls).length === 0;
+  if (listing.url) {
     try {
-      const scraped = await scrapeListingImages(listing.url);
-      if (scraped.length > 0) {
+      const { imageUrls: scraped, details } = await scrapeListingPage(listing.url);
+
+      // Build the DB update payload — only persist non-null / non-empty values
+      const enrichment: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (needsImages && scraped.length > 0) {
         imageUrls = scraped;
+        enrichment.image_urls = scraped;
+      }
+
+      if (details.tenure)                           enrichment.tenure = details.tenure;
+      if (details.lease_length_years != null)       enrichment.lease_length_years = details.lease_length_years;
+      if (details.property_type)                    enrichment.property_type = details.property_type;
+      if (details.key_features.length > 0)          enrichment.key_features = details.key_features;
+      if (details.epc_rating)                       enrichment.epc_rating = details.epc_rating;
+      if (details.council_tax_band)                 enrichment.council_tax_band = details.council_tax_band;
+      // Backfill sqft/floorplan only if the listing currently lacks them
+      if (details.sqft != null && listing.sqft == null)           enrichment.sqft = details.sqft;
+      if (details.floorplan_url && listing.floorplan_url == null) enrichment.floorplan_url = details.floorplan_url;
+
+      const hasChanges = Object.keys(enrichment).length > 1; // more than just updated_at
+      if (hasChanges) {
         await getSupabaseAdmin()
           .from("listings")
-          .update({ image_urls: scraped, updated_at: new Date().toISOString() })
+          .update(enrichment)
           .eq("id", listingId);
-        console.log(`[eval] Scraped ${scraped.length} images for ${listingId}`);
+        console.log(`[eval] Enriched listing ${listingId}:`, Object.keys(enrichment).filter((k) => k !== "updated_at").join(", "));
       }
+
+      // Merge scraped details into the in-memory listing so prompts see them
+      if (details.tenure)                           listing = { ...listing, tenure: details.tenure };
+      if (details.lease_length_years != null)       listing = { ...listing, lease_length_years: details.lease_length_years };
+      if (details.property_type)                    listing = { ...listing, property_type: details.property_type };
+      if (details.key_features.length > 0)          listing = { ...listing, key_features: details.key_features };
+      if (details.epc_rating)                       listing = { ...listing, epc_rating: details.epc_rating };
+      if (details.council_tax_band)                 listing = { ...listing, council_tax_band: details.council_tax_band };
+      if (details.sqft != null && listing.sqft == null)           listing = { ...listing, sqft: details.sqft };
+      if (details.floorplan_url && listing.floorplan_url == null) listing = { ...listing, floorplan_url: details.floorplan_url };
     } catch (err) {
-      console.warn(`[eval] Image scraping failed for ${listingId}:`, err);
+      console.warn(`[eval] Page scraping failed for ${listingId}:`, err);
     }
   }
 
