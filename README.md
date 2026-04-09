@@ -54,7 +54,7 @@ npm run dev
 
 - **Runtime**: Next.js (App Router, API routes only) on Vercel Hobby
 - **AI**: Vercel AI SDK + `@ai-sdk/anthropic` (Claude Haiku by default)
-- **Database**: Supabase Postgres (service-role, no RLS)
+- **Database**: Supabase Postgres (app uses **service_role**; RLS on `public` tables so anon cannot access app data)
 - **Messaging**: Telegram Bot API (raw fetch)
 - **Email**: CloudMailin webhook + `langmail` + `postal-mime`
 - **Concurrency**: sequential Sonnet experts per listing; optional `EVALUATE_LISTING_GAP_MS` between listings
