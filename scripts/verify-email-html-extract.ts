@@ -124,6 +124,20 @@ const Z999 = "https://www.zoopla.co.uk/for-sale/details/99999";
   must(!for2.includes("https://cdn.example.com/shared.webp"), "no shared og for B");
 }
 
+// --- Multi-listing shallow DOM: shared <img> block must not attach to every listing (Tier 1) ---
+{
+  const u1 = "https://www.zoopla.co.uk/for-sale/details/11111001";
+  const u2 = "https://www.zoopla.co.uk/for-sale/details/22222002";
+  const html = `<body>
+    <a href="${u1}">A</a><a href="${u2}">B</a>
+    <img src="https://lid.zoocdn.com/x/one.jpg" width="200" height="150"/>
+    <img src="https://lid.zoocdn.com/x/two.jpg" width="200" height="150"/>
+    </body>`;
+  const for1 = extractListingImageCandidatesForListing(html, u1);
+  const for2 = extractListingImageCandidatesForListing(html, u2);
+  must(for1.length === 0 && for2.length === 0, "ambiguous shared imgs: no tier1 for either");
+}
+
 // --- Malformed / unclosed img + single listing anchor ---
 {
   const u = "https://www.zoopla.co.uk/for-sale/details/88888";

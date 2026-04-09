@@ -459,6 +459,68 @@ function collectMatchingAnchors(
   return out;
 }
 
+/** All `<a>` elements that point at a portal property-detail URL (for multi-listing ownership). */
+function collectPortalListingAnchorElements(root: HTMLElement): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  for (const a of root.querySelectorAll("a")) {
+    const href = a.getAttribute("href");
+    if (!href?.trim()) continue;
+    const abs = normalizeAbsoluteHttpUrl(href);
+    if (!abs || !isPortalListingHref(abs)) continue;
+    const norm = normalizePropertyUrlForMatch(abs);
+    if (!norm) continue;
+    out.push(a as HTMLElement);
+  }
+  return out;
+}
+
+/**
+ * When several listings share a shallow DOM (e.g. all links then a shared `<img>` block), tree
+ * distance to each listing's anchor can be identical. Return the unique nearest portal anchor, or
+ * null if the closest anchors refer to different listings (ambiguous).
+ */
+function resolveNearestPortalAnchor(
+  el: HTMLElement,
+  portalAnchors: HTMLElement[],
+): HTMLElement | null {
+  if (portalAnchors.length === 0) return null;
+  type Row = { anchor: HTMLElement; dist: number; norm: string };
+  const rows: Row[] = [];
+  for (const anchor of portalAnchors) {
+    const href = anchor.getAttribute("href");
+    if (!href?.trim()) continue;
+    const abs = normalizeAbsoluteHttpUrl(href);
+    if (!abs) continue;
+    const norm = normalizePropertyUrlForMatch(abs);
+    if (!norm) continue;
+    const dist = distanceViaLCA(el, anchor);
+    if (!Number.isFinite(dist)) continue;
+    rows.push({ anchor, dist, norm });
+  }
+  if (rows.length === 0) return null;
+  const minD = Math.min(...rows.map((r) => r.dist));
+  const atMin = rows.filter((r) => r.dist === minD);
+  const norms = new Set(atMin.map((r) => r.norm));
+  if (norms.size > 1) return null;
+  return atMin[0].anchor;
+}
+
+function tier1ElementMatchesListing(
+  el: HTMLElement,
+  matchingAnchors: HTMLElement[],
+  portalAnchors: HTMLElement[],
+  multiListing: boolean,
+): boolean {
+  if (matchingAnchors.length === 0) return false;
+  if (!multiListing) {
+    return minDistanceToAnyAnchor(el, matchingAnchors) <= MAX_DOM_DISTANCE;
+  }
+  const owner = resolveNearestPortalAnchor(el, portalAnchors);
+  if (!owner) return false;
+  if (!matchingAnchors.includes(owner)) return false;
+  return distanceViaLCA(el, owner) <= MAX_DOM_DISTANCE;
+}
+
 /** Distinct normalized portal property-detail URLs from <a href>. */
 function countDistinctPropertyListingUrls(root: HTMLElement): number {
   return collectDistinctPropertyListingUrls(root).size;
@@ -552,12 +614,17 @@ function walkScopedTier1(
   listingUrl: string,
   matchingAnchors: HTMLElement[],
   allowOgMeta: boolean,
+  portalAnchors: HTMLElement[],
+  multiListing: boolean,
 ): Map<string, number> {
   const bucket = new Map<string, number>();
 
   for (const el of root.querySelectorAll("img")) {
     const hel = el as HTMLElement;
-    if (minDistanceToAnyAnchor(hel, matchingAnchors) > MAX_DOM_DISTANCE) continue;
+    if (
+      !tier1ElementMatchesListing(hel, matchingAnchors, portalAnchors, multiListing)
+    )
+      continue;
 
     const w = parseDim(el.getAttribute("width"));
     const h = parseDim(el.getAttribute("height"));
@@ -585,7 +652,10 @@ function walkScopedTier1(
   for (const pic of root.querySelectorAll("picture")) {
     for (const srcEl of pic.querySelectorAll("source")) {
       const hel = srcEl as HTMLElement;
-      if (minDistanceToAnyAnchor(hel, matchingAnchors) > MAX_DOM_DISTANCE) continue;
+      if (
+        !tier1ElementMatchesListing(hel, matchingAnchors, portalAnchors, multiListing)
+      )
+        continue;
       const srcset = srcEl.getAttribute("srcset");
       for (const raw of extractSrcsetUrls(srcset ?? undefined)) {
         const url = normalizeAbsoluteHttpUrl(raw);
@@ -697,11 +767,16 @@ export function extractListingImageCandidatesForListing(
 
   const allowOgMeta = propertyCount === 1 && listingMatchesSingleton;
 
+  const portalAnchors = collectPortalListingAnchorElements(root);
+  const multiListing = propertyCount > 1;
+
   const tier1 = walkScopedTier1(
     root,
     listingUrl,
     matchingAnchors,
     allowOgMeta,
+    portalAnchors,
+    multiListing,
   );
   if (tier1.size > 0) return bucketToSortedLimited(tier1);
 
