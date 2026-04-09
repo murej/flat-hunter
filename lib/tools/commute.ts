@@ -1,5 +1,6 @@
 import type { CommuteEvalResult } from "@/types";
-import { retryWithBackoff, nominatimThrottle } from "@/lib/utils/retry";
+import { retryWithBackoff } from "@/lib/utils/retry";
+import { geocodeAddress, passesOutwardCheck } from "@/lib/utils/geocode";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 const COMMUTE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -46,45 +47,6 @@ async function resolvePostcodeToCoords(
     console.error("[commute] postcodes.io error for", postcode, err);
     return null;
   }
-}
-
-function simplifyAddress(address: string): string {
-  // Strip unit/apartment/plot prefixes that confuse geocoders
-  return address
-    .replace(/^(apartment|flat|unit|plot|suite)\s*-?\s*\w+,?\s*/i, "")
-    .trim();
-}
-
-async function resolveAddressToCoords(
-  address: string,
-): Promise<{ lat: number; lon: number } | null> {
-  return nominatimThrottle(async () => {
-    try {
-      const simplified = simplifyAddress(address);
-      const query = simplified !== address ? simplified : address;
-
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
-        { headers: { "User-Agent": "Stath/1.0" }, signal: AbortSignal.timeout(API_TIMEOUT) },
-      );
-      if (!res.ok) {
-        console.error("[commute] Nominatim failed for", query, "status:", res.status);
-        return null;
-      }
-      const results = (await res.json()) as Array<{
-        lat: string;
-        lon: string;
-      }>;
-      if (!results[0]) {
-        console.error("[commute] Nominatim returned no results for", query);
-        return null;
-      }
-      return { lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
-    } catch (err) {
-      console.error("[commute] Nominatim error for", address, err);
-      return null;
-    }
-  });
 }
 
 type TfLJourney = {
@@ -175,11 +137,23 @@ export async function evaluateCommute(
     }
   }
 
-  // Resolve origin
+  // Resolve origin — try postcodes.io first, fall back to Nominatim address geocoding
   let origin = await resolvePostcodeToCoords(fromPostcode);
+  let geocodedPostcode: string | undefined;
+
   if (!origin && address) {
-    origin = await resolveAddressToCoords(address);
+    const geo = await geocodeAddress(address);
+    if (geo) {
+      origin = { lat: geo.lat, lon: geo.lon };
+      // Capture the resolved postcode if it passes the outward-code sanity check
+      if (geo.postcode && passesOutwardCheck(fromPostcode, geo.postcode)) {
+        const clean = geo.postcode.toUpperCase().replace(/\s+/g, "");
+        geocodedPostcode = `${clean.slice(0, -3)} ${clean.slice(-3)}`;
+        console.log("[commute] resolved postcode via Nominatim:", fromPostcode, "->", geocodedPostcode);
+      }
+    }
   }
+
   if (!origin) {
     console.error("[commute] Could not resolve origin postcode:", fromPostcode, "address:", address);
     return { commute_score: null, commute_minutes: null, commute_route: null };
@@ -201,7 +175,7 @@ export async function evaluateCommute(
 
   if (!journey) {
     console.error("[commute] TfL journey returned null for", fromPostcode, "->", toPostcode);
-    return { commute_score: null, commute_minutes: null, commute_route: null };
+    return { commute_score: null, commute_minutes: null, commute_route: null, geocodedPostcode };
   }
 
   // Store in cache (score is excluded — recomputed from minutes so maxMinutes changes are reflected)
@@ -220,5 +194,6 @@ export async function evaluateCommute(
     commute_score: computeCommuteScore(journey.minutes, maxMinutes),
     commute_minutes: journey.minutes,
     commute_route: journey.route,
+    geocodedPostcode,
   };
 }

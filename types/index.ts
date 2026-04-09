@@ -122,6 +122,8 @@ export type CommuteEvalResult = {
   commute_score: number | null;
   commute_minutes: number | null;
   commute_route: string | null;
+  /** Full UK postcode resolved via Nominatim when postcodes.io could not resolve from the stored postcode. */
+  geocodedPostcode?: string;
 };
 
 export type FinanceEvalResult = {

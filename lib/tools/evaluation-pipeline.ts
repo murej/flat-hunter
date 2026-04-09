@@ -12,6 +12,7 @@ import { scrapeListingPage, downloadImages } from "./scrape-images";
 import { ensureDbToolAgentsRegistered } from "@/lib/agents/registry-bootstrap";
 import { buildPropertyPrompt, buildAreaPrompt } from "@/lib/prompts/evaluation";
 import { isValidAreaContext } from "@/lib/agents/area-expert/context";
+import { normalizePortalId } from "@/lib/agents/ingest/portal-id";
 import type {
   Preferences,
   PropertyEvalResult,
@@ -20,6 +21,8 @@ import type {
   FinanceEvalResult,
   Evaluation,
 } from "@/types";
+
+const UK_POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 
 function computeOverallScore(
   property: PropertyEvalResult,
@@ -179,6 +182,44 @@ export async function runEvaluationPipeline(listingId: string): Promise<{
     evaluateFinance(listing.price, preferences.deposit),
     runPropertyExpert(propertyPrompt, imageData),
   ]);
+
+  // If commute resolved the postcode via Nominatim address fallback and ingest didn't
+  // already enrich it (listing still has an outward-code-only or blank postcode), persist it.
+  if (commuteResult.geocodedPostcode && !UK_POSTCODE.test(listing.postcode)) {
+    const enrichedPostcode = commuteResult.geocodedPostcode;
+    const enrichedPortalId = normalizePortalId({
+      portal_id: listing.portal_id,
+      url: listing.url ?? "",
+      postcode: enrichedPostcode,
+    });
+
+    // Fetch current validation_flags so we can swap the flag in JS without an RPC
+    const { data: flagsRow } = await getSupabaseAdmin()
+      .from("listings")
+      .select("validation_flags")
+      .eq("id", listingId)
+      .single();
+
+    const currentFlags: string[] =
+      (flagsRow as { validation_flags: string[] } | null)?.validation_flags ?? [];
+    const updatedFlags = [
+      ...currentFlags.filter((f) => f !== "postcode_invalid"),
+      "postcode_geocoded",
+    ];
+
+    await getSupabaseAdmin()
+      .from("listings")
+      .update({
+        postcode: enrichedPostcode,
+        portal_id: enrichedPortalId,
+        validation_flags: updatedFlags,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", listingId);
+
+    console.log(`[eval] Enriched postcode for listing ${listingId}: ${listing.postcode} → ${enrichedPostcode}`);
+    listing = { ...listing, postcode: enrichedPostcode, portal_id: enrichedPortalId };
+  }
 
   // Skip area expert if average property score is below 4 (clear reject)
   const propScores = [propertyResult.appeal_score, propertyResult.price_score, propertyResult.size_score].filter((s): s is number => s != null);

@@ -1,6 +1,7 @@
 import { MAX_LISTING_DESCRIPTION_CHARS } from "./config";
 import { normalizePortalId } from "./portal-id";
 import { reportError } from "@/lib/core/reporting";
+import { geocodeAddress, passesOutwardCheck } from "@/lib/utils/geocode";
 import type { ListingOutput } from "@/lib/schemas";
 
 const UK_POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
@@ -27,6 +28,46 @@ export async function validateAndCleanListings(
       );
       continue;
     }
+
+    // Attempt to enrich an invalid postcode from the address via Nominatim.
+    // This is done after validateOne so that errors here can never drop a listing.
+    if (
+      result.flags.includes("postcode_invalid") &&
+      result.listing.address?.trim()
+    ) {
+      try {
+        const geo = await geocodeAddress(result.listing.address);
+        if (geo?.postcode && passesOutwardCheck(result.listing.postcode, geo.postcode)) {
+          // Normalize: uppercase, single space before inward code
+          const clean = geo.postcode.toUpperCase().replace(/\s+/g, "");
+          const enrichedPostcode = `${clean.slice(0, -3)} ${clean.slice(-3)}`;
+
+          // Re-normalize portal_id: step 3 of normalizePortalId may embed the postcode
+          const enrichedPortalId = normalizePortalId({
+            portal_id: result.listing.portal_id,
+            url: result.listing.url,
+            postcode: enrichedPostcode,
+          });
+
+          result.listing = {
+            ...result.listing,
+            postcode: enrichedPostcode,
+            portal_id: enrichedPortalId,
+          };
+          result.flags = result.flags
+            .filter((f) => f !== "postcode_invalid")
+            .concat("postcode_geocoded");
+        }
+      } catch (err) {
+        // Geocode failures must never affect listing ingestion
+        console.error(
+          "[validation] Postcode geocoding failed for",
+          result.listing.address,
+          err,
+        );
+      }
+    }
+
     results.push(result);
   }
 
