@@ -39,3 +39,6 @@ export const getIngestNotificationModel = () =>
 
 export const getHighlightsModel = () =>
   envModel("HIGHLIGHTS_MODEL", DEFAULT);
+
+export const getScrapeExtractModel = () =>
+  envModel("SCRAPE_EXTRACT_MODEL", DEFAULT);

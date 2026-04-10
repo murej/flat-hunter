@@ -1,3 +1,8 @@
+import { z } from "zod";
+import { Output } from "ai";
+import { runAgent } from "@/lib/core/agent";
+import { parseAgentJsonMessage } from "@/lib/core/parse-agent-output";
+import { getScrapeExtractModel } from "@/lib/config/agent-models";
 import { retryWithBackoff, sleep } from "@/lib/utils/retry";
 
 type Portal =
@@ -139,16 +144,16 @@ function parseLeaseYears(
 // --- Per-portal image extractors (unchanged from original) ---
 
 function extractRightmoveImages(html: string): string[] {
-  const match = html.match(
-    /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/,
-  );
-  if (match) {
-    try {
-      const json = match[1];
-      const urls = scanForCdnUrls(json, ["media.rightmove.co.uk"]);
-      if (urls.length > 0) return urls;
-    } catch {
-      /* fall through */
+  // Try PAGE_MODEL first (current), then legacy __PRELOADED_STATE__
+  for (const pattern of [PAGE_MODEL_RE, PRELOADED_STATE_RE]) {
+    const match = html.match(pattern);
+    if (match) {
+      try {
+        const urls = scanForCdnUrls(match[1], ["media.rightmove.co.uk"]);
+        if (urls.length > 0) return urls;
+      } catch {
+        /* fall through */
+      }
     }
   }
   return scanForCdnUrls(html, ["media.rightmove.co.uk"]);
@@ -235,9 +240,19 @@ function extractOgImages(html: string): string[] {
 
 // --- Per-portal detail extractors ---
 
+/** Regex for Rightmove's current PAGE_MODEL embedded JSON. */
+const PAGE_MODEL_RE =
+  /window\.PAGE_MODEL\s*=\s*(\{[\s\S]+?\});\s*<\/script>/;
+
+/** Regex for Rightmove's legacy __PRELOADED_STATE__ embedded JSON. */
+const PRELOADED_STATE_RE =
+  /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/;
+
 /**
- * Rightmove: parse window.__PRELOADED_STATE__ JSON.
- * Paths observed in the wild (may vary — all accesses are defensive):
+ * Shared extractor for Rightmove's propertyData object.
+ * Works with both PAGE_MODEL and __PRELOADED_STATE__ payloads.
+ *
+ * Paths observed in the wild (all accesses are defensive):
  *   propertyData.keyFeatures[]
  *   propertyData.propertySubType
  *   propertyData.tenure.tenureType / yearsRemainingOnLease
@@ -246,104 +261,122 @@ function extractOgImages(html: string): string[] {
  *   propertyData.sizings[].unit / value  (sqft)
  *   propertyData.floorplanImages[].url
  */
-function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
-  const details: Partial<ScrapedDetails> = {};
+function extractFromRightmovePropertyData(
+  pd: Record<string, unknown>,
+): Partial<ScrapedDetails> {
+  // Tenure
+  const tenureObj = (pd.tenure ?? {}) as Record<string, unknown>;
+  const tenure = normaliseTenure(tenureObj.tenureType as string | undefined);
+  const lease_length_years =
+    tenure === "Leasehold"
+      ? parseLeaseYears(
+          tenureObj.yearsRemainingOnLease as string | number | undefined,
+        )
+      : null;
 
-  const stateMatch = html.match(
-    /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/,
+  // Property type
+  const property_type =
+    typeof pd.propertySubType === "string" && pd.propertySubType
+      ? capitalise(pd.propertySubType)
+      : null;
+
+  // Key features
+  const rawFeatures = pd.keyFeatures;
+  const key_features: string[] = Array.isArray(rawFeatures)
+    ? rawFeatures.filter((f): f is string => typeof f === "string")
+    : [];
+
+  // Council tax band
+  const council_tax_band = normaliseCtaxBand(
+    pd.councilTaxBand as string | undefined,
   );
-  if (stateMatch) {
-    const state = tryParseJson(stateMatch[1]) as Record<string, unknown> | null;
-    if (state) {
-      const pd = (state.propertyData ?? {}) as Record<string, unknown>;
 
-      // Tenure
-      const tenureObj = (pd.tenure ?? {}) as Record<string, unknown>;
-      const tenure = normaliseTenure(tenureObj.tenureType as string | undefined);
-      const lease_length_years =
-        tenure === "Leasehold"
-          ? parseLeaseYears(
-              tenureObj.yearsRemainingOnLease as string | number | undefined,
-            )
-          : null;
-
-      // Property type
-      const property_type =
-        typeof pd.propertySubType === "string" && pd.propertySubType
-          ? capitalise(pd.propertySubType)
-          : null;
-
-      // Key features
-      const rawFeatures = pd.keyFeatures;
-      const key_features: string[] = Array.isArray(rawFeatures)
-        ? rawFeatures.filter((f): f is string => typeof f === "string")
-        : [];
-
-      // Council tax band
-      const council_tax_band = normaliseCtaxBand(
-        pd.councilTaxBand as string | undefined,
-      );
-
-      // EPC — numeric current rating mapped to band letter
-      let epc_rating: string | null = null;
-      const epcGraphs = pd.epcGraphs;
-      if (Array.isArray(epcGraphs) && epcGraphs.length > 0) {
-        const firstGraph = epcGraphs[0] as Record<string, unknown>;
-        const eer = firstGraph?.eer as Record<string, unknown> | undefined;
-        const currentRating = eer?.currentRating;
-        if (currentRating != null) {
-          epc_rating = epcRatingFromNumber(Number(currentRating));
-        }
-        if (
-          !epc_rating &&
-          typeof eer?.currentEnergyEfficiencyRating === "string"
-        ) {
-          epc_rating = normaliseEpc(eer.currentEnergyEfficiencyRating as string);
-        }
-      }
-      if (!epc_rating) {
-        epc_rating = normaliseEpc(pd.epcRating as string | undefined);
-      }
-
-      // Sqft — Rightmove may have sizings array
-      let sqft: number | null = null;
-      const sizings = pd.sizings;
-      if (Array.isArray(sizings)) {
-        for (const s of sizings as Array<Record<string, unknown>>) {
-          if (s.unit === "sqft" && typeof s.minimumSize === "number") {
-            sqft = Math.round(s.minimumSize);
-            break;
-          }
-        }
-      }
-      if (!sqft && typeof pd.displaySize === "string") {
-        const m = (pd.displaySize as string).match(/(\d[\d,]+)\s*sq\s*ft/i);
-        if (m) sqft = parseInt(m[1].replace(/,/g, ""), 10);
-      }
-
-      // Floorplan — Rightmove stores them separately in floorplanImages
-      let floorplan_url: string | null = null;
-      const fpImages = pd.floorplanImages;
-      if (Array.isArray(fpImages) && fpImages.length > 0) {
-        const fp = fpImages[0] as Record<string, unknown>;
-        if (typeof fp.url === "string") floorplan_url = fp.url;
-      }
-
-      Object.assign(details, {
-        tenure,
-        lease_length_years,
-        property_type,
-        key_features,
-        council_tax_band,
-        epc_rating,
-        sqft,
-        floorplan_url,
-      });
+  // EPC — numeric current rating mapped to band letter
+  let epc_rating: string | null = null;
+  const epcGraphs = pd.epcGraphs;
+  if (Array.isArray(epcGraphs) && epcGraphs.length > 0) {
+    const firstGraph = epcGraphs[0] as Record<string, unknown>;
+    const eer = firstGraph?.eer as Record<string, unknown> | undefined;
+    const currentRating = eer?.currentRating;
+    if (currentRating != null) {
+      epc_rating = epcRatingFromNumber(Number(currentRating));
+    }
+    if (
+      !epc_rating &&
+      typeof eer?.currentEnergyEfficiencyRating === "string"
+    ) {
+      epc_rating = normaliseEpc(eer.currentEnergyEfficiencyRating as string);
     }
   }
+  if (!epc_rating) {
+    epc_rating = normaliseEpc(pd.epcRating as string | undefined);
+  }
 
-  // Rightmove often no longer embeds __PRELOADED_STATE__ in SSR HTML; fill gaps
-  // from JSON-LD + labelled key-facts markup (same helpers as OTM / unknown).
+  // Sqft — Rightmove may have sizings array
+  let sqft: number | null = null;
+  const sizings = pd.sizings;
+  if (Array.isArray(sizings)) {
+    for (const s of sizings as Array<Record<string, unknown>>) {
+      if (s.unit === "sqft" && typeof s.minimumSize === "number") {
+        sqft = Math.round(s.minimumSize);
+        break;
+      }
+    }
+  }
+  if (!sqft && typeof pd.displaySize === "string") {
+    const m = (pd.displaySize as string).match(/(\d[\d,]+)\s*sq\s*ft/i);
+    if (m) sqft = parseInt(m[1].replace(/,/g, ""), 10);
+  }
+
+  // Floorplan — Rightmove stores them separately in floorplanImages
+  let floorplan_url: string | null = null;
+  const fpImages = pd.floorplanImages;
+  if (Array.isArray(fpImages) && fpImages.length > 0) {
+    const fp = fpImages[0] as Record<string, unknown>;
+    if (typeof fp.url === "string") floorplan_url = fp.url;
+  }
+
+  return {
+    tenure,
+    lease_length_years,
+    property_type,
+    key_features,
+    council_tax_band,
+    epc_rating,
+    sqft,
+    floorplan_url,
+  };
+}
+
+/**
+ * Try to extract propertyData from a Rightmove embedded JSON regex match.
+ * Returns null if the regex doesn't match or JSON is malformed.
+ */
+function extractRightmoveEmbeddedJson(
+  html: string,
+  pattern: RegExp,
+): Partial<ScrapedDetails> | null {
+  const match = html.match(pattern);
+  if (!match) return null;
+  const state = tryParseJson(match[1]) as Record<string, unknown> | null;
+  if (!state) return null;
+  const pd = (state.propertyData ?? {}) as Record<string, unknown>;
+  if (Object.keys(pd).length === 0) return null;
+  return extractFromRightmovePropertyData(pd);
+}
+
+/**
+ * Rightmove details: try PAGE_MODEL (current) → __PRELOADED_STATE__ (legacy) → JSON-LD + regex.
+ */
+function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
+  // 1. Try PAGE_MODEL (current Rightmove)
+  const details =
+    extractRightmoveEmbeddedJson(html, PAGE_MODEL_RE) ??
+    // 2. Try __PRELOADED_STATE__ (legacy)
+    extractRightmoveEmbeddedJson(html, PRELOADED_STATE_RE) ??
+    {};
+
+  // 3. Fill gaps from JSON-LD + labelled key-facts markup
   mergePartial(details, extractJsonLdDetails(html));
 
   return details;
@@ -428,11 +461,16 @@ function extractKeyFactsFromHtml(html: string): Partial<ScrapedDetails> {
     }
   }
 
-  // EPC
+  // EPC — require "rating" or "band" after EPC to avoid matching generic prose,
+  // and reject range descriptions like "EPC ratings A to G" or "A-G".
   const epcMatch = html.match(
-    /epc[^<]{0,40}?(?:rating|band)?[^<]{0,10}?(?:<[^>]+>\s*)*([A-G])\b/i,
+    /epc\s*(?:rating|band|energy\s*rating)[^<]{0,30}?(?:<[^>]+>\s*)*\b([A-G])\b/i,
   );
-  if (epcMatch && !details.epc_rating) {
+  if (
+    epcMatch &&
+    !details.epc_rating &&
+    !/\b[A-G]\s*(?:to|[-–])\s*[A-G]\b/i.test(epcMatch[0])
+  ) {
     details.epc_rating = normaliseEpc(epcMatch[1]);
   }
 
@@ -490,6 +528,111 @@ function mergePartial<T extends object>(
     ) {
       target[key] = val as Partial<T>[typeof key];
     }
+  }
+}
+
+// --- LLM fallback extraction ---
+
+const LlmScrapedDetailsSchema = z.object({
+  tenure: z
+    .enum(["Freehold", "Leasehold"])
+    .nullable()
+    .describe("Property tenure"),
+  lease_length_years: z
+    .number()
+    .nullable()
+    .describe("Remaining lease years if leasehold"),
+  property_type: z
+    .string()
+    .nullable()
+    .describe("E.g. Flat, Terraced House, Detached"),
+  epc_rating: z
+    .enum(["A", "B", "C", "D", "E", "F", "G"])
+    .nullable()
+    .describe("EPC energy rating letter"),
+  council_tax_band: z
+    .enum(["A", "B", "C", "D", "E", "F", "G", "H"])
+    .nullable()
+    .describe("Council tax band letter"),
+  sqft: z.number().nullable().describe("Floor area in square feet"),
+});
+
+/**
+ * Strip HTML to minimal plain text suitable for LLM extraction.
+ * Removes nav, footer, script, style, ads; converts to whitespace-collapsed text.
+ * Target: ≤4000 chars (~1-2K tokens).
+ */
+function cleanHtmlForLlm(html: string): string {
+  let text = html;
+  // Remove entire blocks that never contain listing details
+  text = text.replace(
+    /<(script|style|nav|footer|header|noscript|svg|iframe)[^>]*>[\s\S]*?<\/\1>/gi,
+    "",
+  );
+  // Remove common non-content containers by class/id
+  text = text.replace(
+    /<(?:div|section|aside)[^>]*(?:class|id)="[^"]*(?:cookie|advert|sidebar|banner|popup|modal|newsletter)[^"]*"[^>]*>[\s\S]*?<\/(?:div|section|aside)>/gi,
+    "",
+  );
+  // Strip remaining tags
+  text = text.replace(/<[^>]+>/g, " ");
+  // Decode common HTML entities
+  text = text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#\d+;/g, " ");
+  // Collapse whitespace
+  text = text.replace(/\s+/g, " ").trim();
+  if (text.length > 4000) text = text.slice(0, 4000);
+  return text;
+}
+
+/** Count how many of the core scalar fields are populated. */
+function detailCompleteness(d: Partial<ScrapedDetails>): number {
+  return [d.tenure, d.property_type, d.epc_rating, d.council_tax_band, d.sqft]
+    .filter((v) => v != null).length;
+}
+
+const LLM_FALLBACK_THRESHOLD = 2;
+
+/**
+ * LLM fallback: send cleaned HTML text to a Haiku-class model to extract
+ * structured property details. Called only when structured parsing is sparse.
+ */
+async function extractDetailsViaLlm(
+  html: string,
+): Promise<Partial<ScrapedDetails>> {
+  const cleaned = cleanHtmlForLlm(html);
+  if (cleaned.length < 100) return {};
+
+  try {
+    const result = await runAgent({
+      systemPrompt:
+        "You extract UK property listing details from page text. Return only facts explicitly stated. Use null for anything not found. Do not guess.",
+      prompt: cleaned,
+      model: getScrapeExtractModel(),
+      maxSteps: 1,
+      telemetryTag: "scrape-llm-fallback",
+      output: Output.object({ schema: LlmScrapedDetailsSchema }),
+    });
+
+    const parsed = (await parseAgentJsonMessage(result.message, {
+      source: "scrape-llm-fallback",
+      telemetryTag: "scrape-llm-fallback",
+    })) as z.infer<typeof LlmScrapedDetailsSchema>;
+
+    return {
+      tenure: parsed.tenure ?? undefined,
+      lease_length_years: parsed.lease_length_years ?? undefined,
+      property_type: parsed.property_type ?? undefined,
+      epc_rating: parsed.epc_rating ?? undefined,
+      council_tax_band: parsed.council_tax_band ?? undefined,
+      sqft: parsed.sqft ?? undefined,
+    };
+  } catch {
+    return {};
   }
 }
 
@@ -577,6 +720,16 @@ export async function scrapeListingPage(url: string): Promise<ScrapedListing> {
     }
   } catch {
     // Never let detail extraction crash the pipeline
+  }
+
+  // LLM fallback when structured extraction is sparse
+  if (detailCompleteness(rawDetails) <= LLM_FALLBACK_THRESHOLD) {
+    try {
+      const llmDetails = await extractDetailsViaLlm(html);
+      mergePartial(rawDetails, llmDetails);
+    } catch {
+      // Best-effort — structured result is still returned
+    }
   }
 
   const details: ScrapedDetails = {
