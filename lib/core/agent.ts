@@ -1,5 +1,5 @@
-import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, stepCountIs } from "ai";
+import { resolveModel, isGemma } from "./provider";
 import { envBool } from "@/lib/utils/env-utils";
 import { reportError } from "./reporting";
 import type { RunAgentInput, RunAgentOutput } from "./types";
@@ -31,7 +31,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const opts: Record<string, any> = {
-    model: anthropic(model),
+    model: resolveModel(model),
     system: input.systemPrompt,
     messages: input.messages,
     prompt: input.prompt,
@@ -48,7 +48,7 @@ export async function runAgent(input: RunAgentInput): Promise<RunAgentOutput> {
     },
   };
 
-  if (input.providerTools?.length) {
+  if (input.providerTools?.length && !isGemma()) {
     opts.providerOptions = { anthropic: { tools: input.providerTools } };
   }
 

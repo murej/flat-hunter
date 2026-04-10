@@ -1,7 +1,11 @@
 import type { Tool } from "ai";
 import { buildDbReadTool, buildDbWriteTool, type DbToolConfig } from "./db";
 import { buildCallAgentTool } from "./call-agent";
-import { buildWebSearchTool } from "./web-search";
+import {
+  buildWebSearchProviderTool,
+  buildOllamaWebSearchTool,
+} from "./web-search";
+import { isGemma } from "@/lib/core/provider";
 import { getDbReadSchemaDescriptionAppendix } from "./db-read-schema-appendix";
 
 export type ToolSet = "db" | "db_read" | "call_agent" | "web_search";
@@ -31,14 +35,18 @@ export async function buildTools(
     tools.call_agent = buildCallAgentTool();
   }
 
+  if (sets.includes("web_search") && isGemma()) {
+    tools.web_search = buildOllamaWebSearchTool();
+  }
+
   return tools;
 }
 
 export function buildProviderTools(sets: ToolSet[]): unknown[] {
   const tools: unknown[] = [];
 
-  if (sets.includes("web_search")) {
-    tools.push(buildWebSearchTool());
+  if (sets.includes("web_search") && !isGemma()) {
+    tools.push(buildWebSearchProviderTool());
   }
 
   return tools;

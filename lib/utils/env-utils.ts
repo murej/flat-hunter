@@ -1,3 +1,11 @@
+export type LlmProvider = "anthropic" | "gemma";
+
+export function envLlmProvider(): LlmProvider {
+  const val = process.env.LLM_PROVIDER;
+  if (val === "gemma") return "gemma";
+  return "anthropic";
+}
+
 export function envBool(key: string, fallback = false): boolean {
   const val = process.env[key];
   if (!val) return fallback;
