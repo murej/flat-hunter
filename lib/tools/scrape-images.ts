@@ -247,98 +247,106 @@ function extractOgImages(html: string): string[] {
  *   propertyData.floorplanImages[].url
  */
 function extractRightmoveDetails(html: string): Partial<ScrapedDetails> {
+  const details: Partial<ScrapedDetails> = {};
+
   const stateMatch = html.match(
     /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]+?\});\s*<\/script>/,
   );
-  if (!stateMatch) return {};
+  if (stateMatch) {
+    const state = tryParseJson(stateMatch[1]) as Record<string, unknown> | null;
+    if (state) {
+      const pd = (state.propertyData ?? {}) as Record<string, unknown>;
 
-  const state = tryParseJson(stateMatch[1]) as Record<string, unknown> | null;
-  if (!state) return {};
+      // Tenure
+      const tenureObj = (pd.tenure ?? {}) as Record<string, unknown>;
+      const tenure = normaliseTenure(tenureObj.tenureType as string | undefined);
+      const lease_length_years =
+        tenure === "Leasehold"
+          ? parseLeaseYears(
+              tenureObj.yearsRemainingOnLease as string | number | undefined,
+            )
+          : null;
 
-  const pd = (state.propertyData ?? {}) as Record<string, unknown>;
+      // Property type
+      const property_type =
+        typeof pd.propertySubType === "string" && pd.propertySubType
+          ? capitalise(pd.propertySubType)
+          : null;
 
-  // Tenure
-  const tenureObj = (pd.tenure ?? {}) as Record<string, unknown>;
-  const tenure = normaliseTenure(tenureObj.tenureType as string | undefined);
-  const lease_length_years =
-    tenure === "Leasehold"
-      ? parseLeaseYears(
-          tenureObj.yearsRemainingOnLease as string | number | undefined,
-        )
-      : null;
+      // Key features
+      const rawFeatures = pd.keyFeatures;
+      const key_features: string[] = Array.isArray(rawFeatures)
+        ? rawFeatures.filter((f): f is string => typeof f === "string")
+        : [];
 
-  // Property type
-  const property_type =
-    typeof pd.propertySubType === "string" && pd.propertySubType
-      ? capitalise(pd.propertySubType)
-      : null;
+      // Council tax band
+      const council_tax_band = normaliseCtaxBand(
+        pd.councilTaxBand as string | undefined,
+      );
 
-  // Key features
-  const rawFeatures = pd.keyFeatures;
-  const key_features: string[] = Array.isArray(rawFeatures)
-    ? rawFeatures.filter((f): f is string => typeof f === "string")
-    : [];
-
-  // Council tax band
-  const council_tax_band = normaliseCtaxBand(
-    pd.councilTaxBand as string | undefined,
-  );
-
-  // EPC — numeric current rating mapped to band letter
-  let epc_rating: string | null = null;
-  const epcGraphs = pd.epcGraphs;
-  if (Array.isArray(epcGraphs) && epcGraphs.length > 0) {
-    const firstGraph = epcGraphs[0] as Record<string, unknown>;
-    const eer = firstGraph?.eer as Record<string, unknown> | undefined;
-    const currentRating = eer?.currentRating;
-    if (currentRating != null) {
-      epc_rating = epcRatingFromNumber(Number(currentRating));
-    }
-    // Also check for a direct letter field
-    if (!epc_rating && typeof eer?.currentEnergyEfficiencyRating === "string") {
-      epc_rating = normaliseEpc(eer.currentEnergyEfficiencyRating as string);
-    }
-  }
-  // Fallback: direct letter field
-  if (!epc_rating) {
-    epc_rating = normaliseEpc(pd.epcRating as string | undefined);
-  }
-
-  // Sqft — Rightmove may have sizings array
-  let sqft: number | null = null;
-  const sizings = pd.sizings;
-  if (Array.isArray(sizings)) {
-    for (const s of sizings as Array<Record<string, unknown>>) {
-      if (s.unit === "sqft" && typeof s.minimumSize === "number") {
-        sqft = Math.round(s.minimumSize);
-        break;
+      // EPC — numeric current rating mapped to band letter
+      let epc_rating: string | null = null;
+      const epcGraphs = pd.epcGraphs;
+      if (Array.isArray(epcGraphs) && epcGraphs.length > 0) {
+        const firstGraph = epcGraphs[0] as Record<string, unknown>;
+        const eer = firstGraph?.eer as Record<string, unknown> | undefined;
+        const currentRating = eer?.currentRating;
+        if (currentRating != null) {
+          epc_rating = epcRatingFromNumber(Number(currentRating));
+        }
+        if (
+          !epc_rating &&
+          typeof eer?.currentEnergyEfficiencyRating === "string"
+        ) {
+          epc_rating = normaliseEpc(eer.currentEnergyEfficiencyRating as string);
+        }
       }
+      if (!epc_rating) {
+        epc_rating = normaliseEpc(pd.epcRating as string | undefined);
+      }
+
+      // Sqft — Rightmove may have sizings array
+      let sqft: number | null = null;
+      const sizings = pd.sizings;
+      if (Array.isArray(sizings)) {
+        for (const s of sizings as Array<Record<string, unknown>>) {
+          if (s.unit === "sqft" && typeof s.minimumSize === "number") {
+            sqft = Math.round(s.minimumSize);
+            break;
+          }
+        }
+      }
+      if (!sqft && typeof pd.displaySize === "string") {
+        const m = (pd.displaySize as string).match(/(\d[\d,]+)\s*sq\s*ft/i);
+        if (m) sqft = parseInt(m[1].replace(/,/g, ""), 10);
+      }
+
+      // Floorplan — Rightmove stores them separately in floorplanImages
+      let floorplan_url: string | null = null;
+      const fpImages = pd.floorplanImages;
+      if (Array.isArray(fpImages) && fpImages.length > 0) {
+        const fp = fpImages[0] as Record<string, unknown>;
+        if (typeof fp.url === "string") floorplan_url = fp.url;
+      }
+
+      Object.assign(details, {
+        tenure,
+        lease_length_years,
+        property_type,
+        key_features,
+        council_tax_band,
+        epc_rating,
+        sqft,
+        floorplan_url,
+      });
     }
   }
-  // Also check a top-level displaySize field
-  if (!sqft && typeof pd.displaySize === "string") {
-    const m = (pd.displaySize as string).match(/(\d[\d,]+)\s*sq\s*ft/i);
-    if (m) sqft = parseInt(m[1].replace(/,/g, ""), 10);
-  }
 
-  // Floorplan — Rightmove stores them separately in floorplanImages
-  let floorplan_url: string | null = null;
-  const fpImages = pd.floorplanImages;
-  if (Array.isArray(fpImages) && fpImages.length > 0) {
-    const fp = fpImages[0] as Record<string, unknown>;
-    if (typeof fp.url === "string") floorplan_url = fp.url;
-  }
+  // Rightmove often no longer embeds __PRELOADED_STATE__ in SSR HTML; fill gaps
+  // from JSON-LD + labelled key-facts markup (same helpers as OTM / unknown).
+  mergePartial(details, extractJsonLdDetails(html));
 
-  return {
-    tenure,
-    lease_length_years,
-    property_type,
-    key_features,
-    council_tax_band,
-    epc_rating,
-    sqft,
-    floorplan_url,
-  };
+  return details;
 }
 
 /**
